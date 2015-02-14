@@ -1,5 +1,5 @@
 #
-# Example spec file for cdplayer app...
+# Spec file for Julien Semaan's profile
 #
 Summary: Julien Semaan's profile
 Name: jsemaan-profile
@@ -8,7 +8,6 @@ Release: 1
 License: MIT
 Group: Utils
 Source: profile.tgz 
-#URL: http://www.gnomovision.com/cdplayer/cdplayer.html
 Distribution: CentOS
 Vendor: Julien Semaan
 Packager: Julien Semaan <julien@semaan.ca>
@@ -24,9 +23,6 @@ Julien Semaan's profile
 %prep
 rm -rf $RPM_BUILD_DIR/profile
 zcat $RPM_SOURCE_DIR/profile.tgz | tar -xvf -
-
-#%build
-#make
 
 %install
 mkdir -p $RPM_BUILD_ROOT/usr/local/etc
@@ -46,7 +42,6 @@ if ! grep 'source /usr/local/etc/.bashrc_append' /etc/profile > /dev/null 2>&1 ;
     echo 'source /usr/local/etc/.bashrc_append' >> /etc/profile
     echo "" >> /etc/profile
 fi
-
 
 %files
 /usr/local/etc
