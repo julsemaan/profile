@@ -26,9 +26,14 @@ zcat $RPM_SOURCE_DIR/profile.tgz | tar -xvf -
 
 %install
 mkdir -p $RPM_BUILD_ROOT/usr/local/etc
+mkdir -p $RPM_BUILD_ROOT/usr/local/bin
+
 cp profile/.tmux.conf $RPM_BUILD_ROOT/usr/local/etc/.tmux.conf
 cp profile/.vimrc $RPM_BUILD_ROOT/usr/local/etc/.vimrc
 cp profile/.bashrc_append $RPM_BUILD_ROOT/usr/local/etc/.bashrc_append 
+
+cp profile/user_install $RPM_BUILD_ROOT/usr/local/bin/jprofile_install
+chmod +x $RPM_BUILD_ROOT/usr/local/bin/jprofile_install
 
 %post
 if ! grep 'source /usr/local/etc/.vimrc' /etc/vimrc > /dev/null 2>&1 ; then
@@ -43,6 +48,11 @@ if ! grep 'source /usr/local/etc/.bashrc_append' /etc/profile > /dev/null 2>&1 ;
     echo "" >> /etc/profile
 fi
 
+/usr/local/bin/jprofile_install
+
+
 %files
 /usr/local/etc
+/usr/local/bin/jprofile_install
+
 
