@@ -23,33 +23,13 @@ Julien Semaan's profile
 %prep
 rm -rf $RPM_BUILD_DIR/profile
 zcat $RPM_SOURCE_DIR/profile.tgz | tar -xvf -
+mv profile/Makefile .
 
 %install
-mkdir -p $RPM_BUILD_ROOT/usr/local/etc
-mkdir -p $RPM_BUILD_ROOT/usr/local/bin
-
-cp profile/.tmux.conf $RPM_BUILD_ROOT/usr/local/etc/.tmux.conf
-cp profile/.vimrc $RPM_BUILD_ROOT/usr/local/etc/.vimrc
-cp profile/.bashrc_append $RPM_BUILD_ROOT/usr/local/etc/.bashrc_append 
-
-cp profile/user_install $RPM_BUILD_ROOT/usr/local/bin/jprofile_install
-chmod +x $RPM_BUILD_ROOT/usr/local/bin/jprofile_install
+make install install-dir=$RPM_BUILD_ROOT/usr/local
 
 %post
-if ! grep 'source /usr/local/etc/.vimrc' /etc/vimrc > /dev/null 2>&1 ; then
-    echo "Installing the sourcing of vimrc in vimrc"
-    echo 'source /usr/local/etc/.vimrc' >> /etc/vimrc
-    echo "" >> /etc/vimrc
-fi
-
-if ! grep 'source /usr/local/etc/.bashrc_append' /etc/profile > /dev/null 2>&1 ; then
-    echo "Installing the sourcing of bashrc_append in /etc/profile"
-    echo 'source /usr/local/etc/.bashrc_append' >> /etc/profile
-    echo "" >> /etc/profile
-fi
-
 /usr/local/bin/jprofile_install
-
 
 %files
 /usr/local/etc

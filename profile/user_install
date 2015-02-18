@@ -1,6 +1,26 @@
 #!/bin/bash
 
-cp /usr/local/etc/.tmux.conf ~/.tmux.conf
+if [ -f /etc/vimrc ]; then
+	VIMRC="/etc/vimrc"
+elif [ -f /etc/vim/vimrc ]; then
+	VIMRC="/etc/vim/vimrc"
+fi
+if ! grep 'source /usr/local/etc/.vimrc' $VIMRC > /dev/null 2>&1 ; then
+		echo "Installing the sourcing of vimrc in vimrc"
+		echo 'source /usr/local/etc/.vimrc' >> $VIMRC
+		echo "" >> $VIMRC
+fi
+
+if [ -f /etc/bash.bashrc ]; then
+	BASHRC="/etc/bash.bashrc"
+elif [ -f /etc/bashrc ]; then
+	BASHRC="/etc/bashrc"
+fi
+if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
+		echo "Installing the sourcing of bashrc_append in $BASHRC"
+		echo 'source /usr/local/etc/.bashrc_append' >> $BASHRC
+		echo "" >> /etc/bash.bashrc
+fi
 
 homes=(/home/* /root)
 for home in "${homes[@]}"; do 
