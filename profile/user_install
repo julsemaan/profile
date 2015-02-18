@@ -24,7 +24,7 @@ fi
 
 homes=(/home/* /root)
 for home in "${homes[@]}"; do 
-  echo "Installing in $home"
+  echo "Installing .tmux.conf in $home"
   cp /usr/local/etc/.tmux.conf $home/.tmux.conf
 done
 
