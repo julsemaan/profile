@@ -26,7 +26,7 @@ zcat $RPM_SOURCE_DIR/profile.tgz | tar -xvf -
 mv profile/Makefile .
 
 %install
-make install install-dir=$RPM_BUILD_ROOT/usr/local
+make install prefix=$RPM_BUILD_ROOT/usr/local
 
 %post
 /usr/local/bin/jprofile_install
