@@ -19,3 +19,5 @@ install:
 install-profile:
 	$(prefix)/bin/jprofile_install
 
+upload:
+	python util/upload.py
