@@ -16,3 +16,6 @@ set ic              " Ignore case when searching
 
 " Alias the sudo write trick
 cnoreabbrev sudowrite w !sudo tee % >/dev/null 
+
+" Dynamically load vim plugins
+:filetype plugin on
