@@ -13,18 +13,18 @@ build:
 	cd build/ && tar -cvzf profile.tgz profile/
 
 install:
-	mkdir -p /etc
-	mkdir -p /bin
-	cp profile/.tmux.conf /etc/.tmux.conf
-	cp profile/.vimrc /etc/.vimrc
-	cp profile/.bashrc_append /etc/.bashrc_append 
-	cp profile/user_install /bin/jprofile_install
-	chmod +x /bin/jprofile_install
-	cp profile/update /bin/jprofile_update
-	chmod +x /bin/jprofile_update
+	mkdir -p $(install-dir)/usr/local/etc
+	mkdir -p $(install-dir)/usr/local/bin
+	cp profile/.tmux.conf $(install-dir)/usr/local/etc/.tmux.conf
+	cp profile/.vimrc $(install-dir)/usr/local/etc/.vimrc
+	cp profile/.bashrc_append $(install-dir)/usr/local/etc/.bashrc_append 
+	cp profile/user_install $(install-dir)/usr/local/bin/jprofile_install
+	chmod +x $(install-dir)/usr/local/bin/jprofile_install
+	cp profile/update $(install-dir)/usr/local/bin/jprofile_update
+	chmod +x $(install-dir)/usr/local/bin/jprofile_update
 
 install-profile:
-	/bin/jprofile_install
+	/usr/local/bin/jprofile_install
 
 install-full: install install-profile
 
