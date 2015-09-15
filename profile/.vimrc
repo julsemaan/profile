@@ -22,7 +22,15 @@ cnoreabbrev sudowrite w !sudo tee % >/dev/null
 " Dynamically load vim plugins
 :filetype plugin on
 
-map <ESC>[D <C-Left>
-map <ESC>[C <C-Right>
-map! <ESC>[D <C-Left>
-map! <ESC>[C <C-Right>
+"map <ESC>[D <C-Left>
+"map <ESC>[C <C-Right>
+"map! <ESC>[D <C-Left>
+"map! <ESC>[C <C-Right>
+
+if &term =~ '^screen'
+    " tmux will send xterm-style keys when its xterm-keys option is on
+    execute "set <xUp>=\e[1;*A"
+    execute "set <xDown>=\e[1;*B"
+    execute "set <xRight>=\e[1;*C"
+    execute "set <xLeft>=\e[1;*D"
+endif
