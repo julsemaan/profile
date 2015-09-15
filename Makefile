@@ -19,7 +19,9 @@ install:
 	cp profile/.vimrc /etc/.vimrc
 	cp profile/.bashrc_append /etc/.bashrc_append 
 	cp profile/user_install /bin/jprofile_install
-	chmod +x $(prefix)/bin/jprofile_install
+	chmod +x /bin/jprofile_install
+	cp profile/update /bin/jprofile_update
+	chmod +x /bin/jprofile_update
 
 install-profile:
 	/bin/jprofile_install
