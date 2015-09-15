@@ -14,8 +14,15 @@ set ic              " Ignore case when searching
 :map <C-K> :tabp <Enter> " Make Ctrl-down go to the previous tab
 :map <C-L> :tabn <Enter>   " Make Ctrl-up go to the next tab
 
+map vs <esc> :/\%V
+
 " Alias the sudo write trick
 cnoreabbrev sudowrite w !sudo tee % >/dev/null 
 
 " Dynamically load vim plugins
 :filetype plugin on
+
+map <ESC>[D <C-Left>
+map <ESC>[C <C-Right>
+map! <ESC>[D <C-Left>
+map! <ESC>[C <C-Right>
