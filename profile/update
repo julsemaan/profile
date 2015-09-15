@@ -1,0 +1,8 @@
+#!/bin/bash
+
+curl -L https://googledrive.com/host/0B-k7e2bQSB5_cGRRNUl4Qk96SWs > /etc/.tmux.conf
+curl -L https://googledrive.com/host/0B-k7e2bQSB5_WEFqNzR1YlVTaVk > /etc/.vimrc
+curl -L https://googledrive.com/host/0B-k7e2bQSB5_ZzRvZEdrSXJzY0U > /etc/.bashrc_append
+
+/bin/jprofile_install
+
