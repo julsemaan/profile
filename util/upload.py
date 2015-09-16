@@ -34,8 +34,6 @@ def sync(drive_file_id, filename):
 config = get_config()
 
 # Copy your credentials from the console
-#CLIENT_ID = '763393990880-mf3qdhscuacl7qqnpfv0c2kddh4gjj0v.apps.googleusercontent.com'
-#CLIENT_SECRET = 'o6mmCzuUsmVnHzEswx6mzEuo'
 CLIENT_ID = config['drive_api']['id']
 CLIENT_SECRET = config['drive_api']['secret']
 
