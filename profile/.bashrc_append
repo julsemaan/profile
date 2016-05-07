@@ -1,3 +1,12 @@
+
+# return if we are not in a tty
+[ -z "$PS1" ] && return
+
+alias rm='rm -I'
+alias cd..='cd ..'
+alias ll='ls -al --color=auto'
+
+# To add git infos in the PS1
 function parse_git_dirty {
   git diff --no-ext-diff --quiet --exit-code &> /dev/null || echo "*"
 }
@@ -6,9 +15,19 @@ function parse_git_branch {
   git branch --no-color 2> /dev/null | sed -e '/^[^*]/d' -e "s/* \(.*\)/(\1$(parse_git_dirty))/"
 }
 
-alias rm='rm -I'
-alias cd..='cd ..'
-
+# a cool PS1 with git infos
 PS1="\[\033[0;37m\]\342\224\214\342\224\200\$([[ \$? != 0 ]] && echo \"[\[\033[0;31m\]\342\234\227\[\033[0;37m\]]\342\224\200\")[$(if [[ ${EUID} == 0 ]]; then echo '\[\033[0;31m\]\h'; else echo '\[\033[0;33m\]\u\[\033[0;37m\]@\[\033[0;96m\]\h'; fi)\[\033[0;37m\]]\342\224\200[\[\033[0;32m\]\w\[\033[0;37m\]]-\$(parse_git_branch)\$ \n\[\033[0;37m\]\342\224\224\342\224\200\342\224\200\342\225\274 \[\033[0m\] "
 
+# will set the terminal title to the current command
 trap 'printf "\033]0;%s\007" "${BASH_COMMAND//[^[:print:]]/}"' DEBUG
+
+joined-tmux() {
+  tmux attach -d -t $1 || tmux -u new -s $1 
+}
+
+alias jointmux=joined-tmux
+
+# This creates an alias to quick join or create a session that has the hostname as a session name
+command="jointmux $HOSTNAME"
+alias htmux="$command"
+
