@@ -1,0 +1,6 @@
+#!/bin/bash
+
+curl -L https://dl.dropboxusercontent.com/u/20280504/profile-files/vimrc > profile/.vimrc
+curl -L https://dl.dropboxusercontent.com/u/20280504/profile-files/tmux.conf > profile/.tmux.conf
+curl -L https://dl.dropboxusercontent.com/u/20280504/profile-files/bashrc_append > profile/.bashrc_append
+
