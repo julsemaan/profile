@@ -13,11 +13,11 @@ function installfile {
 
 CURL=/usr/bin/curl
 
-installfile "$HOME/.vimrc" "https://googledrive.com/host/0B-k7e2bQSB5_cGRRNUl4Qk96SWs"
+installfile "$HOME/.vimrc" "https://dl.dropboxusercontent.com/u/20280504/profile-files/vimrc"
 
-installfile "$HOME/.tmux.conf" "https://googledrive.com/host/0B-k7e2bQSB5_WEFqNzR1YlVTaVk"
+installfile "$HOME/.tmux.conf" "https://dl.dropboxusercontent.com/u/20280504/profile-files/tmux.conf"
 
-installfile "$HOME/.bashrc_append" "https://googledrive.com/host/0B-k7e2bQSB5_ZzRvZEdrSXJzY0U"
+installfile "$HOME/.bashrc_append" "https://dl.dropboxusercontent.com/u/20280504/profile-files/bashrc_append"
 
 if ! grep 'source ~/.bashrc_append' ~/.bashrc > /dev/null 2>&1 ; then
     echo "Installing the sourcing of bashrc_append in bashrc"
