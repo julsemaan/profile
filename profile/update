@@ -1,8 +1,8 @@
 #!/bin/bash
 
-curl -L https://dl.dropboxusercontent.com/u/20280504/profile-files/vimrc > /usr/local/etc/.vimrc
-curl -L https://dl.dropboxusercontent.com/u/20280504/profile-files/tmux.conf > /usr/local/etc/.tmux.conf
-curl -L https://dl.dropboxusercontent.com/u/20280504/profile-files/bashrc_append > /usr/local/etc/.bashrc_append
+curl -L https://www.dropbox.com/s/acp1qlosnkpilc7/vimrc?dl=0 > /usr/local/etc/.vimrc
+curl -L https://www.dropbox.com/s/mp3k9tdmtecu1x7/tmux.conf > /usr/local/etc/.tmux.conf
+curl -L https://www.dropbox.com/s/f15hi7auzx60h76/bashrc_append > /usr/local/etc/.bashrc_append
 
 /usr/local/bin/jprofile_install
 
