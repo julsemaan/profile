@@ -71,6 +71,9 @@ if ctrlp_use_ag == '1'
   let g:ctrlp_user_command = 'ag %s -l --nocolor -g ""'
 endif
 
+" no limit for files
+let g:ctrlp_max_files=0
+
 """""""""
 " Other 
 "
@@ -111,8 +114,12 @@ let g:vim_markdown_folding_disabled=1
 " Filetypes
 "au BufNewFile,BufRead *.tt set filetype=html
 
+" Nicer completion
 set wildmode=longest,list,full
 set wildmenu
+
+" ignores
+set wildignore+=*/node_modules,*/log,*/logs,*/.git
 
 " golang/vim-go configuration
 let g:go_fmt_command = "goimports"
@@ -123,3 +130,14 @@ let g:go_highlight_types = 1
 let g:go_highlight_operators = 1
 let g:go_highlight_build_constraints = 1
 let g:go_highlight_trailing_whitespace_error = 0
+let g:go_version_warning = 0
+
+" map Ctrl-A and Ctrl-E to beginning and end of line
+map <C-a> <ESC>^
+imap <C-a> <ESC>I
+map <C-e> <ESC>$
+imap <C-e> <ESC>A
+
+" map these sequences to move by one word
+map <Esc>b <ESC>b
+map <Esc>f <ESC>w
