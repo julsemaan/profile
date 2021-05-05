@@ -5,4 +5,3 @@ curl -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.tmux
 curl -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.bashrc_append > /usr/local/etc/.bashrc_append
 
 /usr/local/bin/jprofile_install
-
