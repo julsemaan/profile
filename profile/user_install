@@ -28,6 +28,6 @@ for home in "${homes[@]}"; do
   cp /usr/local/etc/.tmux.conf $home/.tmux.conf
 done
 
-if ! [ -f /usr/local/etc/.vim/bundle/Vundle.vim ]; then
+if ! [ -d /usr/local/etc/.vim/bundle/Vundle.vim ]; then
 	git clone https://github.com/VundleVim/Vundle.vim.git /usr/local/etc/.vim/bundle/Vundle.vim
 fi
