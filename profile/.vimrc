@@ -132,6 +132,8 @@ let g:go_highlight_build_constraints = 1
 let g:go_highlight_trailing_whitespace_error = 0
 let g:go_version_warning = 0
 
+autocmd FileType go nmap <C-d> <Plug>(go-decls-dir)
+
 " map Ctrl-A and Ctrl-E to beginning and end of line
 map <C-a> <ESC>^
 imap <C-a> <ESC>I
