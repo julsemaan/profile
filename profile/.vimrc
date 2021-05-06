@@ -76,6 +76,9 @@ inoremap <Leader>; <C-n><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : "
 inoremap <Leader>: <C-x><C-f><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
 inoremap <Leader>= <C-x><C-l><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
 
+" Spell check
+:map <Leader>sc :set spell spelllang=en_us <Enter>
+
 """""""""
 " CtrlP
 "
