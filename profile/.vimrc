@@ -60,8 +60,8 @@ autocmd Filetype perl setlocal expandtab tabstop=4 shiftwidth=4 softtabstop=4
 "
 :map <Leader>k :tabp <Enter>    " Make ,k go to the previous tab
 :map <Leader>l :tabn <Enter>    " Make ,l go to the next tab
-
-set pastetoggle=<Leader>p       " Make ,p toggle paste mode
+:map <Leader>p :set paste <Enter>
+:map <Leader>np :set nopaste <Enter>
 
 """""""""
 " CtrlP
