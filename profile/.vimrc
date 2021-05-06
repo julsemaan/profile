@@ -4,7 +4,8 @@
 " CTRLP_USE_AG=1 will use ag in Ctrl-P instead of the slow vimscript searcher
 
 " leader
-:let mapleader = ","
+":let mapleader = ","
+:let mapleader = " "
 
 """"""""""""""""""""
 " Vundle + Plugins
