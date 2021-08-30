@@ -11,11 +11,14 @@ if ! grep 'source /usr/local/etc/.vimrc' $VIMRC > /dev/null 2>&1 ; then
 		echo "" >> $VIMRC
 fi
 
-if [ -f /etc/bash.bashrc ]; then
+if [ -f /etc/profile ]; then
+	BASHRC="/etc/profile"
+elif [ -f /etc/bash.bashrc ]; then
 	BASHRC="/etc/bash.bashrc"
 elif [ -f /etc/bashrc ]; then
 	BASHRC="/etc/bashrc"
 fi
+
 if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
 		echo "Installing the sourcing of bashrc_append in $BASHRC"
 		echo 'source /usr/local/etc/.bashrc_append' >> $BASHRC
