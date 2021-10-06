@@ -38,6 +38,8 @@ CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 command="jointmux $CLEAN_HOSTNAME"
 alias htmux="$command"
 
+alias fbtmux="tmux attach -d -t fbtmux || tmux new-session -s fbtmux -c src/fingerbank-base-images/docker4dev \; split-window -v -c src/fingerbank-base-images/docker4dev \; rename-window compose \; new-window -c src/fingerbank-cloud-api/ \; split-window -v -c src/fingerbank-cloud-api/ \; rename-window cloud-api \; new-window -c src/fingerbank-api-golang/ \; split-window -v -c src/fingerbank-api-golang/ \; rename-window api-golang \; new-window -c src/fingerbank-discovery-scripts/ \; split-window -v -c src/fingerbank-discovery-scripts/ \; rename-window discovery-scripts \; new-window -c src/fingerbank-collector/ \; split-window -v -c src/fingerbank-collector/ \; rename-window collector"
+
 # Lines below are an ugly hack to set the title to 'new-session' via a dummy command
 new-session () {
   nothing > /dev/null 2>&1
