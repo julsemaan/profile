@@ -160,3 +160,7 @@ imap <C-e> <ESC>A
 " map these sequences to move by one word
 map <Esc>b <ESC>b
 map <Esc>f <ESC>w
+
+" no mouse
+set mouse=
+set ttymouse=
