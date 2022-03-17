@@ -20,10 +20,10 @@ if skip_vim_plugins != '1'
   set rtp+=/usr/local/etc/.vim/bundle/Vundle.vim
   call vundle#begin()
 
-  Plugin 'git://github.com/kien/ctrlp.vim.git'
-  Plugin 'git://github.com/tmhedberg/matchit.git'
-  Plugin 'git://github.com/scrooloose/nerdtree.git'
-  Plugin 'git://github.com/jistr/vim-nerdtree-tabs.git'
+  Plugin 'https://github.com/kien/ctrlp.vim'
+  Plugin 'https://github.com/tmhedberg/matchit'
+  Plugin 'https://github.com/scrooloose/nerdtree'
+  Plugin 'https://github.com/jistr/vim-nerdtree-tabs'
   Plugin 'fatih/vim-go'
   " markdown
   Plugin 'godlygeek/tabular'
