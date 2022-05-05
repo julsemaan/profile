@@ -22,13 +22,20 @@ fi
 if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
 		echo "Installing the sourcing of bashrc_append in $BASHRC"
 		echo 'source /usr/local/etc/.bashrc_append' >> $BASHRC
-		echo "" >> /etc/bash.bashrc
+		echo "" >> $BASHRC
 fi
 
 homes=(/home/* /root)
 for home in "${homes[@]}"; do 
   echo "Installing .tmux.conf in $home"
   cp /usr/local/etc/.tmux.conf $home/.tmux.conf
+  
+  BASHRC="$home/.bashrc"
+  if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
+    echo "Installing the sourcing of bashrc_append in $BASHRC"
+    echo 'source /usr/local/etc/.bashrc_append' >> $BASHRC
+    echo "" >> $BASHRC
+  fi
 done
 
 if ! [ -d /usr/local/etc/.vim/bundle/Vundle.vim ]; then
