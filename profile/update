@@ -1,7 +1,3 @@
 #!/bin/bash
 
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.vimrc > /usr/local/etc/.vimrc
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.tmux.conf > /usr/local/etc/.tmux.conf
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.bashrc_append > /usr/local/etc/.bashrc_append
-
 /usr/local/bin/jprofile_install

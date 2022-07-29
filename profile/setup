@@ -1,12 +1,9 @@
 #!/bin/bash
 
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/update > /usr/local/bin/jprofile_update
-chmod +x /usr/local/bin/jprofile_update
-
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/user_install > /usr/local/bin/jprofile_install
+curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/install > /usr/local/bin/jprofile_install
 chmod +x /usr/local/bin/jprofile_install
 
-/usr/local/bin/jprofile_update
+/usr/local/bin/jprofile_install
 
 echo "+++++++++"
 echo "+Done...+"
