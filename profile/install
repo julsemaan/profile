@@ -1,8 +1,11 @@
 #!/bin/bash
 
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.vimrc > /usr/local/etc/.vimrc
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.tmux.conf > /usr/local/etc/.tmux.conf
+set -o nounset -o pipefail -o errexit
+
 curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.bashrc_append > /usr/local/etc/.bashrc_append
+curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.inputrc > /usr/local/etc/.inputrc
+curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.tmux.conf > /usr/local/etc/.tmux.conf
+curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.vimrc > /usr/local/etc/.vimrc
 
 if [ -f /etc/vimrc ]; then
 	VIMRC="/etc/vimrc"
@@ -34,6 +37,9 @@ for home in "${homes[@]}"; do
   if [ "$home" != '/home/*' ]; then
     echo "Installing .tmux.conf in $home"
     cp /usr/local/etc/.tmux.conf $home/.tmux.conf
+  
+    echo "Installing .inputrc in $home"
+    cp /usr/local/etc/.inputrc $home/.inputrc
   
     BASHRC="$home/.bashrc"
     if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
