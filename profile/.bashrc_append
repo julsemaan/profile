@@ -42,10 +42,12 @@ alias fbtmux="tmux attach -d -t fbtmux || tmux new-session -s fbtmux -c src/fing
 
 alias pftmux="tmux attach -d -t pftmux || tmux new-session -s pftmux -c /usr/local/pf \; split-window -v -c /usr/local/pf \; rename-window pf"
 
+git config --global credential.helper cache
+
+alias k="kubectl"
+
 # Lines below are an ugly hack to set the title to 'new-session' via a dummy command
 new-session () {
   nothing > /dev/null 2>&1
 }
 new-session
-
-git config --global credential.helper cache
