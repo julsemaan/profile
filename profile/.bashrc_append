@@ -42,6 +42,8 @@ alias fbtmux="tmux attach -d -t fbtmux || tmux new-session -s fbtmux -c src/fing
 
 alias pftmux="tmux attach -d -t pftmux || tmux new-session -s pftmux -c /usr/local/pf \; split-window -v -c /usr/local/pf \; rename-window pf"
 
+alias kpptmux="tmux attach -d -t kpptmux || tmux new-session -s kpptmux -c ~/src/app-platform \; split-window -v -c ~/src/app-platform \; rename-window kpp"
+
 git config --global credential.helper cache
 
 alias k="kubectl"
