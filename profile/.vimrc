@@ -164,3 +164,6 @@ map <Esc>f <ESC>w
 " no mouse
 set mouse=
 set ttymouse=
+
+" ignore patterns for Ctrl-P
+set wildignore+=*/tmp/*,*.so,*.swp,*.zip,*/venv/*
