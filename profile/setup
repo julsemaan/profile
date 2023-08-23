@@ -1,6 +1,8 @@
 #!/bin/bash
 
-mv /usr/local/bin/jprofile_install /usr/local/bin/jprofile_install.bak
+if [ -f /usr/local/bin/jprofile_install ]; then
+  mv /usr/local/bin/jprofile_install /usr/local/bin/jprofile_install.bak
+fi
 
 curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/install > /usr/local/bin/jprofile_install
 chmod +x /usr/local/bin/jprofile_install
