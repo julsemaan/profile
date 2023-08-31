@@ -48,6 +48,10 @@ git config --global credential.helper cache
 
 alias k="kubectl"
 
+fix-tmux-ssh() {
+  eval $(tmux show-env -s |grep '^SSH_')
+}
+
 # Lines below are an ugly hack to set the title to 'new-session' via a dummy command
 new-session () {
   nothing > /dev/null 2>&1
