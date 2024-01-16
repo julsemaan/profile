@@ -2,6 +2,8 @@
 # return if we are not in a tty
 [ -z "$PS1" ] && return
 
+export EDITOR=vim
+
 alias rm='rm -I'
 alias cd..='cd ..'
 alias ll='ls -al --color=auto'
