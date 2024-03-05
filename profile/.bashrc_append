@@ -50,7 +50,12 @@ git config --global credential.helper cache
 
 alias k="kubectl"
 
-alias quick-commit='git commit -a -m"$(fortune -n 50 -s)"'
+if `which fortune > /dev/null`; then
+  alias qco='git commit -a -m"$(fortune -n 50 -s)"'
+else
+  alias qco='git commit -a'
+fi
+alias qpush='git push origin HEAD'
 
 fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
