@@ -50,7 +50,7 @@ git config --global credential.helper cache
 
 alias k="kubectl"
 
-if `which fortune > /dev/null`; then
+if `which fortune > /dev/null 2>&1`; then
   alias qco='git commit -a -m"$(fortune -n 50 -s)"'
 else
   alias qco='git commit -a'
