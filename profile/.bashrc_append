@@ -35,9 +35,8 @@ joined-tmux() {
 
 alias jointmux=joined-tmux
 
-pwdtmux() {
-  joined-tmux `basename $PWD`
-}
+command="jointmux `basename $PWD`"
+alias pwdtmux="$command"
 
 CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 # This creates an alias to quick join or create a session that has the hostname as a session name
