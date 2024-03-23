@@ -35,14 +35,17 @@ joined-tmux() {
 
 alias jointmux=joined-tmux
 
+pwdtmux() {
+  joined-tmux `basename $PWD`
+}
+
 CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 # This creates an alias to quick join or create a session that has the hostname as a session name
 command="jointmux $CLEAN_HOSTNAME"
 alias htmux="$command"
 
-alias fbtmux="tmux attach -d -t fbtmux || tmux new-session -s fbtmux -c src/fingerbank-base-images/docker4dev \; split-window -v -c src/fingerbank-base-images/docker4dev \; rename-window compose \; new-window -c src/fingerbank-cloud-api/ \; split-window -v -c src/fingerbank-cloud-api/ \; rename-window cloud-api \; new-window -c src/fingerbank-api-golang/ \; split-window -v -c src/fingerbank-api-golang/ \; rename-window api-golang \; new-window -c src/fingerbank-discovery-scripts/ \; split-window -v -c src/fingerbank-discovery-scripts/ \; rename-window discovery-scripts \; new-window -c src/fingerbank-collector/ \; split-window -v -c src/fingerbank-collector/ \; rename-window collector"
-
-alias pftmux="tmux attach -d -t pftmux || tmux new-session -s pftmux -c /usr/local/pf \; split-window -v -c /usr/local/pf \; rename-window pf"
+#alias fbtmux="tmux attach -d -t fbtmux || tmux new-session -s fbtmux -c src/fingerbank-base-images/docker4dev \; split-window -v -c src/fingerbank-base-images/docker4dev \; rename-window compose \; new-window -c src/fingerbank-cloud-api/ \; split-window -v -c src/fingerbank-cloud-api/ \; rename-window cloud-api \; new-window -c src/fingerbank-api-golang/ \; split-window -v -c src/fingerbank-api-golang/ \; rename-window api-golang \; new-window -c src/fingerbank-discovery-scripts/ \; split-window -v -c src/fingerbank-discovery-scripts/ \; rename-window discovery-scripts \; new-window -c src/fingerbank-collector/ \; split-window -v -c src/fingerbank-collector/ \; rename-window collector"
+#alias pftmux="tmux attach -d -t pftmux || tmux new-session -s pftmux -c /usr/local/pf \; split-window -v -c /usr/local/pf \; rename-window pf"
 
 alias kpptmux="tmux attach -d -t kpptmux || tmux new-session -s kpptmux -c ~/src/app-platform \; split-window -v -c ~/src/app-platform \; rename-window kpp"
 
