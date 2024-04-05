@@ -63,6 +63,11 @@ fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
 }
 
+# Ensure history is preserved on every command, not on shell exit
+shopt -s histappend
+PROMPT_COMMAND="history -a;$PROMPT_COMMAND"
+
+
 # Lines below are an ugly hack to set the title to 'new-session' via a dummy command
 new-session () {
   nothing > /dev/null 2>&1
