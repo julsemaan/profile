@@ -55,6 +55,9 @@ set smartindent             " Make new lines indent automagically
 " Tabs for perl are 4
 autocmd Filetype perl setlocal expandtab tabstop=4 shiftwidth=4 softtabstop=4
 
+" Fix for YAML indentation comment/uncomment
+autocmd FileType yaml,yaml.ansible setlocal indentkeys-=0#
+
 """""""""""""""""
 " Key bindings
 
@@ -76,6 +79,10 @@ inoremap <Leader>; <C-n><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : "
 inoremap <Leader>: <C-x><C-f><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
 inoremap <Leader>= <C-x><C-l><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
 
+" Relative line number
+:nmap <Leader>n :set relativenumber <Enter>
+:map <Leader>nn :set norelativenumber <Enter>
+
 " Spell check
 :map <Leader>sc :set spell spelllang=en_us <Enter>
 
@@ -94,6 +101,10 @@ let g:ctrlp_max_files=0
 """""""""
 " Other 
 "
+
+" Enable relative line numbers by default
+:set relativenumber
+:set rnu
 
 " We want syntax
 syntax on
@@ -122,8 +133,6 @@ if &term =~ '^screen'
     execute "set <xLeft>=\e[1;*D"
 endif
 
-" map to open nerdtree
-map <Leader>n <plug>NERDTreeTabsToggle<CR>
 
 " Don't fold markdown
 let g:vim_markdown_folding_disabled=1
