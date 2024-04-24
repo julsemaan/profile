@@ -108,6 +108,9 @@ let g:ctrlp_max_files=0
 " Other 
 "
 
+" Allow local directories to set their own .vimrc
+set exrc
+
 " Enable relative line numbers by default
 :set relativenumber
 :set rnu
