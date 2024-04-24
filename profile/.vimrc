@@ -61,8 +61,10 @@ autocmd Filetype perl setlocal expandtab tabstop=4 shiftwidth=4 softtabstop=4
 autocmd FileType yaml,yaml.ansible setlocal indentkeys-=0#
 
 " Enable visual indentation for YAML files
-let g:indentLine_enabled = 0 
-autocmd FileType yaml let g:indentLine_enabled = 1 
+let g:indentLine_enabled = 0
+let g:indentLine_setConceal = 0
+autocmd FileType yaml let g:indentLine_enabled = 1
+autocmd FileType yaml let g:indentLine_setConceal = 2
 
 """""""""""""""""
 " Key bindings
@@ -86,8 +88,7 @@ inoremap <Leader>: <C-x><C-f><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>
 inoremap <Leader>= <C-x><C-l><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
 
 " Relative line number
-:nmap <Leader>n :set relativenumber <Enter>
-:map <Leader>nn :set norelativenumber <Enter>
+:map <Leader>nn :set relativenumber! <Enter> :IndentLinesToggle <Enter>
 
 " Spell check
 :map <Leader>sc :set spell spelllang=en_us <Enter>
