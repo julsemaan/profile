@@ -31,6 +31,8 @@ if skip_vim_plugins != '1'
 
   Plugin 'mustache/vim-mustache-handlebars'
 
+  Plugin 'Yggdroot/indentLine'
+
   " All of your Plugins must be added before the following line
   call vundle#end()            " required
   filetype plugin indent on    " required
@@ -57,6 +59,10 @@ autocmd Filetype perl setlocal expandtab tabstop=4 shiftwidth=4 softtabstop=4
 
 " Fix for YAML indentation comment/uncomment
 autocmd FileType yaml,yaml.ansible setlocal indentkeys-=0#
+
+" Enable visual indentation for YAML files
+let g:indentLine_enabled = 0 
+autocmd FileType yaml let g:indentLine_enabled = 1 
 
 """""""""""""""""
 " Key bindings
