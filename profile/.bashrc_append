@@ -51,6 +51,10 @@ alias kpptmux="tmux attach -d -t kpptmux || tmux new-session -s kpptmux -c ~/src
 git config --global credential.helper cache
 
 alias k="kubectl"
+if which kubectl >/dev/null 2>&1; then
+  source <(kubectl completion bash)
+  complete -o default -F __start_kubectl k
+fi
 
 if `which fortune > /dev/null 2>&1`; then
   alias qco='git commit -a -m"$(fortune -n 50 -s)"'
