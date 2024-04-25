@@ -22,11 +22,6 @@ function parse_git_branch {
 PS1="\$(history -a)\u\[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;196m\]@\H\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] [\w] {\[$(tput sgr0)\]\[\033[38;5;4m\]\$?\[$(tput sgr0)\]\[\033[38;5;15m\]} \$(parse_git_branch) \n\[$(tput bold)\]\\$\[$(tput sgr0)\] \[$(tput sgr0)\]"
 shopt -s histappend
 
-## Simpler version of the PS1
-#if [[ "$SIMPLE_PROMPT"="1" ]]; then
-#  PS1='\[\033[1;33m\]\H \[\033[1;32m\]\u: \w$(parse_git_branch)\n${?##0}\$ \[\033[0m\]';
-#fi
-
 ## will set the terminal title to the current command
 trap 'printf "\033]0;%s\007" "${BASH_COMMAND//[^[:print:]]/}"' DEBUG
 
@@ -43,9 +38,6 @@ CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 # This creates an alias to quick join or create a session that has the hostname as a session name
 command="jointmux $CLEAN_HOSTNAME"
 alias htmux="$command"
-
-#alias fbtmux="tmux attach -d -t fbtmux || tmux new-session -s fbtmux -c src/fingerbank-base-images/docker4dev \; split-window -v -c src/fingerbank-base-images/docker4dev \; rename-window compose \; new-window -c src/fingerbank-cloud-api/ \; split-window -v -c src/fingerbank-cloud-api/ \; rename-window cloud-api \; new-window -c src/fingerbank-api-golang/ \; split-window -v -c src/fingerbank-api-golang/ \; rename-window api-golang \; new-window -c src/fingerbank-discovery-scripts/ \; split-window -v -c src/fingerbank-discovery-scripts/ \; rename-window discovery-scripts \; new-window -c src/fingerbank-collector/ \; split-window -v -c src/fingerbank-collector/ \; rename-window collector"
-#alias pftmux="tmux attach -d -t pftmux || tmux new-session -s pftmux -c /usr/local/pf \; split-window -v -c /usr/local/pf \; rename-window pf"
 
 alias kpptmux="tmux attach -d -t kpptmux || tmux new-session -s kpptmux -c ~/src/app-platform \; split-window -v -c ~/src/app-platform \; rename-window kpp"
 
