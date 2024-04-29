@@ -115,6 +115,7 @@ set exrc
 " Enable relative line numbers by default
 :set relativenumber
 :set rnu
+:set nu rnu
 
 " We want syntax
 syntax on
