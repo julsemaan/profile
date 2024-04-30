@@ -88,7 +88,7 @@ inoremap <Leader>: <C-x><C-f><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>
 inoremap <Leader>= <C-x><C-l><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
 
 " Relative line number
-:map <Leader>nn :set relativenumber! <Enter> :IndentLinesToggle <Enter>
+:map <Leader>nn :set number! <Enter> :set relativenumber! <Enter> :IndentLinesToggle <Enter>
 
 " Spell check
 :map <Leader>sc :set spell spelllang=en_us <Enter>
