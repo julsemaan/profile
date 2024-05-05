@@ -63,8 +63,8 @@ autocmd FileType yaml,yaml.ansible setlocal indentkeys-=0#
 " Enable visual indentation for YAML files
 let g:indentLine_enabled = 0
 let g:indentLine_setConceal = 0
-autocmd FileType yaml let g:indentLine_enabled = 1
-autocmd FileType yaml let g:indentLine_setConceal = 2
+autocmd FileType yaml,html let g:indentLine_enabled = 1 
+autocmd FileType yaml,html let g:indentLine_setConceal = 2 
 
 """""""""""""""""
 " Key bindings
