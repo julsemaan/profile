@@ -6,6 +6,7 @@ curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.b
 curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.inputrc > /usr/local/etc/.inputrc
 curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.tmux.conf > /usr/local/etc/.tmux.conf
 curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.vimrc > /usr/local/etc/.vimrc
+curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.vimrc > /usr/local/etc/.gitignore
 
 if ! [ -f /etc/cron.d/jprofile ]; then
   curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/cron > /etc/cron.d/jprofile
@@ -37,6 +38,8 @@ if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
 		echo "" >> $BASHRC
 fi
 
+git config --system core.excludesfile /usr/local/etc/.gitignore
+
 homes=(/home/* /root)
 for home in "${homes[@]}"; do 
   if [ "$home" != '/home/*' ]; then
@@ -45,7 +48,7 @@ for home in "${homes[@]}"; do
   
     echo "Installing .inputrc in $home"
     cp /usr/local/etc/.inputrc $home/.inputrc
-  
+ 
     BASHRC="$home/.bashrc"
     if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
       echo "Installing the sourcing of bashrc_append in $BASHRC"
