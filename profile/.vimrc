@@ -62,22 +62,24 @@ autocmd FileType yaml,yaml.ansible setlocal indentkeys-=0#
 
 " Visual indentation
 let g:indentLine_enabled = 1 
-let g:indentLine_setConceal = 2 
+let g:indentLine_setConceal = 2
+let g:vim_json_conceal=0
+let g:markdown_syntax_conceal=0
 
 """""""""""""""""
 " Key bindings
 
 " Tab navigation
-:map <Leader>k :tabp <Enter>    " Make ,k go to the previous tab
-:map <Leader>l :tabn <Enter>    " Make ,l go to the next tab
+map <Leader>k :tabp <Enter>    " Make ,k go to the previous tab
+map <Leader>l :tabn <Enter>    " Make ,l go to the next tab
 
 " Paste mode
-:map <Leader>p :set paste <Enter>
-:map <Leader>np :set nopaste <Enter>
+map <Leader>p :set paste <Enter>
+map <Leader>np :set nopaste <Enter>
 
 " Buffers
-:map <Leader>b :b# <Enter>
-:map <Leader>v :buffers <Enter>
+map <Leader>b :b# <Enter>
+map <Leader>v :buffers <Enter>
 
 " Autocomplete
 inoremap <Leader>, <C-x><C-o><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
@@ -86,10 +88,10 @@ inoremap <Leader>: <C-x><C-f><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>
 inoremap <Leader>= <C-x><C-l><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
 
 " Relative line number
-:map <Leader>nn :set number! <Enter> :set relativenumber! <Enter> :IndentLinesToggle <Enter>
+map <Leader>nn :set number! <Enter> :set relativenumber! <Enter> :IndentLinesToggle <Enter>
 
 " Spell check
-:map <Leader>sc :set spell spelllang=en_us <Enter>
+map <Leader>sc :set spell spelllang=en_us <Enter>
 
 """""""""
 " CtrlP
@@ -111,9 +113,9 @@ let g:ctrlp_max_files=0
 set exrc
 
 " Enable relative line numbers by default
-:set relativenumber
-:set rnu
-:set nu rnu
+set relativenumber
+set rnu
+set nu rnu
 
 " We want syntax
 syntax on
@@ -215,3 +217,6 @@ endfunction
 
 " Example auto-formatting for YAML
 " autocmd FileType yaml autocmd BufWritePre <buffer> call Preserve("%!yq")
+
+" Use dark-background
+set background=dark
