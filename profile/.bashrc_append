@@ -60,7 +60,10 @@ fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
 }
 
-[ -f /usr/local/etc/ble.sh/out/ble.sh ] && source /usr/local/etc/ble.sh/out/ble.sh
+if [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
+  source /usr/local/etc/ble.sh/out/ble.sh
+  bind '"\e\C-?": backward-kill-word'
+fi
 
 [ -f /usr/local/etc/.fzf.bash ] && source /usr/local/etc/.fzf.bash
 
