@@ -3,7 +3,7 @@
 set -o nounset -o pipefail -o errexit
 
 function check_cmd {
-  if ! which $1; then
+  if ! which $1 > /dev/null; then
     echo "Needs $1"
     exit 5
   fi
