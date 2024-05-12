@@ -60,6 +60,10 @@ fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
 }
 
+[ -f /usr/local/etc/ble.sh/out/ble.sh ] && source /usr/local/etc/ble.sh/out/ble.sh
+
+[ -f /usr/local/etc/.fzf.bash ] && source /usr/local/etc/.fzf.bash
+
 # Lines below are an ugly hack to set the title to 'new-session' via a dummy command
 new-session () {
   nothing > /dev/null 2>&1
