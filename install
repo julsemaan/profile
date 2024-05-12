@@ -29,7 +29,7 @@ cp -a $d/profile/.vimrc /usr/local/etc/.vimrc
 cp -a $d/profile/.gitignore /usr/local/etc/.gitignore
 
 if ! [ -f /etc/cron.d/jprofile ]; then
-  cp -a $d/profile/cron /etc/cron.d/jprofile
+  cp -a $d/cron /etc/cron.d/jprofile
 fi
 
 if [ -f /etc/vimrc ]; then
