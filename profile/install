@@ -2,10 +2,16 @@
 
 set -o nounset -o pipefail -o errexit
 
-if ! which git; then
-  echo "Needs git"
-  exit 5
-fi
+function check_cmd {
+  if ! which $1; then
+    echo "Needs $1"
+    exit 5
+  fi
+}
+
+check_cmd git
+check_cmd make
+check_cmd gawk
 
 d=$(mktemp -d)
 
@@ -62,11 +68,13 @@ if ! [ -d /usr/local/etc/.vim/bundle/Vundle.vim ]; then
 fi
 
 if ! [ -d /usr/local/etc/ble.sh/out/ble.sh ]; then
-  git clone --recursive https://github.com/akinomyoga/ble.sh.git
+  rm -fr /usr/local/etc/ble.sh
+  git clone --depth 1 --recursive https://github.com/akinomyoga/ble.sh.git /usr/local/etc/ble.sh
   make -C /usr/local/etc/ble.sh
 fi
 
 if ! [ -d /usr/local/etc/.fzf.bash ]; then
+  rm fr /usr/local/etc/fzf
   git clone --depth 1 https://github.com/junegunn/fzf.git /usr/local/etc/fzf
   /usr/local/etc/fzf/install --all --no-update-rc
   mv $HOME/.fzf.bash /usr/local/etc/.fzf.bash
