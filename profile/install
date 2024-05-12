@@ -2,16 +2,29 @@
 
 set -o nounset -o pipefail -o errexit
 
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.bashrc_append > /usr/local/etc/.bashrc_append
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.inputrc > /usr/local/etc/.inputrc
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.tmux.conf > /usr/local/etc/.tmux.conf
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.vimrc > /usr/local/etc/.vimrc
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/.gitignore > /usr/local/etc/.gitignore
-
-if ! [ -f /etc/cron.d/jprofile ]; then
-  curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/profile/cron > /etc/cron.d/jprofile
+if ! which git; then
+  echo "Needs git"
+  exit 5
 fi
 
+d=$(mktemp -d)
+
+function finish {
+  rm -fr $d
+}
+trap finish EXIT
+
+git clone https://github.com/julsemaan/profile $d
+
+cp -a $d/profile/.bashrc_append /usr/local/etc/.bashrc_append
+cp -a $d/profile/.inputrc /usr/local/etc/.inputrc
+cp -a $d/profile/.tmux.conf /usr/local/etc/.tmux.conf
+cp -a $d/profile/.vimrc /usr/local/etc/.vimrc
+cp -a $d/profile/.gitignore /usr/local/etc/.gitignore
+
+if ! [ -f /etc/cron.d/jprofile ]; then
+  cp -a $d/profile/cron /etc/cron.d/jprofile
+fi
 
 if [ -f /etc/vimrc ]; then
 	VIMRC="/etc/vimrc"
@@ -22,20 +35,6 @@ if ! grep 'source /usr/local/etc/.vimrc' $VIMRC > /dev/null 2>&1 ; then
 		echo "Installing the sourcing of vimrc in vimrc"
 		echo 'source /usr/local/etc/.vimrc' >> $VIMRC
 		echo "" >> $VIMRC
-fi
-
-if [ -f /etc/profile ]; then
-	BASHRC="/etc/profile"
-elif [ -f /etc/bash.bashrc ]; then
-	BASHRC="/etc/bash.bashrc"
-elif [ -f /etc/bashrc ]; then
-	BASHRC="/etc/bashrc"
-fi
-
-if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
-		echo "Installing the sourcing of bashrc_append in $BASHRC"
-		echo 'source /usr/local/etc/.bashrc_append' >> $BASHRC
-		echo "" >> $BASHRC
 fi
 
 git config --system core.excludesfile /usr/local/etc/.gitignore
@@ -61,3 +60,4 @@ done
 if ! [ -d /usr/local/etc/.vim/bundle/Vundle.vim ]; then
 	git clone https://github.com/VundleVim/Vundle.vim.git /usr/local/etc/.vim/bundle/Vundle.vim
 fi
+
