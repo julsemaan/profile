@@ -71,6 +71,7 @@ if ! [ -d /usr/local/etc/ble.sh/out/ble.sh ]; then
   rm -fr /usr/local/etc/ble.sh
   git clone --depth 1 --recursive https://github.com/akinomyoga/ble.sh.git /usr/local/etc/ble.sh
   make -C /usr/local/etc/ble.sh
+  chmod -R a+rw /usr/local/etc/ble.sh/out/
 fi
 
 if ! [ -d /usr/local/etc/.fzf.bash ]; then
