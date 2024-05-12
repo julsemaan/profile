@@ -74,9 +74,10 @@ if ! [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
   chmod a+rw /usr/local/etc/ble.sh/out/
 fi
 
-if ! [ -f /usr/local/etc/.fzf.bash ]; then
+if ! [ -f /usr/local/etc/.fzf.bash ] || ! [ -f /usr/local/bin/fzf ]; then
   rm -fr /usr/local/etc/fzf
   git clone --depth 1 https://github.com/junegunn/fzf.git /usr/local/etc/fzf
   /usr/local/etc/fzf/install --all --no-update-rc
   mv $HOME/.fzf.bash /usr/local/etc/.fzf.bash
+  mv /usr/local/etc/fzf/bin/fzf /usr/local/bin/fzf
 fi
