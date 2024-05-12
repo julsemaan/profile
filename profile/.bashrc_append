@@ -65,7 +65,11 @@ if [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
   bind '"\e\C-?": backward-kill-word'
 fi
 
-[ -f /usr/local/etc/.fzf.bash ] && source /usr/local/etc/.fzf.bash
+if [ -f /usr/local/etc/.fzf.bash ]; then
+  export PATH="/usr/local/etc/fzf/bin/:$PATH"
+  source /usr/local/etc/.fzf.bash
+  _ble_contrib_fzf_base=/usr/local/etc/fzf
+fi
 
 # Lines below are an ugly hack to set the title to 'new-session' via a dummy command
 new-session () {

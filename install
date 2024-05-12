@@ -13,14 +13,20 @@ check_cmd git
 check_cmd make
 check_cmd gawk
 
-d=$(mktemp -d)
+LOCAL_INSTALL=${LOCAL_INSTALL:-}
+if [ -z "$LOCAL_INSTALL" ]; then
+  d=$(mktemp -d)
 
-function finish {
-  rm -fr $d
-}
-trap finish EXIT
+  function finish {
+    rm -fr $d
+  }
 
-git clone https://github.com/julsemaan/profile $d
+  trap finish EXIT
+
+  git clone https://github.com/julsemaan/profile $d
+else
+  d=`pwd`
+fi
 
 cp -a $d/profile/.bashrc_append /usr/local/etc/.bashrc_append
 cp -a $d/profile/.inputrc /usr/local/etc/.inputrc
@@ -74,10 +80,9 @@ if ! [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
   chmod a+rw /usr/local/etc/ble.sh/out/
 fi
 
-if ! [ -f /usr/local/etc/.fzf.bash ] || ! [ -f /usr/local/bin/fzf ]; then
+if ! [ -f /usr/local/etc/.fzf.bash ]; then
   rm -fr /usr/local/etc/fzf
   git clone --depth 1 https://github.com/junegunn/fzf.git /usr/local/etc/fzf
   /usr/local/etc/fzf/install --all --no-update-rc
   mv $HOME/.fzf.bash /usr/local/etc/.fzf.bash
-  mv /usr/local/etc/fzf/bin/fzf /usr/local/bin/fzf
 fi
