@@ -65,6 +65,7 @@ let g:indentLine_enabled = 1
 let g:indentLine_setConceal = 2
 let g:vim_json_conceal=0
 let g:markdown_syntax_conceal=0
+let g:vim_markdown_conceal_code_blocks = 0
 
 """""""""""""""""
 " Key bindings
