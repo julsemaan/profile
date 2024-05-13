@@ -70,16 +70,16 @@ let g:markdown_syntax_conceal=0
 " Key bindings
 
 " Tab navigation
-map <Leader>k :tabp <Enter>    " Make ,k go to the previous tab
-map <Leader>l :tabn <Enter>    " Make ,l go to the next tab
+nnoremap <Leader>k :tabp <Enter>    " Make ,k go to the previous tab
+nnoremap <Leader>l :tabn <Enter>    " Make ,l go to the next tab
 
 " Paste mode
-map <Leader>p :set paste <Enter>
-map <Leader>np :set nopaste <Enter>
+nnoremap <Leader>p :set paste <Enter>
+nnoremap <Leader>np :set nopaste <Enter>
 
 " Buffers
-map <Leader>b :b# <Enter>
-map <Leader>v :buffers <Enter>
+nnoremap <Leader>b :b# <Enter>
+nnoremap <Leader>v :buffers <Enter>
 
 " Autocomplete
 inoremap <Leader>, <C-x><C-o><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
@@ -88,10 +88,10 @@ inoremap <Leader>: <C-x><C-f><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>
 inoremap <Leader>= <C-x><C-l><C-r>=pumvisible() ? "\<lt>Down>\<lt>C-p>\<lt>Down>" : ""<CR>
 
 " Relative line number
-map <Leader>nn :set number! <Enter> :set relativenumber! <Enter> :IndentLinesToggle <Enter>
+nnoremap <Leader>nn :set number! \| set relativenumber! \| IndentLinesToggle <CR>
 
 " Spell check
-map <Leader>sc :set spell spelllang=en_us <Enter>
+nnoremap <Leader>sc :set spell spelllang=en_us <Enter>
 
 """""""""
 " CtrlP
