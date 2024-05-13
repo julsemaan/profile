@@ -42,15 +42,19 @@ if ! [ -f /etc/cron.d/jprofile ]; then
   fi
 fi
 
+VIMRC=""
 if [ -f /etc/vimrc ]; then
 	VIMRC="/etc/vimrc"
 elif [ -f /etc/vim/vimrc ]; then
 	VIMRC="/etc/vim/vimrc"
 fi
-if ! grep 'source /usr/local/etc/.vimrc' $VIMRC > /dev/null 2>&1 ; then
-		echo "Installing the sourcing of vimrc in vimrc"
-		echo 'source /usr/local/etc/.vimrc' >> $VIMRC
-		echo "" >> $VIMRC
+
+if ! [ -z "$VIMRC" ]; then
+  if ! grep 'source /usr/local/etc/.vimrc' $VIMRC > /dev/null 2>&1 ; then
+      echo "Installing the sourcing of vimrc in vimrc"
+      echo 'source /usr/local/etc/.vimrc' >> $VIMRC
+      echo "" >> $VIMRC
+  fi
 fi
 
 git config --system core.excludesfile /usr/local/etc/.gitignore
@@ -58,17 +62,19 @@ git config --system core.excludesfile /usr/local/etc/.gitignore
 homes=(/home/* /root)
 for home in "${homes[@]}"; do 
   if [ "$home" != '/home/*' ]; then
-    echo "Installing .tmux.conf in $home"
-    cp /usr/local/etc/.tmux.conf $home/.tmux.conf
-  
-    echo "Installing .inputrc in $home"
-    cp /usr/local/etc/.inputrc $home/.inputrc
- 
-    BASHRC="$home/.bashrc"
-    if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
-      echo "Installing the sourcing of bashrc_append in $BASHRC"
-      echo 'source /usr/local/etc/.bashrc_append' >> $BASHRC
-      echo "" >> $BASHRC
+    if [ -d "$home" ]; then
+      echo "Installing .tmux.conf in $home"
+      cp /usr/local/etc/.tmux.conf $home/.tmux.conf
+    
+      echo "Installing .inputrc in $home"
+      cp /usr/local/etc/.inputrc $home/.inputrc
+   
+      BASHRC="$home/.bashrc"
+      if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
+        echo "Installing the sourcing of bashrc_append in $BASHRC"
+        echo 'source /usr/local/etc/.bashrc_append' >> $BASHRC
+        echo "" >> $BASHRC
+      fi
     fi
   fi
 done
