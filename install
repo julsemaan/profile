@@ -35,7 +35,11 @@ cp -a $d/profile/.vimrc /usr/local/etc/.vimrc
 cp -a $d/profile/.gitignore /usr/local/etc/.gitignore
 
 if ! [ -f /etc/cron.d/jprofile ]; then
-  cp -a $d/cron /etc/cron.d/jprofile
+  if [ -d /etc/cron.d ]; then
+    cp -a $d/cron /etc/cron.d/jprofile
+  else
+    echo "Skipping cron installation because /etc/cron.d doesn't exist"
+  fi
 fi
 
 if [ -f /etc/vimrc ]; then
