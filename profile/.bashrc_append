@@ -43,7 +43,10 @@ alias kpptmux="tmux attach -d -t kpptmux || tmux new-session -s kpptmux -c ~/src
 
 git config --global credential.helper cache
 
-alias k="kubectl"
+if which kubecolor >/dev/null; then
+  alias kubectl="kubecolor"
+fi
+
 if which kubectl >/dev/null 2>&1; then
   source <(kubectl completion bash)
   complete -o default -F __start_kubectl k
@@ -81,12 +84,6 @@ if [ -f /usr/local/etc/.fzf.bash ]; then
 			ssh)          fzf --preview 'comm -13 <(ssh -T -G non-existing-host | sort) <(ssh -T -G {} | sort)'                   "$@" ;;
 			*)            fzf --preview 'bat -n --color=always {}' "$@" ;;
 		esac
-	}
-
-	_fzf_complete_env() {
-		_fzf_complete --multi --reverse --header-lines=3 -- "$@" < <(
-			env
-		)
 	}
 
 	complete -o default -o nospace -v -F _fzf_var_completion echo
