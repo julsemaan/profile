@@ -63,7 +63,8 @@ fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
 }
 
-if [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
+BLE_ENABLE=${BLE_ENABLE:-yes}
+if [ "$BLE_ENABLE" = "yes" ] && [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
   source /usr/local/etc/ble.sh/out/ble.sh
   bind '"\e\C-?": backward-kill-word'
 fi
