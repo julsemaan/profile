@@ -26,7 +26,7 @@ shopt -s histappend
 trap 'printf "\033]0;%s\007" "${BASH_COMMAND//[^[:print:]]/}"' DEBUG
 
 joined-tmux() {
-  tmux attach -d -t $1 || tmux -u new -s $1 
+  tmux -u attach -d -t $1 || tmux -u new -s $1 
 }
 
 alias jointmux=joined-tmux
@@ -39,7 +39,7 @@ CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 command="jointmux $CLEAN_HOSTNAME"
 alias htmux="$command"
 
-alias kpptmux="tmux attach -d -t kpptmux || tmux new-session -s kpptmux -c ~/src/app-platform \; split-window -v -c ~/src/app-platform \; rename-window kpp"
+alias kpptmux="tmux -u attach -d -t kpptmux || tmux -u new-session -s kpptmux -c ~/src/app-platform \; split-window -v -c ~/src/app-platform \; rename-window kpp"
 
 git config --global credential.helper cache
 
