@@ -33,6 +33,7 @@ cp -a $d/profile/.inputrc /usr/local/etc/.inputrc
 cp -a $d/profile/.tmux.conf /usr/local/etc/.tmux.conf
 cp -a $d/profile/.vimrc /usr/local/etc/.vimrc
 cp -a $d/profile/.gitignore /usr/local/etc/.gitignore
+cp -a $d/profile/.blerc /usr/local/etc/.blerc
 
 if ! [ -f /etc/cron.d/jprofile ]; then
   if [ -d /etc/cron.d ]; then
@@ -68,6 +69,9 @@ for home in "${homes[@]}"; do
     
       echo "Installing .inputrc in $home"
       cp /usr/local/etc/.inputrc $home/.inputrc
+   
+      echo "Installing .blerc in $home"
+      cp /usr/local/etc/.blerc $home/.blerc
    
       BASHRC="$home/.bashrc"
       if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
