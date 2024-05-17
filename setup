@@ -4,7 +4,9 @@ if [ -f /usr/local/bin/jprofile_install ]; then
   mv /usr/local/bin/jprofile_install /usr/local/bin/jprofile_install.bak
 fi
 
-curl -s -L https://raw.githubusercontent.com/julsemaan/profile/master/install > /usr/local/bin/jprofile_install
+sha=$(curl -s -H "Accept: application/vnd.github.VERSION.sha" "https://api.github.com/repos/julsemaan/profile/commits/master")
+
+curl -s -L https://raw.githubusercontent.com/julsemaan/profile/$sha/install > /usr/local/bin/jprofile_install
 chmod +x /usr/local/bin/jprofile_install
 
 /usr/local/bin/jprofile_install
