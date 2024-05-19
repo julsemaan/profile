@@ -83,6 +83,10 @@ for home in "${homes[@]}"; do
   fi
 done
 
+if ! [ -d /usr/local/etc/.tmuxifier ]; then
+	git clone https://github.com/jimeh/tmuxifier.git /usr/local/etc/.tmuxifier
+fi
+
 if ! [ -d /usr/local/etc/.vim/bundle/Vundle.vim ]; then
 	git clone https://github.com/VundleVim/Vundle.vim.git /usr/local/etc/.vim/bundle/Vundle.vim
 fi

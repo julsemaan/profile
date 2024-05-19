@@ -90,6 +90,11 @@ if [ -f /usr/local/etc/.fzf.bash ]; then
 	complete -o default -o nospace -v -F _fzf_var_completion echo
 fi
 
+if [ -d /usr/local/etc/.tmuxifier ]; then
+  export PATH="/usr/local/etc/.tmuxifier/bin:$PATH"
+  eval "$(tmuxifier init -)"
+fi
+
 # Lines below are an ugly hack to set the title to 'new-session' via a dummy command
 new-session () {
   nothing > /dev/null 2>&1
