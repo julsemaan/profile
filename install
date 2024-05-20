@@ -35,6 +35,8 @@ cp -a $d/profile/.vimrc /usr/local/etc/.vimrc
 cp -a $d/profile/.gitignore /usr/local/etc/.gitignore
 cp -a $d/profile/.blerc /usr/local/etc/.blerc
 
+cp -a $d/tmuxifiers/ /usr/local/etc/tmuxifiers
+
 if ! [ -f /etc/cron.d/jprofile ]; then
   if [ -d /etc/cron.d ]; then
     cp -a $d/cron /etc/cron.d/jprofile
