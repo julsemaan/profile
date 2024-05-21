@@ -95,6 +95,8 @@ if [ -d /usr/local/etc/.tmuxifier ]; then
   eval "$(tmuxifier init -)"
 fi
 
+export PATH="/opt/nvim-linux64/bin:$PATH"
+
 # Lines below are an ugly hack to set the title to 'new-session' via a dummy command
 new-session () {
   nothing > /dev/null 2>&1
