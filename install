@@ -9,6 +9,14 @@ function check_cmd {
   fi
 }
 
+function install_nvim {
+  if ! [ -d /opt/nvim-linux64 ]; then
+    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz
+    rm -rf /opt/nvim-linux64
+    tar -C /opt -xzf nvim-linux64.tar.gz
+  fi
+}
+
 function install_nvim_profile {
   home="$1"
   if ! [ -d $home/.config/nvim ]; then
@@ -55,6 +63,8 @@ install_file $d/profile/.gitignore /usr/local/etc/.gitignore
 install_file $d/profile/.blerc /usr/local/etc/.blerc
 
 install_file $d/tmuxifiers/ /usr/local/etc/tmuxifiers
+
+install_nvim
 
 if ! [ -f /etc/cron.d/jprofile ]; then
   if [ -d /etc/cron.d ]; then
