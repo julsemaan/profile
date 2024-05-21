@@ -1,6 +1,6 @@
 session_root src/app-platform
 
-if initialize_session "afn"; then
+if initialize_session "kpp"; then
 
   new_window "app-platform"
   split_v 1
