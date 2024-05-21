@@ -9,6 +9,25 @@ function check_cmd {
   fi
 }
 
+function install_nvim_profile {
+  home="$1"
+  if ! [ -d $home/.config/nvim ]; then
+    mkdir -p $home/.config
+    git clone https://github.com/julsemaan/nvim-profile $home/.config/nvim
+  fi
+
+  cd $home/.config/nvim
+  git pull
+  cd -
+}
+
+function install_file {
+  src="$1"
+  dst="$2"
+  echo "Installing $src in $dst"
+  cp -a $src $dst 
+}
+
 check_cmd git
 check_cmd make
 check_cmd gawk
@@ -28,18 +47,18 @@ else
   d=`pwd`
 fi
 
-cp -a $d/profile/.bashrc_append /usr/local/etc/.bashrc_append
-cp -a $d/profile/.inputrc /usr/local/etc/.inputrc
-cp -a $d/profile/.tmux.conf /usr/local/etc/.tmux.conf
-cp -a $d/profile/.vimrc /usr/local/etc/.vimrc
-cp -a $d/profile/.gitignore /usr/local/etc/.gitignore
-cp -a $d/profile/.blerc /usr/local/etc/.blerc
+install_file $d/profile/.bashrc_append /usr/local/etc/.bashrc_append
+install_file $d/profile/.inputrc /usr/local/etc/.inputrc
+install_file $d/profile/.tmux.conf /usr/local/etc/.tmux.conf
+install_file $d/profile/.vimrc /usr/local/etc/.vimrc
+install_file $d/profile/.gitignore /usr/local/etc/.gitignore
+install_file $d/profile/.blerc /usr/local/etc/.blerc
 
-cp -a $d/tmuxifiers/ /usr/local/etc/tmuxifiers
+install_file $d/tmuxifiers/ /usr/local/etc/tmuxifiers
 
 if ! [ -f /etc/cron.d/jprofile ]; then
   if [ -d /etc/cron.d ]; then
-    cp -a $d/cron /etc/cron.d/jprofile
+    install_file $d/cron /etc/cron.d/jprofile
   else
     echo "Skipping cron installation because /etc/cron.d doesn't exist"
   fi
@@ -66,14 +85,9 @@ homes=(/home/* /root)
 for home in "${homes[@]}"; do 
   if [ "$home" != '/home/*' ]; then
     if [ -d "$home" ]; then
-      echo "Installing .tmux.conf in $home"
-      cp /usr/local/etc/.tmux.conf $home/.tmux.conf
-    
-      echo "Installing .inputrc in $home"
-      cp /usr/local/etc/.inputrc $home/.inputrc
-   
-      echo "Installing .blerc in $home"
-      cp /usr/local/etc/.blerc $home/.blerc
+      install_file /usr/local/etc/.tmux.conf $home/.tmux.conf
+      install_file /usr/local/etc/.inputrc $home/.inputrc
+      install_file /usr/local/etc/.blerc $home/.blerc
    
       BASHRC="$home/.bashrc"
       if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
@@ -81,6 +95,8 @@ for home in "${homes[@]}"; do
         echo 'source /usr/local/etc/.bashrc_append' >> $BASHRC
         echo "" >> $BASHRC
       fi
+
+      install_nvim_profile $home
     fi
   fi
 done
@@ -106,3 +122,4 @@ if ! [ -f /usr/local/etc/.fzf.bash ]; then
   /usr/local/etc/fzf/install --all --no-update-rc
   mv $HOME/.fzf.bash /usr/local/etc/.fzf.bash
 fi
+
