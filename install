@@ -70,6 +70,7 @@ install_file $d/profile/.vimrc /usr/local/etc/.vimrc
 install_file $d/profile/.gitignore /usr/local/etc/.gitignore
 install_file $d/profile/.blerc /usr/local/etc/.blerc
 
+rm -fr /usr/local/etc/tmuxifiers
 install_file $d/tmuxifiers/ /usr/local/etc/tmuxifiers
 
 install_nvim
