@@ -9,6 +9,14 @@ function check_cmd {
   fi
 }
 
+function install_tpm {
+  home="$1"
+  if ! [ -d $home/.tmux/plugins/tpm ]; then
+    mkdir -p $home/.tmux/plugins
+    git clone https://github.com/tmux-plugins/tpm $home/.tmux/plugins/tpm
+  fi
+}
+
 function install_nvim {
   if ! [ -d /opt/nvim-linux64 ]; then
     curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz
@@ -106,6 +114,7 @@ for home in "${homes[@]}"; do
         echo "" >> $BASHRC
       fi
 
+      install_tpm $home
       install_nvim_profile $home
     fi
   fi
