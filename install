@@ -15,6 +15,7 @@ function install_tpm {
     mkdir -p $home/.tmux/plugins
     git clone https://github.com/tmux-plugins/tpm $home/.tmux/plugins/tpm
   fi
+  chown -R `basename $home`: $home/.tmux
 }
 
 function install_nvim {
@@ -33,15 +34,22 @@ function install_nvim_profile {
   fi
 
   cd $home/.config/nvim
+  git config --global --add safe.directory $home/.config/nvim
   git pull
   cd -
+  
+  chown -R `basename $home`: $home/.config/nvim
 }
 
 function install_file {
   src="$1"
   dst="$2"
+  user="${3:-}"
   echo "Installing $src in $dst"
   cp -a $src $dst 
+  if ! [ -z "$user" ]; then
+    chown -R $user: $dst
+  fi
 }
 
 check_cmd git
