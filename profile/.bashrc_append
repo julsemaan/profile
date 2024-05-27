@@ -50,6 +50,7 @@ fi
 if which kubectl >/dev/null 2>&1; then
   source <(kubectl completion bash)
   complete -o default -F __start_kubectl k
+  alias k=kubectl
 fi
 
 if `which fortune > /dev/null 2>&1`; then
