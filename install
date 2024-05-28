@@ -30,7 +30,6 @@ function install_nvim_profile {
   home="$1"
   if ! [ -d $home/.config/nvim ]; then
     mkdir -p $home/.config
-    chown `basename $home`: $home/.config
     git clone https://github.com/julsemaan/nvim-profile $home/.config/nvim
   fi
 
@@ -39,6 +38,7 @@ function install_nvim_profile {
   git pull
   cd -
   
+  chown `basename $home`: $home/.config
   chown -R `basename $home`: $home/.config/nvim
 }
 
