@@ -30,6 +30,7 @@ function install_nvim_profile {
   home="$1"
   if ! [ -d $home/.config/nvim ]; then
     mkdir -p $home/.config
+    chown `basename $home`: $home/.config
     git clone https://github.com/julsemaan/nvim-profile $home/.config/nvim
   fi
 
@@ -112,9 +113,9 @@ homes=(/home/* /root)
 for home in "${homes[@]}"; do 
   if [ "$home" != '/home/*' ] && grep ^`basename $home`: /etc/passwd; then
     if [ -d "$home" ]; then
-      install_file /usr/local/etc/.tmux.conf $home/.tmux.conf
-      install_file /usr/local/etc/.inputrc $home/.inputrc
-      install_file /usr/local/etc/.blerc $home/.blerc
+      install_file /usr/local/etc/.tmux.conf $home/.tmux.conf `basename $home`
+      install_file /usr/local/etc/.inputrc $home/.inputrc `basename $home`
+      install_file /usr/local/etc/.blerc $home/.blerc `basename $home`
    
       BASHRC="$home/.bashrc"
       if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
