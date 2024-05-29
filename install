@@ -110,7 +110,7 @@ fi
 
 git config --system core.excludesfile /usr/local/etc/.gitignore
 
-homes=(/home/* /root)
+homes=(/home/* /root /Users/*)
 for home in "${homes[@]}"; do 
   if [ "$home" != '/home/*' ] && grep ^`basename $home`: /etc/passwd; then
     if [ -d "$home" ]; then
