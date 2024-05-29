@@ -112,7 +112,7 @@ git config --system core.excludesfile /usr/local/etc/.gitignore
 
 homes=(/home/* /root /Users/*)
 for home in "${homes[@]}"; do 
-  if [ "$home" != '/home/*' ] && grep ^`basename $home`: /etc/passwd; then
+  if [ "$home" = /Users/* ] || grep ^`basename $home`: /etc/passwd; then
     if [ -d "$home" ]; then
       install_file /usr/local/etc/.tmux.conf $home/.tmux.conf `basename $home`
       install_file /usr/local/etc/.inputrc $home/.inputrc `basename $home`
