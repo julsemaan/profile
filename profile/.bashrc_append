@@ -39,7 +39,7 @@ CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 command="jointmux $CLEAN_HOSTNAME"
 alias htmux="$command"
 
-alias kpptmux="tmux -u attach -d -t kpptmux || tmux -u new-session -s kpptmux -c ~/src/app-platform \; split-window -v -c ~/src/app-platform \; rename-window kpp"
+alias kpptmux="tmuxifier load-session kpp"
 
 git config --global credential.helper cache
 
