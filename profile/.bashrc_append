@@ -93,6 +93,7 @@ fi
 
 if [ -d /usr/local/etc/.tmuxifier ]; then
   export PATH="/usr/local/etc/.tmuxifier/bin:$PATH"
+  export TMUXIFIER_LAYOUT_PATH=/usr/local/etc/tmuxifiers/
   eval "$(tmuxifier init -)"
 fi
 
