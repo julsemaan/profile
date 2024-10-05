@@ -20,6 +20,9 @@ if initialize_session "kpp"; then
   new_window "tilt"
   run_cmd "cd ../kpp-services/src/core/operator"
 
+  new_window "wipe"
+  run_cmd "cd scripts/"
+
   select_window 1
   select_pane 1
 fi
