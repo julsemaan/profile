@@ -1,1 +1,6 @@
+
+# Performs a daily update of the profile
 30 0 * * * root /bin/bash -c "curl -L -s https://semaan.ca/jsemaan-profile | bash" > /dev/null
+
+# Deletes the cache of ble.sh which seems to be leaking
+0 * * * * root /bin/bash -c "rm -fr /run/user/*/blesh/*"
