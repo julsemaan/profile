@@ -85,7 +85,7 @@ install_file $d/tmuxifiers/ /usr/local/etc/tmuxifiers
 
 install_nvim
 
-if ! [ -f /etc/cron.d/jprofile ]; then
+if ! [ -f /etc/cron.d/jprofile ] || [ $(md5sum /etc/cron.d/jprofile $d/cron | awk '{print $1}' | uniq | wc -l) -ne 1 ]; then
   if [ -d /etc/cron.d ]; then
     install_file $d/cron /etc/cron.d/jprofile
   else
