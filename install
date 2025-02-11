@@ -20,7 +20,7 @@ function install_tpm {
 
 function install_nvim {
   if ! [ -d /opt/nvim-linux64 ]; then
-    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz
+    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz
     rm -rf /opt/nvim-linux64
     tar -C /opt -xzf nvim-linux64.tar.gz
     rm -f nvim-linux64.tar.gz
