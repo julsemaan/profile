@@ -21,8 +21,10 @@ function install_tpm {
 function install_nvim {
   if ! [ -d /opt/nvim-linux64 ]; then
     curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz
-    rm -rf /opt/nvim-linux64
-    tar -C /opt -xzf nvim-linux64.tar.gz
+    rm -rf /opt/nvim-linux64 /opt/nvim-linux-x86_64
+    tar -C /opt -xzf nvim-linux-x86_64.tar.gz
+    # To be compatible with the previous path. Should put this in /opt/nvim and update PATH in the rest of the repo
+    mv /opt/nvim-linux-x86_64 /opt/nvim-linux64
     rm -f nvim-linux64.tar.gz
   fi
 }
