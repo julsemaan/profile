@@ -60,6 +60,9 @@ else
 fi
 alias gpush='git push origin HEAD'
 alias grh='git reset HEAD --hard'
+alias gfo='git fetch origin'
+alias gr='git rebase'
+alias gm='git merge'
 
 # At some point, should remove those
 alias qco=gco
