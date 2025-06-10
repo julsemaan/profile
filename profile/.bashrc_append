@@ -64,6 +64,7 @@ alias gfo='git fetch origin'
 alias gr='git rebase'
 alias gm='git merge'
 alias gs='git status'
+alias gch='git checkout'
 
 # At some point, should remove those
 alias qco=gco
