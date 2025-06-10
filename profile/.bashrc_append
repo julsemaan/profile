@@ -63,6 +63,7 @@ alias grh='git reset HEAD --hard'
 alias gfo='git fetch origin'
 alias gr='git rebase'
 alias gm='git merge'
+alias gs='git status'
 
 # At some point, should remove those
 alias qco=gco
