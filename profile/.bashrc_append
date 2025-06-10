@@ -54,11 +54,16 @@ if which kubectl >/dev/null 2>&1; then
 fi
 
 if `which fortune > /dev/null 2>&1`; then
-  alias qco='git commit -a -m"$(fortune -n 50 -s)"'
+  alias gco='git commit -a -m"$(fortune -n 50 -s)"'
 else
-  alias qco='git commit -a'
+  alias gco='git commit -a'
 fi
-alias qpush='git push origin HEAD'
+alias gpush='git push origin HEAD'
+alias grh='git reset HEAD --hard'
+
+# At some point, should remove those
+alias qco=gco
+alias qpush=gpush
 
 fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
