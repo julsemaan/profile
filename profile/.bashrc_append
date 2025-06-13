@@ -5,7 +5,7 @@
 export EDITOR=vim
 
 source /etc/bash_completion
-source ~/.bash_completion.d/complete_alias
+source /etc/bash_completion.d/complete_alias
 
 alias rm='rm -I'
 alias cd..='cd ..'
