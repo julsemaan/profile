@@ -47,7 +47,7 @@ function install_nvim_profile {
 
 function install_complete_alias {
   echo "Installing complete_alias"
-  curl https://raw.githubusercontent.com/cykerway/complete-alias/refs/heads/master/complete_alias > /usr/local/etc/complete_alias
+  curl https://raw.githubusercontent.com/cykerway/complete-alias/refs/heads/master/complete_alias > /etc/bash_completion.d/complete_alias
 }
 
 function install_file {
