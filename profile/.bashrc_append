@@ -11,6 +11,11 @@ alias rm='rm -I'
 alias cd..='cd ..'
 alias ll='ls -al --color=auto'
 
+function add_alias {
+  alias $1="$2"
+  complete -F _complete_alias $1
+}
+
 # To add git infos in the PS1
 function parse_git_dirty {
   git diff --no-ext-diff --quiet --exit-code &> /dev/null || echo "*"
@@ -57,20 +62,17 @@ if which kubectl >/dev/null 2>&1; then
 fi
 
 if `which fortune > /dev/null 2>&1`; then
-  alias gco='git commit -a -m"$(fortune -n 50 -s)"'
+  add_alias gco 'git commit -a -m"$(fortune -n 50 -s)"'
 else
-  alias gco='git commit -a'
+  add_alias gco 'git commit -a'
 fi
-alias gpush='git push origin HEAD'
-alias grh='git reset HEAD --hard'
-alias gfo='git fetch origin'
-alias gr='git rebase'
-
-alias gm='git merge'
-complete -F _complete_alias gm
-
-alias gs='git status'
-alias gch='git checkout'
+add_alias gpush 'git push origin HEAD'
+add_alias grh 'git reset HEAD --hard'
+add_alias gfo 'git fetch origin'
+add_alias gr 'git rebase'
+add_alias gm 'git merge'
+add_alias gs 'git status'
+add_alias gch 'git checkout'
 
 # At some point, should remove those
 alias qco=gco
