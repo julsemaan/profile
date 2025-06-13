@@ -80,6 +80,8 @@ else
   d=`pwd`
 fi
 
+install_complete_alias
+
 install_file $d/profile/.bashrc_append /usr/local/etc/.bashrc_append
 install_file $d/profile/.inputrc /usr/local/etc/.inputrc
 install_file $d/profile/.tmux.conf /usr/local/etc/.tmux.conf
