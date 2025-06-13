@@ -4,6 +4,9 @@
 
 export EDITOR=vim
 
+source /etc/bash_completion
+source ~/.bash_completion.d/complete_alias
+
 alias rm='rm -I'
 alias cd..='cd ..'
 alias ll='ls -al --color=auto'
@@ -62,7 +65,10 @@ alias gpush='git push origin HEAD'
 alias grh='git reset HEAD --hard'
 alias gfo='git fetch origin'
 alias gr='git rebase'
+
 alias gm='git merge'
+complete -F _complete_alias gm
+
 alias gs='git status'
 alias gch='git checkout'
 
