@@ -81,6 +81,7 @@ alias qpush=gpush
 fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
 }
+alias fts=fix-tmux-ssh
 
 BLE_ENABLE=${BLE_ENABLE:-yes}
 if [ "$BLE_ENABLE" = "yes" ] && [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
