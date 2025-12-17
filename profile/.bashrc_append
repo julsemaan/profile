@@ -47,7 +47,9 @@ CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 command="jointmux $CLEAN_HOSTNAME"
 alias htmux="$command"
 
-alias kpptmux="tmuxifier load-session kpp"
+alias jointmuxifier="tmuxifier load-session"
+alias kpptmux="jointmuxifier kpp"
+alias kubextmux="jointmuxifier kubex"
 
 git config --global credential.helper cache
 
