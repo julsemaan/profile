@@ -21,8 +21,8 @@ if initialize_session "kubex"; then
   split_h 25
   run_cmd "codex"
 
-  session_root src/charts
-  new_window "dad"
+  session_root src/densify-dev-helm-charts
+  new_window "charts"
   run_cmd "nvim"
   split_v 1
   split_h 50
@@ -42,3 +42,5 @@ if initialize_session "kubex"; then
   select_window 1
   select_pane 1
 fi
+
+finalize_and_go_to_session
