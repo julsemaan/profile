@@ -10,7 +10,7 @@ if initialize_session "kubex"; then
   run_cmd "devbox shell"
   select_pane 1
   split_h 25
-  run_cmd "codex"
+  run_cmd "devbox run codex"
 
   session_root src/automation-director
   new_window "dad"
