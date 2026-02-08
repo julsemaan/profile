@@ -76,6 +76,13 @@ add_alias gm 'git merge'
 add_alias gs 'git status'
 add_alias gch 'git checkout'
 
+add_alias gen_commit_msg 'codex e "Write a one-line commit message for these staged changes following the Conventional Commits standard. Add COMMIT_MSG_START on the line before" 2>&1 | awk '\''
+  /^COMMIT_MSG_START$/ { buf=""; next }
+  { buf = buf $0 ORS }
+  END { printf "%s", buf }
+'\'
+add_alias gcoto 'git commit -m "$(gen_commit_msg)" -e'
+
 # At some point, should remove those
 alias qco=gco
 alias qpush=gpush
