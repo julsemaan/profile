@@ -87,7 +87,7 @@ add_alias gcoto 'git commit -m "$(gen_commit_msg)" -e'
 alias qco=gco
 alias qpush=gpush
 
-alias codex-unleashed-safely-src='codex-unleashed-safely ~/src/'
+alias codex-unleashed-safely-src='codex-unleashed-safely -m ~/src/'
 
 fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
