@@ -6,10 +6,11 @@ IMAGE="codex-unleashed-safely:latest"
 MNT="$PWD"
 WORKDIR="$PWD"
 REBUILD=0
+USE_TTY=1
 
 usage() {
   cat <<'USAGE'
-Usage: codex-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild]
+Usage: codex-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [-- <codex args...>]
 
 Arguments:
   -m, --mount PATH    Host path to bind-mount into the container.
@@ -17,20 +18,29 @@ Arguments:
   -w, --workdir PATH  Working directory inside the container.
                       Defaults to the current working directory.
   -r, --rebuild       Rebuild the Docker image before running.
+  --no-tty            Disable TTY allocation (useful to avoid carriage returns).
   -h, --help          Show this help text.
 
 Examples:
   ./codex-unleashed-safely.sh
   ./codex-unleashed-safely.sh --rebuild --mount /home/julien/src
   ./codex-unleashed-safely.sh --mount /home/julien/src --workdir /home/julien/src/profile
+  ./codex-unleashed-safely.sh -- --help
 USAGE
 }
+
+CODEX_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       usage
       exit 0
+      ;;
+    --)
+      shift
+      CODEX_ARGS+=("$@")
+      break
       ;;
     -m|--mount)
       if [[ -z "${2:-}" ]]; then
@@ -52,10 +62,13 @@ while [[ $# -gt 0 ]]; do
       REBUILD=1
       shift
       ;;
+    --no-tty)
+      USE_TTY=0
+      shift
+      ;;
     *)
-      echo "Error: unknown argument: $1" >&2
-      usage >&2
-      exit 1
+      CODEX_ARGS+=("$1")
+      shift
       ;;
   esac
 done
@@ -82,17 +95,25 @@ else
 fi
 
 docker build $REBUILD_DOCKER_ARG -t "$IMAGE" - <<'EOF'
-FROM node:20-bookworm
+FROM node:25-bookworm
 
 RUN npm i -g @openai/codex
 
 ENTRYPOINT ["codex", "--dangerously-bypass-approvals-and-sandbox"]
 EOF
 
-docker run --rm -it \
+if [[ $USE_TTY -eq 1 ]]; then
+  DOCKER_TTY_FLAGS="-it"
+else
+  DOCKER_TTY_FLAGS="-i"
+fi
+
+docker run --rm $DOCKER_TTY_FLAGS \
+  -e NO_COLOR=1 \
+  -e TERM=dumb \
   -e OPENAI_API_KEY \
   -e CODEX_APPROVALS=never \
   -e CODEX_HOME=/codex \
   -v "$HOME/.codex:/codex" \
   -v "$MNT:$MNT" -w "$WORKDIR" \
-  "$IMAGE"
+  "$IMAGE" "${CODEX_ARGS[@]}"
