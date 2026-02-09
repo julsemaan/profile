@@ -115,6 +115,8 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e OPENAI_API_KEY \
   -e CODEX_APPROVALS=never \
   -e CODEX_HOME=/codex \
+  -e HOME=/codex \
+  -u "$(id -u):$(id -g)" \
   -v "$HOME/.codex:/codex" \
   -v "$MNT:$MNT" -w "$WORKDIR" \
   "$IMAGE" "${CODEX_ARGS[@]}"
