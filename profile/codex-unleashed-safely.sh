@@ -104,13 +104,14 @@ EOF
 
 if [[ $USE_TTY -eq 1 ]]; then
   DOCKER_TTY_FLAGS="-it"
+  DOCKER_NO_TTY_ENV_FLAGS=""
 else
   DOCKER_TTY_FLAGS="-i"
+  DOCKER_NO_TTY_ENV_FLAGS="-e NO_COLOR=1 -e TERM=dumb"
 fi
 
 docker run --rm $DOCKER_TTY_FLAGS \
-  -e NO_COLOR=1 \
-  -e TERM=dumb \
+  $DOCKER_NO_TTY_ENV_FLAGS \
   -e OPENAI_API_KEY \
   -e CODEX_APPROVALS=never \
   -e CODEX_HOME=/codex \
