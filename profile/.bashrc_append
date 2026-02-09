@@ -76,7 +76,7 @@ add_alias gm 'git merge'
 add_alias gs 'git status'
 add_alias gch 'git checkout'
 
-add_alias gen_commit_msg 'codex-unleashed-safely -- e "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before" 2>&1 | awk '\''
+add_alias gen_commit_msg 'codex-unleashed-safely --no-tty -- e "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before" 2>&1 | awk '\''
   /^COMMIT_MSG_START$/ { buf=""; next }
   { buf = buf $0 ORS }
   END { printf "%s", buf }
