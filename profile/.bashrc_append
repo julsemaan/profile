@@ -51,6 +51,16 @@ alias jointmuxifier="tmuxifier load-session"
 alias kpptmux="jointmuxifier kpp"
 alias kubextmux="jointmuxifier kubex"
 
+tmux-new-coding() {
+  local win_root="$1"
+  if [ -z "$win_root" ]; then
+    echo "usage: tmux-new-coding <T_WIN_ROOT>" >&2
+    return 1
+  fi
+
+  T_WIN_ROOT="$win_root" tmuxifier load-window coding
+}
+
 git config --global credential.helper cache
 
 if which kubecolor >/dev/null; then
