@@ -1,0 +1,4 @@
+# name,namespace,resource,local_port,remote_port,context,kubeconfig
+api,default,svc/my-api,8080,80,,
+metrics,kube-system,svc/metrics-server,8443,443,,
+redis,default,pod/redis-0,6379,6379,my-context,/path/to/kubeconfig
