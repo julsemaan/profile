@@ -99,6 +99,7 @@ FROM node:25-bookworm
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl \
+                                                clang-format \
   && rm -rf /var/lib/apt/lists/*
 
 RUN /bin/bash -euo pipefail -c '\
