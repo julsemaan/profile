@@ -137,6 +137,56 @@ fi
 
 export PATH="/opt/nvim-linux64/bin:$PATH"
 
+
+# Usage: klogs_deploy <deployment-name> [k logs args...]
+klogs_deploy() {
+  local deploy="$1"
+  shift || true
+
+  if [[ -z "$deploy" ]]; then
+    echo "Usage: klogs_deploy <deployment-name> [k logs args...]"
+    return 1
+  fi
+
+  # Find namespace for deployment name
+  local ns
+  ns="$(k get deploy -A --no-headers 2>/dev/null | awk -v d="$deploy" '$2==d {print $1}')"
+
+  if [[ -z "$ns" ]]; then
+    echo "Deployment '$deploy' not found in any namespace"
+    return 1
+  fi
+
+  if [[ "$(echo "$ns" | wc -l)" -gt 1 ]]; then
+    echo "Deployment '$deploy' exists in multiple namespaces:"
+    echo "$ns"
+    echo "Please disambiguate."
+    return 1
+  fi
+
+  # Get pod selector from deployment
+  local selector
+  selector="$(k get deploy "$deploy" -n "$ns" -o go-template='{{range $k, $v := .spec.selector.matchLabels}}{{printf "%s=%s," $k $v}}{{end}}')"
+  selector="${selector%,}"
+
+  if [[ -z "$selector" ]]; then
+    echo "Could not determine selector for deployment '$deploy' in namespace '$ns'"
+    return 1
+  fi
+
+  # Pick first matching pod
+  local pod
+  pod="$(k get pods -n "$ns" -l "$selector" -o jsonpath='{.items[0].metadata.name}')"
+
+  if [[ -z "$pod" ]]; then
+    echo "No pods found for deployment '$deploy' in namespace '$ns'"
+    return 1
+  fi
+
+  # Pass all args except arg1 (deployment) through to k logs
+  k logs -n "$ns" "$pod" "$@"
+}
+
 # Lines below are an ugly hack to set the title to 'new-session' via a dummy command
 new-session () {
   nothing > /dev/null 2>&1
