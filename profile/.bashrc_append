@@ -63,14 +63,10 @@ tmux-new-coding() {
 
 git config --global credential.helper cache
 
-if which kubecolor >/dev/null; then
-  alias kubectl="kubecolor"
-fi
+add_alias k 'kubectl'
 
-if which kubectl >/dev/null 2>&1; then
-  source <(kubectl completion bash)
-  complete -o default -F __start_kubectl k
-  alias k=kubectl
+if which kubecolor >/dev/null; then
+  add_alias k 'kubecolor'
 fi
 
 if `which fortune > /dev/null 2>&1`; then
