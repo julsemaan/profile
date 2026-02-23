@@ -67,6 +67,7 @@ git config --global credential.helper cache
 source <(kubectl completion bash)
 if which kubecolor >/dev/null; then
   alias k='kubecolor'
+  complete -o default -F __start_kubectl kubecolor
   complete -o default -F __start_kubectl k
 else
   add_alias k 'kubectl'
