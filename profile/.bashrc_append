@@ -64,6 +64,7 @@ tmux-new-coding() {
 git config --global credential.helper cache
 
 
+source <(kubectl completion bash)
 if which kubecolor >/dev/null; then
   add_alias k 'kubecolor'
 else
