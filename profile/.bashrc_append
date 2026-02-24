@@ -82,6 +82,15 @@ add_alias gr 'git rebase'
 add_alias gm 'git merge'
 add_alias gs 'git status'
 add_alias gch 'git checkout'
+gtagpush() {
+  local tag="$1"
+  if [ -z "$tag" ]; then
+    echo "usage: gtagpush <tag>"
+    return 1
+  fi
+
+  git tag "$tag" && git push origin "$tag"
+}
 
 add_alias gen_commit_msg 'codex-unleashed-safely --no-tty -- e "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before" 2>&1 | awk '\''
   /^COMMIT_MSG_START$/ { getline; print; exit }
