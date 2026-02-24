@@ -65,10 +65,13 @@ git config --global credential.helper cache
 
 
 source <(kubectl completion bash)
-add_alias k 'kubectl'
-# if which kubecolor >/dev/null; then
-#   alias kubectl='kubecolor'
-# fi
+if command -v kubecolor >/dev/null 2>&1; then
+  alias kubectl='kubecolor'
+  complete -o default -F __start_kubectl kubecolor
+fi
+alias k='kubectl'
+complete -o default -F __start_kubectl kubectl
+complete -o default -F __start_kubectl k
 
 if `which fortune > /dev/null 2>&1`; then
   add_alias gco 'git commit -a -m"$(fortune -n 50 -s)"'
