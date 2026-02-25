@@ -81,6 +81,7 @@ fi
 add_alias gpush 'git push origin HEAD'
 add_alias grh 'git reset HEAD --hard'
 add_alias gfo 'git fetch origin'
+add_alias gpoh 'git pull origin HEAD'
 add_alias gr 'git rebase'
 add_alias gm 'git merge'
 add_alias gs 'git status'
