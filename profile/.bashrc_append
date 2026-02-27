@@ -16,6 +16,91 @@ function add_alias {
   complete -F _complete_alias $1
 }
 
+
+# Delegate alias completion to the underlying command's completion function.
+
+declare -gA __AC_ALIAS_PREFIX=()   # name -> shell-escaped tokens (space-separated)
+
+__ac_alias_complete() {
+  local name="${COMP_WORDS[0]}"
+  local prefix_str="${__AC_ALIAS_PREFIX[$name]}"
+  [[ -n "$prefix_str" ]] || return 0
+
+  local -a prefix=()
+  eval "prefix=($prefix_str)"  # expands our stored, shell-escaped tokens back into an array
+
+  local -a saved_words=("${COMP_WORDS[@]}")
+  local saved_cword="$COMP_CWORD"
+
+  COMP_WORDS=("${prefix[@]}" "${COMP_WORDS[@]:1}")
+  (( COMP_CWORD += ${#prefix[@]} - 1 ))
+
+  local cmd="${prefix[0]}"
+  local compdef fn
+  type _completion_loader >/dev/null 2>&1 && _completion_loader "$cmd" >/dev/null 2>&1
+  compdef="$(complete -p "$cmd" 2>/dev/null)" || {
+    COMP_WORDS=("${saved_words[@]}")
+    COMP_CWORD="$saved_cword"
+    return 0
+  }
+
+  if [[ "$compdef" =~ -F[[:space:]]+([^[:space:]]+) ]]; then
+    fn="${BASH_REMATCH[1]}"
+    "$fn"
+  fi
+
+  COMP_WORDS=("${saved_words[@]}")
+  COMP_CWORD="$saved_cword"
+}
+
+ac_alias() {
+  local name="$1"
+  shift || return 1
+
+  if [[ -z "$name" || $# -lt 1 ]]; then
+    echo "usage: ac_alias <name> <command> [fixed args...]" >&2
+    return 2
+  fi
+
+  # Only allow valid bash function names
+  if [[ ! "$name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+    echo "ac_alias: invalid name '$name' (use a valid bash identifier)" >&2
+    return 2
+  fi
+
+  # Build a shell-escaped token string for storage and later reconstruction
+  local prefix_str=""
+  local tok
+  for tok in "$@"; do
+    prefix_str+=" $(printf '%q' "$tok")"
+  done
+  prefix_str="${prefix_str# }"
+  __AC_ALIAS_PREFIX["$name"]="$prefix_str"
+
+  # Define a regular alias (interactive shell) and attach completion.
+  alias "$name=$prefix_str"
+
+  local base_cmd="$1"
+  local base_compdef
+  local -a base_comp_words=()
+  local -a complete_opts=()
+  local i
+
+  type _completion_loader >/dev/null 2>&1 && _completion_loader "$base_cmd" >/dev/null 2>&1
+  base_compdef="$(complete -p "$base_cmd" 2>/dev/null || true)"
+  if [[ -n "$base_compdef" ]]; then
+    read -r -a base_comp_words <<< "$base_compdef"
+    for (( i=0; i<${#base_comp_words[@]}; i++ )); do
+      if [[ "${base_comp_words[i]}" == "-o" && $((i + 1)) -lt ${#base_comp_words[@]} ]]; then
+        complete_opts+=("-o" "${base_comp_words[i+1]}")
+      fi
+    done
+  fi
+
+  complete -r "$name" 2>/dev/null
+  complete "${complete_opts[@]}" -F __ac_alias_complete "$name"
+}
+
 # To add git infos in the PS1
 function parse_git_dirty {
   git diff --no-ext-diff --quiet --exit-code &> /dev/null || echo "*"
@@ -76,16 +161,16 @@ complete -o default -F __start_kubectl k
 if `which fortune > /dev/null 2>&1`; then
   add_alias gco 'git commit -a -m"$(fortune -n 50 -s)"'
 else
-  add_alias gco 'git commit -a'
+  ac_alias gco 'git commit -a'
 fi
 add_alias gpush 'git push origin HEAD'
 add_alias grh 'git reset HEAD --hard'
 add_alias gfo 'git fetch origin'
 add_alias gpoh 'git pull origin HEAD'
-add_alias gr 'git rebase'
-add_alias gm 'git merge'
-add_alias gs 'git status'
-add_alias gch 'git checkout'
+ac_alias gm 'git merge'
+ac_alias gs 'git status'
+# add_alias gch 'git checkout'
+ac_alias gch git checkout
 gtagpush() {
   local tag="$1"
   if [ -z "$tag" ]; then
