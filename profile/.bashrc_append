@@ -19,11 +19,11 @@ function add_alias {
 
 # Delegate alias completion to the underlying command's completion function.
 
-declare -gA __AC_ALIAS_PREFIX=()   # name -> shell-escaped tokens (space-separated)
+declare -gA __add_alias_PREFIX=()   # name -> shell-escaped tokens (space-separated)
 
-__ac_alias_complete() {
+__add_alias_complete() {
   local name="${COMP_WORDS[0]}"
-  local prefix_str="${__AC_ALIAS_PREFIX[$name]}"
+  local prefix_str="${__add_alias_PREFIX[$name]}"
   [[ -n "$prefix_str" ]] || return 0
 
   local -a prefix=()
@@ -53,18 +53,18 @@ __ac_alias_complete() {
   COMP_CWORD="$saved_cword"
 }
 
-ac_alias() {
+add_alias() {
   local name="$1"
   shift || return 1
 
   if [[ -z "$name" || $# -lt 1 ]]; then
-    echo "usage: ac_alias <name> <command> [fixed args...]" >&2
+    echo "usage: add_alias <name> <command> [fixed args...]" >&2
     return 2
   fi
 
   # Only allow valid bash function names
   if [[ ! "$name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-    echo "ac_alias: invalid name '$name' (use a valid bash identifier)" >&2
+    echo "add_alias: invalid name '$name' (use a valid bash identifier)" >&2
     return 2
   fi
 
@@ -75,7 +75,7 @@ ac_alias() {
     prefix_str+=" $(printf '%q' "$tok")"
   done
   prefix_str="${prefix_str# }"
-  __AC_ALIAS_PREFIX["$name"]="$prefix_str"
+  __add_alias_PREFIX["$name"]="$prefix_str"
 
   # Define a regular alias (interactive shell) and attach completion.
   alias "$name=$prefix_str"
@@ -98,7 +98,7 @@ ac_alias() {
   fi
 
   complete -r "$name" 2>/dev/null
-  complete "${complete_opts[@]}" -F __ac_alias_complete "$name"
+  complete "${complete_opts[@]}" -F __add_alias_complete "$name"
 }
 
 # To add git infos in the PS1
@@ -161,16 +161,16 @@ complete -o default -F __start_kubectl k
 if `which fortune > /dev/null 2>&1`; then
   add_alias gco 'git commit -a -m"$(fortune -n 50 -s)"'
 else
-  ac_alias gco 'git commit -a'
+  add_alias gco 'git commit -a'
 fi
 add_alias gpush 'git push origin HEAD'
 add_alias grh 'git reset HEAD --hard'
 add_alias gfo 'git fetch origin'
 add_alias gpoh 'git pull origin HEAD'
-ac_alias gm 'git merge'
-ac_alias gs 'git status'
+add_alias gm 'git merge'
+add_alias gs 'git status'
 # add_alias gch 'git checkout'
-ac_alias gch git checkout
+add_alias gch git checkout
 gtagpush() {
   local tag="$1"
   if [ -z "$tag" ]; then
