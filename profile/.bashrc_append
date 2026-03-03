@@ -11,8 +11,6 @@ alias rm='rm -I'
 alias cd..='cd ..'
 alias ll='ls -al --color=auto'
 
-bind '"\C-xa": alias-expand-line'
-
 function add_alias {
   alias $1="$2"
   complete -F _complete_alias $1
@@ -119,6 +117,9 @@ if [ "$BLE_ENABLE" = "yes" ] && [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
   source /usr/local/etc/ble.sh/out/ble.sh
   bind '"\e\C-?": backward-kill-word'
 fi
+
+# Shell binds go here
+bind '"\C-xa": alias-expand-line'
 
 if [ -f /usr/local/etc/.fzf.bash ]; then
   export PATH="/usr/local/etc/fzf/bin/:$PATH"
