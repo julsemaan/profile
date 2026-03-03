@@ -11,6 +11,8 @@ alias rm='rm -I'
 alias cd..='cd ..'
 alias ll='ls -al --color=auto'
 
+bind '"\C-xa": alias-expand-line'
+
 function add_alias {
   alias $1="$2"
   complete -F _complete_alias $1
