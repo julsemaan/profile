@@ -48,8 +48,8 @@ command="jointmux $CLEAN_HOSTNAME"
 alias htmux="$command"
 
 alias jointmuxifier="tmuxifier load-session"
-alias kpptmux="jointmuxifier kpp"
-alias kubextmux="jointmuxifier kubex"
+alias kpptmux="cd ~ && jointmuxifier kpp"
+alias kubextmux="cd ~ && jointmuxifier kubex"
 
 tmux-new-coding() {
   local win_root="$1"
