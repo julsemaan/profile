@@ -99,6 +99,9 @@ chmod +x /usr/local/bin/codex-unleashed-safely
 install_file $d/profile/opencode-unleashed-safely.sh /usr/local/bin/opencode-unleashed-safely
 chmod +x /usr/local/bin/opencode-unleashed-safely
 
+mkdir -p /usr/local/etc/opencode
+install_file $d/opencode/opencode.json /usr/local/etc/opencode/opencode.json
+
 rm -fr /usr/local/etc/tmuxifiers
 install_file $d/tmuxifiers/ /usr/local/etc/tmuxifiers
 
@@ -175,4 +178,3 @@ if ! [ -f /usr/local/etc/.fzf.bash ]; then
   /usr/local/etc/fzf/install --all --no-update-rc
   mv $HOME/.fzf.bash /usr/local/etc/.fzf.bash
 fi
-

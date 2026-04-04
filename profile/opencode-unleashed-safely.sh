@@ -1,12 +1,12 @@
 #!/bin/bash
 
 set -euo pipefail
-
 IMAGE="opencode-unleashed-safely:latest"
 MNT="$PWD"
 WORKDIR="$PWD"
 REBUILD=0
 USE_TTY=1
+SYSTEM_OPENCODE_CONFIG="/usr/local/etc/opencode/opencode.json"
 
 usage() {
   cat <<'USAGE'
@@ -24,6 +24,8 @@ Arguments:
 Environment:
   OPENCODE_NPM_PACKAGE  NPM package name to install for the CLI.
                         Defaults to "opencode-ai".
+  Config install        Copies /usr/local/etc/opencode/opencode.json to
+                        ~/.config/opencode/opencode.json before launch.
 
 Examples:
   ./opencode-unleashed-safely.sh
@@ -95,8 +97,16 @@ fi
 HOST_OPENCODE_HOME="$HOME/.opencode"
 HOST_OPENCODE_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 HOST_OPENCODE_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/opencode"
+HOST_OPENCODE_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/opencode"
+HOST_OPENCODE_CONFIG_FILE="$HOST_OPENCODE_CONFIG/opencode.json"
 
-mkdir -p "$HOST_OPENCODE_HOME" "$HOST_OPENCODE_CONFIG" "$HOST_OPENCODE_DATA"
+if [[ ! -f "$SYSTEM_OPENCODE_CONFIG" ]]; then
+  echo "Error: installed opencode config not found: $SYSTEM_OPENCODE_CONFIG" >&2
+  exit 1
+fi
+
+mkdir -p "$HOST_OPENCODE_HOME" "$HOST_OPENCODE_CONFIG" "$HOST_OPENCODE_DATA" "$HOST_OPENCODE_STATE"
+cp "$SYSTEM_OPENCODE_CONFIG" "$HOST_OPENCODE_CONFIG_FILE"
 
 if [[ $REBUILD -eq 1 ]]; then
   REBUILD_DOCKER_ARG="--no-cache"
@@ -130,9 +140,11 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e HOME=/opencode \
   -e XDG_CONFIG_HOME=/opencode/.config \
   -e XDG_DATA_HOME=/opencode/.local/share \
+  -e XDG_STATE_HOME=/opencode/.local/state \
   -u "$(id -u):$(id -g)" \
   -v "$HOST_OPENCODE_HOME:/opencode" \
   -v "$HOST_OPENCODE_CONFIG:/opencode/.config/opencode" \
   -v "$HOST_OPENCODE_DATA:/opencode/.local/share/opencode" \
+  -v "$HOST_OPENCODE_STATE:/opencode/.local/state/opencode" \
   -v "$MNT:$MNT" -w "$WORKDIR" \
   "$IMAGE" "${OPENCODE_ARGS[@]}"
