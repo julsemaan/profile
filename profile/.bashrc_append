@@ -107,6 +107,9 @@ alias qpush=gpush
 
 alias codex-unleashed-safely-src='codex-unleashed-safely -m ~/src/'
 
+add_alias gen_opencode_commit_msg 'opencode-unleashed-safely -- run --model opencode/qwen3.6-plus-free "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before"  2>&1 | awk '\''/^COMMIT_MSG_START\r$/ { getline; print; exit }'\'''
+alias opencode-unleashed-safely-src='opencode-unleashed-safely -m ~/src/'
+
 fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
 }
