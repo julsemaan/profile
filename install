@@ -101,6 +101,8 @@ chmod +x /usr/local/bin/opencode-unleashed-safely
 
 mkdir -p /usr/local/etc/opencode
 install_file $d/opencode/opencode.json /usr/local/etc/opencode/opencode.json
+mkdir -p /usr/local/etc/opencode/agent
+install_file $d/opencode/agent/pr-review-critic.md /usr/local/etc/opencode/agent/pr-review-critic.md
 
 rm -fr /usr/local/etc/tmuxifiers
 install_file $d/tmuxifiers/ /usr/local/etc/tmuxifiers

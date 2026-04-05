@@ -7,6 +7,7 @@ WORKDIR="$PWD"
 REBUILD=0
 USE_TTY=1
 SYSTEM_OPENCODE_CONFIG="/usr/local/etc/opencode/opencode.json"
+SYSTEM_OPENCODE_AGENT_DIR="/usr/local/etc/opencode/agent"
 
 usage() {
   cat <<'USAGE'
@@ -25,7 +26,9 @@ Environment:
   OPENCODE_NPM_PACKAGE  NPM package name to install for the CLI.
                         Defaults to "opencode-ai".
   Config install        Copies /usr/local/etc/opencode/opencode.json to
-                        ~/.config/opencode/opencode.json before launch.
+                        ~/.config/opencode/opencode.json before launch,
+                        and copies /usr/local/etc/opencode/agent/*.md to
+                        ~/.config/opencode/agent/.
 
 Examples:
   ./opencode-unleashed-safely.sh
@@ -99,6 +102,7 @@ HOST_OPENCODE_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 HOST_OPENCODE_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/opencode"
 HOST_OPENCODE_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/opencode"
 HOST_OPENCODE_CONFIG_FILE="$HOST_OPENCODE_CONFIG/opencode.json"
+HOST_OPENCODE_AGENT_DIR="$HOST_OPENCODE_CONFIG/agent"
 
 if [[ ! -f "$SYSTEM_OPENCODE_CONFIG" ]]; then
   echo "Error: installed opencode config not found: $SYSTEM_OPENCODE_CONFIG" >&2
@@ -107,6 +111,11 @@ fi
 
 mkdir -p "$HOST_OPENCODE_HOME" "$HOST_OPENCODE_CONFIG" "$HOST_OPENCODE_DATA" "$HOST_OPENCODE_STATE"
 cp "$SYSTEM_OPENCODE_CONFIG" "$HOST_OPENCODE_CONFIG_FILE"
+
+if [[ -d "$SYSTEM_OPENCODE_AGENT_DIR" ]]; then
+  mkdir -p "$HOST_OPENCODE_AGENT_DIR"
+  cp "$SYSTEM_OPENCODE_AGENT_DIR"/*.md "$HOST_OPENCODE_AGENT_DIR"/ 2>/dev/null || true
+fi
 
 if [[ $REBUILD -eq 1 ]]; then
   REBUILD_DOCKER_ARG="--no-cache"

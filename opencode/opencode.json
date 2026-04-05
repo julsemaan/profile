@@ -7,6 +7,10 @@
       "mode": "primary",
       "model": "openai/gpt-5.3-codex-balanced"
     },
+    "pr-review-critic": {
+      "mode": "primary",
+      "model": "openai/gpt-5.3-codex-deep"
+    },
     "plan": {
       "mode": "primary",
       "model": "openai/gpt-5.3-codex-deep"
