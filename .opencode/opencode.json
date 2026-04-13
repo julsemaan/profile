@@ -48,7 +48,10 @@
     "doom_loop": "ask",
     "skill": "allow",
     "bash": {
-      "*": "allow"
+      "*": "allow",
+      "git add *": "deny",
+      "git commit *": "deny",
+      "git push *": "deny"
     }
   },
   "command": {

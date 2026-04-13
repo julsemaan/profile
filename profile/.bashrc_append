@@ -101,7 +101,7 @@ add_alias sbrc 'source ~/.bashrc'
 # add_alias gen_commit_msg 'echo "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before" | codex-unleashed-safely --no-tty -- e  2>&1 | awk '\''
 #   /^COMMIT_MSG_START$/ { getline; print; exit }
 # '\'
-add_alias gen_commit_msg 'opencode-unleashed-safely -- run --model openai/gpt-5.1-codex-mini "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before"  2>&1 | awk '\''/^COMMIT_MSG_START\r$/ { getline; print; exit }'\'''
+add_alias gen_commit_msg 'opencode-unleashed-safely -- run --model github-copilot/gpt-5-mini "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before"  2>&1 | awk '\''/^COMMIT_MSG_START\r$/ { getline; print; exit }'\'''
 add_alias gcoto 'git commit -m "$(gen_commit_msg)" -e'
 
 # At some point, should remove those
