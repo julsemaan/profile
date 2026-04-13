@@ -131,6 +131,10 @@ FROM julsemaan/codex-dev-img:latest
 ARG OPENCODE_NPM_PACKAGE
 RUN npm i -g "$OPENCODE_NPM_PACKAGE"
 
+RUN apt-get update && apt-get install -y --no-install-recommends vim && rm -rf /var/lib/apt/lists/*
+
+ENV EDITOR=vim
+
 ENTRYPOINT ["opencode"]
 EOF
 
