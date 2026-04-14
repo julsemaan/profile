@@ -14,7 +14,7 @@ if initialize_session "kubex"; then
   run_cmd "devbox shell"
   select_pane 1
   split_h $TOP_H_SPLIT
-  run_cmd "codex-unleashed-safely-src"
+  run_cmd "opencode-unleashed-safely-src"
 
   session_root src/automation-director
   new_window "dad"
@@ -23,7 +23,7 @@ if initialize_session "kubex"; then
   split_h $BOTTOM_H_SPLIT
   select_pane 1
   split_h $TOP_H_SPLIT
-  run_cmd "codex-unleashed-safely-src"
+  run_cmd "opencode-unleashed-safely-src"
 
   session_root src/densify-dev-helm-charts
   new_window "charts"
@@ -32,7 +32,7 @@ if initialize_session "kubex"; then
   split_h $BOTTOM_H_SPLIT
   select_pane 1
   split_h $TOP_H_SPLIT
-  run_cmd "codex-unleashed-safely-src"
+  run_cmd "opencode-unleashed-safely-src"
 
   session_root src/architecture
   new_window "arch"
@@ -41,7 +41,7 @@ if initialize_session "kubex"; then
   split_h $BOTTOM_H_SPLIT
   select_pane 1
   split_h $TOP_H_SPLIT
-  run_cmd "codex-unleashed-safely-src"
+  run_cmd "opencode-unleashed-safely-src"
 
   select_window 1
   select_pane 1

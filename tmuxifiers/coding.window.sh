@@ -11,4 +11,4 @@ split_h 50
 run_cmd "devbox shell"
 select_pane 1
 split_h 30
-run_cmd "codex-unleashed-safely-src"
+run_cmd "opencode-unleashed-safely-src"
