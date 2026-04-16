@@ -86,6 +86,46 @@ add_alias gr 'git rebase'
 add_alias gm 'git merge'
 add_alias gs 'git status'
 add_alias gch 'git checkout'
+
+gchjira() {
+  local opt jira_url branch create_new=false
+  local OPTIND=1
+
+  while getopts "b" opt; do
+    case "$opt" in
+      b)
+        create_new=true
+        ;;
+      *)
+        echo "Usage: gchjira [-b] <jira-url>"
+        return 1
+        ;;
+    esac
+  done
+
+  shift $((OPTIND - 1))
+
+  jira_url="$1"
+
+  if [ -z "$jira_url" ]; then
+    echo "Usage: gchjira [-b] <jira-url>"
+    return 1
+  fi
+
+  branch="$(printf '%s' "$jira_url" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | head -n1)"
+
+  if [ -z "$branch" ]; then
+    echo "Could not extract JIRA issue key from URL: $jira_url"
+    return 1
+  fi
+
+  if [ "$create_new" = true ]; then
+    git checkout -b "$branch"
+  else
+    git checkout "$branch"
+  fi
+}
+
 gtagpush() {
   local tag="$1"
   if [ -z "$tag" ]; then
