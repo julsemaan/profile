@@ -119,7 +119,10 @@
     "github": {
       "type": "remote",
       "url": "https://api.githubcopilot.com/mcp/",
-      "enabled": false
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:GH_MCP_TOKEN}"
+      }
     },
     "sentry": {
       "type": "remote",
@@ -127,7 +130,7 @@
       "oauth": {},
       "enabled": false
     },
-    "bitbucket_kubex": {
+    "bitbucket": {
       "type": "remote",
       "url": "https://mcp.atlassian.com/v1/mcp",
       "headers": {
