@@ -151,6 +151,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e OPENAI_API_KEY \
   -e ANTHROPIC_API_KEY \
   -e BB_MCP_TOKEN \
+  -e GH_MCP_TOKEN \
   -e HOME=/opencode \
   -e XDG_CONFIG_HOME=/opencode/.config \
   -e XDG_DATA_HOME=/opencode/.local/share \
