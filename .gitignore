@@ -1,3 +1,4 @@
 build/
 *.swp
 util/upload.conf
+.playwright-mcp/
