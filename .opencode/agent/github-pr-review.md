@@ -124,12 +124,14 @@ Severity and confidence
 Posting protocol (GitHub-native review flow)
 1) Start a pending review:
    - `pull_request_review_write` with `method: create` and no `event`
+   - Set `body` to an empty string (`""`). Do not use placeholder text such as "Pending review initialization".
 2) Post inline comments for each issue:
    - `add_comment_to_pending_review`
    - Use `subjectType: LINE` for line comments; use `subjectType: FILE` for file-level feedback
    - Set `path`, `line`, and `side: RIGHT` for changed-line comments when applicable
 3) Submit the pending review with the global summary body:
    - `pull_request_review_write` with `method: submit_pending`, `event: COMMENT`, and summary in `body`
+   - The submitted summary must contain only review-relevant findings.
 4) If inline comments cannot be anchored reliably, skip inline and post summary/fallback via:
    - `add_issue_comment` on `issue_number = pullNumber`
 5) If no actionable issues exist, submit a concise low-risk approval-style summary:
