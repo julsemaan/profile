@@ -126,6 +126,13 @@
       "url": "https://mcp.sentry.dev/mcp",
       "oauth": {},
       "enabled": false
+    },
+    "bitbucket_kubex": {
+      "type": "remote",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "headers": {
+        "Authorization": "Basic {env:BB_MCP_TOKEN}"
+      }
     }
   }
 }
