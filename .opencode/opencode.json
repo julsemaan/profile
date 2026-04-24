@@ -68,6 +68,11 @@
     }
   },
   "command": {
+    "doit": {
+      "template": "Implement the plan",
+      "description": "Implement the current plan",
+      "agent": "build"
+    },
     "plan": {
       "template": "$ARGUMENTS",
       "description": "Send prompt to plan agent",
