@@ -68,6 +68,11 @@
     }
   },
   "command": {
+    "plan": {
+      "template": "$ARGUMENTS",
+      "description": "Send prompt to plan agent",
+      "agent": "plan"
+    },
     "gotest": {
       "template": "Run `go test ./...` and fix any test failures.",
       "description": "Run Go tests",
