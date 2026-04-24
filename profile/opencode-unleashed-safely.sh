@@ -29,6 +29,8 @@ Environment:
                         ~/.config/opencode/opencode.json before launch,
                         and copies /usr/local/etc/opencode/agent/*.md to
                         ~/.config/opencode/agent/.
+  Clipboard forwarding  Forwards terminal (TERM/TMUX/etc) and Wayland/X11
+                        settings when available for clipboard integration.
 
 Examples:
   ./opencode-unleashed-safely.sh
@@ -131,7 +133,7 @@ FROM julsemaan/codex-dev-img:latest
 ARG OPENCODE_NPM_PACKAGE
 RUN npm i -g "$OPENCODE_NPM_PACKAGE"
 
-RUN apt-get update && apt-get install -y --no-install-recommends vim && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends vim tmux ncurses-term xauth xclip xsel wl-clipboard && rm -rf /var/lib/apt/lists/*
 
 ENV EDITOR=vim
 
@@ -146,8 +148,69 @@ else
   DOCKER_NO_TTY_ENV_FLAGS="-e NO_COLOR=1 -e TERM=dumb"
 fi
 
+TERMINAL_DOCKER_FLAGS=()
+TERMINAL_ENV_VARS=(
+  TERM
+  COLORTERM
+  TERM_PROGRAM
+  TERM_PROGRAM_VERSION
+  TERM_SESSION_ID
+  TMUX
+  TMUX_PANE
+  ZELLIJ
+  KITTY_WINDOW_ID
+  KITTY_PID
+  WEZTERM_PANE
+  WEZTERM_UNIX_SOCKET
+  WT_SESSION
+  VTE_VERSION
+  SSH_TTY
+)
+
+for var_name in "${TERMINAL_ENV_VARS[@]}"; do
+  if [[ "$var_name" == "TERM" && $USE_TTY -eq 0 ]]; then
+    continue
+  fi
+
+  if [[ -n "${!var_name:-}" ]]; then
+    TERMINAL_DOCKER_FLAGS+=(-e "$var_name")
+  fi
+done
+
+CLIPBOARD_DOCKER_FLAGS=()
+
+if [[ -n "${TMUX:-}" ]]; then
+  TMUX_SOCKET_PATH="${TMUX%%,*}"
+  if [[ -S "$TMUX_SOCKET_PATH" ]]; then
+    TMUX_SOCKET_DIR="$(dirname "$TMUX_SOCKET_PATH")"
+    CLIPBOARD_DOCKER_FLAGS+=(-v "$TMUX_SOCKET_DIR:$TMUX_SOCKET_DIR")
+  fi
+fi
+
+if [[ -n "${DISPLAY:-}" ]]; then
+  CLIPBOARD_DOCKER_FLAGS+=(-e DISPLAY)
+
+  if [[ -d /tmp/.X11-unix ]]; then
+    CLIPBOARD_DOCKER_FLAGS+=(-v /tmp/.X11-unix:/tmp/.X11-unix)
+  fi
+
+  HOST_XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+  if [[ -f "$HOST_XAUTHORITY" ]]; then
+    CLIPBOARD_DOCKER_FLAGS+=(-e XAUTHORITY=/opencode/.Xauthority)
+    CLIPBOARD_DOCKER_FLAGS+=(-v "$HOST_XAUTHORITY:/opencode/.Xauthority:ro")
+  fi
+fi
+
+if [[ -n "${WAYLAND_DISPLAY:-}" && -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]]; then
+  CLIPBOARD_DOCKER_FLAGS+=(-e WAYLAND_DISPLAY)
+  CLIPBOARD_DOCKER_FLAGS+=(-e XDG_RUNTIME_DIR)
+  CLIPBOARD_DOCKER_FLAGS+=(-v "$XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR")
+fi
+
 docker run --rm $DOCKER_TTY_FLAGS \
   $DOCKER_NO_TTY_ENV_FLAGS \
+  "${TERMINAL_DOCKER_FLAGS[@]}" \
+  "${CLIPBOARD_DOCKER_FLAGS[@]}" \
   -e OPENAI_API_KEY \
   -e ANTHROPIC_API_KEY \
   -e BB_MCP_TOKEN \
