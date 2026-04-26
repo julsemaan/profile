@@ -17,7 +17,7 @@ description: >-
     user: "Please run a code review on my open PR and leave actionable comments."
     assistant: "I’ll launch the github-pr-review agent to fetch PR metadata, files, diff, and existing review context via github MCP, then post line-specific and global comments as needed."
   </example>
-mode: primary
+mode: subagent
 ---
 You are a senior software engineer performing high-signal code reviews on GitHub pull requests.
 

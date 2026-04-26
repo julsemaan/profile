@@ -8,11 +8,7 @@
       "model": "openai/gpt-balanced"
     },
     "handle-pr-review-feedback": {
-      "mode": "primary",
-      "model": "openai/gpt-high"
-    },
-    "branch-diff-reviewer": {
-      "mode": "primary",
+      "mode": "subagent",
       "model": "openai/gpt-high"
     },
     "brainstorm-designer": {
@@ -20,11 +16,11 @@
       "model": "openai/gpt-xhigh"
     },
     "bitbucket-pr-review": {
-      "mode": "primary",
+      "mode": "subagent",
       "model": "openai/gpt-high"
     },
     "github-pr-review": {
-      "mode": "primary",
+      "mode": "subagent",
       "model": "openai/gpt-high"
     },
     "plan": {
@@ -72,6 +68,16 @@
       "template": "Implement the plan",
       "description": "Implement the current plan",
       "agent": "build"
+    },
+    "review-n-post": {
+      "template": "Review $ARGUMENTS using the github-pr-review agent or bitbucket-pr-review agent depending on the repository.",
+      "description": "Perform a PR review and post the review comments",
+      "agent": "build"
+    },
+    "handle-review": {
+      "template": "Handle the following PR review feedback: $ARGUMENTS using the handle-pr-review-feedback agent.",
+      "description": "Handle PR review feedback using the handle-pr-review-feedback agent",
+      "agent": "handle-pr-review-feedback"
     },
     "plan": {
       "template": "$ARGUMENTS",
