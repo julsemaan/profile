@@ -77,7 +77,7 @@
     "handle-review": {
       "template": "Handle the following PR review feedback: $ARGUMENTS using the handle-pr-review-feedback agent.",
       "description": "Handle PR review feedback using the handle-pr-review-feedback agent",
-      "agent": "handle-pr-review-feedback"
+      "agent": "build"
     },
     "plan": {
       "template": "$ARGUMENTS",
