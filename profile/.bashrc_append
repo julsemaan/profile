@@ -47,7 +47,29 @@ CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 command="jointmux $CLEAN_HOSTNAME"
 alias htmux="$command"
 
-alias jointmuxifier="tmuxifier load-session"
+jointmuxifier() {
+  local session="$1"
+  if [ -z "$session" ]; then
+    echo "usage: jointmuxifier <session>" >&2
+    return 1
+  fi
+
+  if [ -z "$TMUX" ] && [ -t 1 ]; then
+    local cols lines
+    cols="$(tput cols 2>/dev/null)"
+    lines="$(tput lines 2>/dev/null)"
+
+    # tmuxifier creates sessions detached first, so seed tmux with the current
+    # terminal size to keep percentage-based splits correct on first attach.
+    if [ -n "$cols" ] && [ -n "$lines" ]; then
+      tmux start-server >/dev/null 2>&1
+      tmux set-option -g default-size "${cols}x${lines}" >/dev/null 2>&1
+    fi
+  fi
+
+  tmuxifier load-session "$session"
+}
+
 alias kpptmux="cd ~ && jointmuxifier kpp"
 alias kubextmux="cd ~ && jointmuxifier kubex"
 
