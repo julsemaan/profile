@@ -3,6 +3,7 @@ session_root src/
 V_SPLIT=25
 TOP_H_SPLIT=30
 BOTTOM_H_SPLIT=50
+NORMALIZE_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/kubex.normalize.sh"
 
 if initialize_session "kubex"; then
   session_root src/automation-controller
@@ -26,6 +27,9 @@ if initialize_session "kubex"; then
   session_root src/
   new_window "reviews"
   run_cmd "opencode-unleashed-safely-src --agent bitbucket-pr-review"
+
+  # Re-apply pane sizes after first attach so Ghostty's real client size wins.
+  tmux set-hook -t "$session" client-attached "run-shell 'bash \"$NORMALIZE_SCRIPT\" \"$session\"'"
 
   select_window 1
   select_pane 1

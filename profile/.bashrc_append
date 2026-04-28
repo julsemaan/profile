@@ -54,76 +54,20 @@ jointmuxifier() {
     return 1
   fi
 
-  if [ -z "$TMUXIFIER" ] || [ ! -f "$TMUXIFIER/lib/runtime.sh" ]; then
-    tmuxifier load-session "$session"
-    return
-  fi
-
-  if [[ ":$PATH:" != *":$TMUXIFIER/libexec:"* ]]; then
-    export PATH="$TMUXIFIER/libexec:$PATH"
-  fi
-
-  local cols lines
   if [ -z "$TMUX" ] && [ -t 1 ]; then
+    local cols lines
     cols="$(tput cols 2>/dev/null)"
     lines="$(tput lines 2>/dev/null)"
 
-    # Detached tmux sessions size panes before any client is attached.
-    # Seed tmux with the current terminal size and also pass it to the
-    # detached new-session call below so percentage splits use the real size.
+    # tmuxifier creates sessions detached first, so seed tmux with the current
+    # terminal size to keep percentage-based splits closer to the real size.
     if [ -n "$cols" ] && [ -n "$lines" ]; then
       tmux start-server >/dev/null 2>&1
       tmux set-option -g default-size "${cols}x${lines}" >/dev/null 2>&1
     fi
   fi
 
-  source "$TMUXIFIER/lib/runtime.sh"
-
-  initialize_session() {
-    if [ -n "$1" ]; then
-      session="$1"
-    fi
-
-    tmuxifier-tmux start-server
-
-    if tmuxifier-tmux list-sessions | grep -q "^$session:"; then
-      return 1
-    fi
-
-    if [ "$(tmuxifier-tmux-version "1.9")" == "<" ]; then
-      env TMUX="" tmuxifier-tmux new-session -d -s "$session"
-
-      if [ -n "$session_root" ] && [ -d "$session_root" ]; then
-        cd "$session_root"
-
-        $set_default_path && tmuxifier-tmux \
-          set-option -t "$session:" \
-          default-path "$session_root" 1> /dev/null
-      fi
-    else
-      local session_args=()
-      if $set_default_path; then
-        session_args+=(-c "$session_root")
-      fi
-      if [ -n "$cols" ] && [ -n "$lines" ]; then
-        session_args+=(-x "$cols" -y "$lines")
-      fi
-
-      env TMUX="" tmuxifier-tmux new-session \
-        -d -s "$session" "${session_args[@]}"
-    fi
-
-    if $set_default_path && [[ "$session_root" != "$HOME" ]]; then
-      tmuxifier-tmux setenv -t "$session:" \
-        TMUXIFIER_SESSION_ROOT "$session_root"
-    fi
-
-    local first_window_index=$(__get_first_window_index)
-    tmuxifier-tmux move-window \
-      -s "$session:$first_window_index" -t "$session:999"
-  }
-
-  load_session "$session"
+  tmuxifier load-session "$session"
 }
 
 alias kpptmux="cd ~ && jointmuxifier kpp"
