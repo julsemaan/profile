@@ -8,6 +8,15 @@ if [ "$(tmux show-options -v -t "$session" @kubex-normalized 2>/dev/null || true
   exit 0
 fi
 
+current_window="$(tmux display-message -p -t "$session" '#{window_name}')"
+
+# With `window-size latest`, non-active windows do not pick up the attached
+# client size until they are first selected.
+tmux select-window -t "$session:controller"
+tmux select-window -t "$session:charts"
+tmux select-window -t "$session:reviews"
+tmux select-window -t "$session:$current_window"
+
 resize_window() {
   local window_name="$1"
   local height width bottom_height top_right_width bottom_right_width
