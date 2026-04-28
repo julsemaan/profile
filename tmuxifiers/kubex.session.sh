@@ -3,7 +3,8 @@ session_root src/
 V_SPLIT=25
 TOP_H_SPLIT=30
 BOTTOM_H_SPLIT=50
-NORMALIZE_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/kubex.normalize.sh"
+
+source "$(dirname "${BASH_SOURCE[0]}")/normalize.lib.sh"
 
 if initialize_session "kubex"; then
   session_root src/automation-controller
@@ -15,6 +16,7 @@ if initialize_session "kubex"; then
   run_cmd "devbox shell"
   select_pane 1
   split_h $TOP_H_SPLIT
+  normalize_track_window controller
 
   session_root src/densify-dev-helm-charts
   new_window "charts"
@@ -23,13 +25,14 @@ if initialize_session "kubex"; then
   split_h $BOTTOM_H_SPLIT
   select_pane 1
   split_h $TOP_H_SPLIT
+  normalize_track_window charts
 
   session_root src/
   new_window "reviews"
   run_cmd "opencode-unleashed-safely-src --agent bitbucket-pr-review"
+  normalize_track_window reviews
 
-  # Re-apply pane sizes after first attach so Ghostty's real client size wins.
-  tmux set-hook -t "$session" client-attached "run-shell 'bash \"$NORMALIZE_SCRIPT\" \"$session\"'"
+  normalize_enable
 
   select_window 1
   select_pane 1
