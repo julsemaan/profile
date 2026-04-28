@@ -59,6 +59,10 @@ jointmuxifier() {
     return
   fi
 
+  if [[ ":$PATH:" != *":$TMUXIFIER/libexec:"* ]]; then
+    export PATH="$TMUXIFIER/libexec:$PATH"
+  fi
+
   local cols lines
   if [ -z "$TMUX" ] && [ -t 1 ]; then
     cols="$(tput cols 2>/dev/null)"
