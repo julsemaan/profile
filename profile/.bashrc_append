@@ -31,7 +31,7 @@ PS1="\$(history -a)\u\[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;196m\]@\H\[$(tp
 shopt -s histappend
 
 ## Let Ghostty manage prompt/title hooks to avoid leaking control sequences
-if [ -z "${GHOSTTY_RESOURCES_DIR:-}" ]; then
+if [ "${GHOSTTY_RESOURCES_DIR:-}" = "" ] && [ "${TERM_PROGRAM:-}" != "ghostty" ] && [ "${TERM:-}" != "xterm-ghostty" ]; then
   trap 'printf "\033]0;%s\007" "${BASH_COMMAND//[^[:print:]]/}"' DEBUG
 fi
 
