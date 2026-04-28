@@ -30,8 +30,10 @@ function parse_git_branch {
 PS1="\$(history -a)\u\[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;196m\]@\H\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] [\w] {\[$(tput sgr0)\]\[\033[38;5;4m\]\$?\[$(tput sgr0)\]\[\033[38;5;15m\]} \$(parse_git_branch) \n\[$(tput bold)\]\\$\[$(tput sgr0)\] \[$(tput sgr0)\]"
 shopt -s histappend
 
-## will set the terminal title to the current command
-trap 'printf "\033]0;%s\007" "${BASH_COMMAND//[^[:print:]]/}"' DEBUG
+## Let Ghostty manage prompt/title hooks to avoid leaking control sequences
+if [ -z "${GHOSTTY_RESOURCES_DIR:-}" ]; then
+  trap 'printf "\033]0;%s\007" "${BASH_COMMAND//[^[:print:]]/}"' DEBUG
+fi
 
 joined-tmux() {
   tmux -u attach -d -t $1 || tmux -u new -s $1 
