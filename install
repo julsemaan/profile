@@ -144,7 +144,11 @@ for home in "${homes[@]}"; do
       install_file /usr/local/etc/.tmux.conf $home/.tmux.conf `basename $home`
       install_file /usr/local/etc/.inputrc $home/.inputrc `basename $home`
       install_file /usr/local/etc/.blerc $home/.blerc `basename $home`
-   
+
+      mkdir -p $home/.config/ghostty $home/.config/kinto
+      install_file $d/utils/config.ghostty $home/.config/ghostty/config `basename $home`
+      install_file $d/utils/kinto.py $home/.config/kinto/kinto.py `basename $home`
+    
       BASHRC="$home/.bashrc"
       if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then
         echo "Installing the sourcing of bashrc_append in $BASHRC"
