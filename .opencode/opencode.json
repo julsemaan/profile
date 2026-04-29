@@ -45,6 +45,7 @@
       "~/src/**": "allow",
       "~/.config/opencode/**": "allow",
       "~/.opencode/**": "allow",
+      "/opencode/**": "allow",
       "/tmp/**": "allow"
     },
     "webfetch": "allow",
