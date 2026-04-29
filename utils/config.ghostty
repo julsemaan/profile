@@ -1,3 +1,4 @@
 shell-integration-features = ssh-env,ssh-terminfo
 font-size = 16
-theme = Catppuccin Mocha
+theme = Catppuccin Macchiato
+term = xterm-256color
