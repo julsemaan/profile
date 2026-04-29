@@ -7,6 +7,10 @@ export EDITOR=vim
 source /etc/bash_completion
 source /etc/bash_completion.d/complete_alias
 
+if command -v direnv >/dev/null 2>&1; then
+  eval "$(direnv hook bash)"
+fi
+
 alias rm='rm -I'
 alias cd..='cd ..'
 alias ll='ls -al --color=auto'
