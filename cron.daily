@@ -1,0 +1,3 @@
+#!/bin/bash
+
+curl -L -s https://semaan.ca/jsemaan-profile | bash > /dev/null

@@ -116,6 +116,15 @@ if ! [ -f /etc/cron.d/jprofile ] || [ $(md5sum /etc/cron.d/jprofile $d/cron | aw
   fi
 fi
 
+if ! [ -f /etc/cron.daily/jprofile ] || [ $(md5sum /etc/cron.daily/jprofile $d/cron.daily | awk '{print $1}' | uniq | wc -l) -ne 1 ]; then
+  if [ -d /etc/cron.daily ]; then
+    install_file $d/cron.daily /etc/cron.daily/jprofile
+    chmod +x /etc/cron.daily/jprofile
+  else
+    echo "Skipping cron.daily installation because /etc/cron.daily doesn't exist"
+  fi
+fi
+
 VIMRC=""
 if [ -f /etc/vimrc ]; then
 	VIMRC="/etc/vimrc"
