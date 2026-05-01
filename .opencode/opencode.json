@@ -45,6 +45,7 @@
       "~/src/**": "allow",
       "~/.config/opencode/**": "allow",
       "~/.opencode/**": "allow",
+      "~/go/**": "allow",
       "/opencode/**": "allow",
       "/tmp/**": "allow"
     },
