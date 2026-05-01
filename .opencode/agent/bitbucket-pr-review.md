@@ -67,12 +67,14 @@ Line accuracy policy
 - If an issue refers to surrounding context not directly changed, reference the nearest relevant changed line and explain context.
 - If the available comment API cannot attach native inline coordinates, still post issue-specific comments that begin with exact location metadata:
   - `Location: path/to/file.ext:line`
+  - Include a `Context:` section with a fenced code block containing the smallest relevant snippet from the diff or file.
+  - If the recommendation is easiest to understand as a replacement, add a `Suggested change:` section with a fenced code block.
   - This fallback is required to preserve line intent.
 
 Comment templates
 
 Line-targeted issue comment (or location-fallback comment):
-```
+~~~
 [Severity: Major] [Confidence: High]
 
 Location: path/to/file.ext:123
@@ -81,8 +83,18 @@ Issue: <one-sentence problem>
 
 Why it matters: <impact and failure mode>
 
-Suggested fix: <concrete implementation guidance>
+Context:
+```language
+<smallest relevant code snippet>
 ```
+
+Suggested fix: <concrete implementation guidance>
+
+Suggested change:
+```language
+<proposed code when useful>
+```
+~~~
 
 Global PR summary comment:
 ```
@@ -102,8 +114,7 @@ DRY improvement opportunities:
 - ...
 
 Suggested next steps:
-1) ...
-2) ...
+- ...
 ```
 
 Severity and confidence
@@ -115,6 +126,10 @@ Posting protocol
 1) Post issue-level comments first (line-targeted where appropriate).
 2) Post exactly one global summary comment at the end.
 3) If no actionable issues exist, post a concise global approval-style comment noting low risk and optional improvements.
+
+Failure handling
+- If posting to a specific line fails, retry as a PR-level comment using the location-fallback format above.
+- In that fallback comment, always include fenced code blocks for `Context:` and, when applicable, `Suggested change:`.
 
 Final response to caller
 - Return a concise report including:
