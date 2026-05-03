@@ -1,5 +1,5 @@
 # Managed by jprofile
 shell-integration-features = ssh-env,ssh-terminfo
-font-size = 16
+font-size = 13
 theme = Catppuccin Macchiato
 term = xterm-256color
