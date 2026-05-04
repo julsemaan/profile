@@ -65,6 +65,19 @@ function install_file {
   fi
 }
 
+function install_pi_global_config {
+  home="$1"
+  user="$2"
+  profile_dir="$3"
+  agent_dir="$home/.pi/agent"
+
+  mkdir -p "$agent_dir"
+  rm -fr "$agent_dir/extensions" "$agent_dir/prompts" "$agent_dir/settings.json"
+  install_file "$profile_dir/.pi/." "$agent_dir"
+
+  chown -R "$user": "$home/.pi"
+}
+
 check_cmd git
 check_cmd make
 check_cmd gawk
@@ -172,6 +185,7 @@ for home in "${homes[@]}"; do
 
       install_tpm $home
       install_nvim_profile $home
+      install_pi_global_config $home `basename $home` $d
     fi
   fi
 done
