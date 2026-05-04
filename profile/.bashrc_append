@@ -38,7 +38,7 @@ shopt -s histappend
 trap 'printf "\033]0;%s\007" "${BASH_COMMAND//[^[:print:]]/}"' DEBUG
 
 joined-tmux() {
-  tmux -u attach -d -t $1 || tmux -u new -s $1 
+  tmux -u attach -d -t "$1" || tmux -u new -s "$1"
 }
 
 alias jointmux=joined-tmux
@@ -51,7 +51,7 @@ CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 command="jointmux $CLEAN_HOSTNAME"
 alias htmux="$command"
 
-jointmuxifier() {
+function jointmuxifier {
   local session="$1"
   if [ -z "$session" ]; then
     echo "usage: jointmuxifier <session>" >&2
@@ -157,6 +157,8 @@ add_alias sbrc 'source ~/.bashrc'
 # add_alias gen_commit_msg 'opencode-unleashed-safely -- run --model github-copilot/gpt-5-mini "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before"  2>&1 | awk '\''/^COMMIT_MSG_START\r$/ { getline; print; exit }'\'''
 add_alias gen_commit_msg 'opencode-unleashed-safely -- run --model openai/gpt-5.4-mini "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before"  2>&1 | awk '\''/^COMMIT_MSG_START\r$/ { getline; print; exit }'\'''
 add_alias gcoto 'git commit -m "$(gen_commit_msg)" -e'
+add_alias gen_commit_msg_pi 'git diff --staged | pi-unleashed-safely --no-tty --print "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Output only the commit message."'
+add_alias gcotp 'git commit -m "$(gen_commit_msg_pi)" -e'
 
 # At some point, should remove those
 alias qco=gco
@@ -165,6 +167,7 @@ alias qpush=gpush
 alias codex-unleashed-safely-src='codex-unleashed-safely -m ~/src/'
 
 alias opencode-unleashed-safely-src='opencode-unleashed-safely -m ~/src/'
+alias pi-unleashed-safely-src='pi-unleashed-safely -m ~/src/'
 
 fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
