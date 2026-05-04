@@ -99,6 +99,9 @@ chmod +x /usr/local/bin/codex-unleashed-safely
 install_file $d/profile/opencode-unleashed-safely.sh /usr/local/bin/opencode-unleashed-safely
 chmod +x /usr/local/bin/opencode-unleashed-safely
 
+install_file $d/profile/pi-unleashed-safely.sh /usr/local/bin/pi-unleashed-safely
+chmod +x /usr/local/bin/pi-unleashed-safely
+
 mkdir -p /usr/local/etc/opencode
 rm -fr /usr/local/etc/opencode/*
 install_file $d/.opencode/. /usr/local/etc/opencode
