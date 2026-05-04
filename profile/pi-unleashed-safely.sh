@@ -7,10 +7,11 @@ MNT="$PWD"
 WORKDIR="$PWD"
 REBUILD=0
 USE_TTY=1
+MOUNT_HOME_PI=1
 
 usage() {
   cat <<'USAGE'
-Usage: pi-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [-- <pi args...>]
+Usage: pi-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [--no-home-pi-mount] [-- <pi args...>]
 
 Arguments:
   -m, --mount PATH    Host path to bind-mount into the container.
@@ -19,13 +20,14 @@ Arguments:
                       Defaults to the current working directory.
   -r, --rebuild       Rebuild the Docker image before running.
   --no-tty            Disable TTY allocation (useful to avoid carriage returns).
+  --no-home-pi-mount  Do not bind-mount ~/.pi from the host.
   -h, --help          Show this help text.
 
 Environment:
   PI_NPM_PACKAGE        NPM package name to install for the CLI.
                         Defaults to "@mariozechner/pi-coding-agent".
   Pi state persistence  Persists ~/.pi across runs for settings,
-                        auth, packages, and sessions.
+                        auth, packages, and sessions unless disabled.
   Clipboard forwarding  Forwards terminal (TERM/TMUX/etc) and Wayland/X11
                         settings when available for clipboard integration.
 
@@ -74,6 +76,10 @@ while [[ $# -gt 0 ]]; do
       USE_TTY=0
       shift
       ;;
+    --no-home-pi-mount)
+      MOUNT_HOME_PI=0
+      shift
+      ;;
     *)
       PI_ARGS+=("$1")
       shift
@@ -97,10 +103,13 @@ if [[ ! -d "$WORKDIR" ]]; then
 fi
 
 HOST_PI_HOME="$HOME/.pi"
+HOST_PI_AUTH="$HOST_PI_HOME/agent/auth.json"
 CONTAINER_HOME="$HOME"
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@mariozechner/pi-coding-agent}"
 
-mkdir -p "$HOST_PI_HOME"
+if [[ $MOUNT_HOME_PI -eq 1 ]]; then
+  mkdir -p "$HOST_PI_HOME"
+fi
 
 if [[ $REBUILD -eq 1 ]]; then
   REBUILD_DOCKER_ARG="--no-cache"
@@ -160,6 +169,14 @@ done
 
 CLIPBOARD_DOCKER_FLAGS=()
 HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$(id -u),gid=$(id -g)")
+PI_HOME_DOCKER_FLAGS=()
+
+if [[ $MOUNT_HOME_PI -eq 1 ]]; then
+  PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
+elif [[ -f "$HOST_PI_AUTH" ]]; then
+  PI_HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME/.pi:rw,exec,uid=$(id -u),gid=$(id -g)")
+  PI_HOME_DOCKER_FLAGS+=(-v "$HOST_PI_AUTH:$CONTAINER_HOME/.pi/agent/auth.json")
+fi
 
 if [[ -n "${TMUX:-}" ]]; then
   TMUX_SOCKET_PATH="${TMUX%%,*}"
@@ -215,6 +232,6 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \
   -u "$(id -u):$(id -g)" \
-  -v "$HOST_PI_HOME:$CONTAINER_HOME/.pi" \
+  "${PI_HOME_DOCKER_FLAGS[@]}" \
   -v "$MNT:$MNT" -w "$WORKDIR" \
   "$IMAGE" "${PI_ARGS[@]}"
