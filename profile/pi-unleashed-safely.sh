@@ -9,6 +9,9 @@ REBUILD=0
 USE_TTY=1
 MOUNT_HOME_PI=1
 
+# Extra npm packages to install and register as pi extensions.
+EXTRA_PI_PACKAGES=("pi-subagents")
+
 usage() {
   cat <<'USAGE'
 Usage: pi-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [--no-home-pi-mount] [-- <pi args...>]
@@ -106,6 +109,7 @@ HOST_PI_HOME="$HOME/.pi"
 HOST_PI_AUTH="$HOST_PI_HOME/agent/auth.json"
 CONTAINER_HOME="$HOME"
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@mariozechner/pi-coding-agent}"
+PI_EXTRA_PACKAGES="$(printf '%s ' "${EXTRA_PI_PACKAGES[@]}")"
 
 if [[ $MOUNT_HOME_PI -eq 1 ]]; then
   mkdir -p "$HOST_PI_HOME"
@@ -117,17 +121,55 @@ else
   REBUILD_DOCKER_ARG=""
 fi
 
-docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" - <<'EOF'
+docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" --build-arg PI_EXTRA_PACKAGES="$PI_EXTRA_PACKAGES" - <<'EOF'
 FROM julsemaan/codex-dev-img:latest
 
 ARG PI_NPM_PACKAGE
+ARG PI_EXTRA_PACKAGES
 RUN npm i -g "$PI_NPM_PACKAGE"
 
 RUN apt-get update && apt-get install -y --no-install-recommends vim tmux ncurses-term xauth xclip xsel wl-clipboard && rm -rf /var/lib/apt/lists/*
 
+RUN if [ -n "$PI_EXTRA_PACKAGES" ]; then npm i -g $PI_EXTRA_PACKAGES; fi
+
+ENV PI_EXTRA_PACKAGES "$PI_EXTRA_PACKAGES"
+
+RUN cat > /entrypoint.sh << 'ENTRYPOINT_SCRIPT'
+#!/bin/bash
+set -e
+
+# Ensure extra packages are registered in the runtime settings.json.
+# During image build, `pi install` wrote to root's settings, but at
+# runtime we use the host user's ~/.pi (bind-mounted), so we must
+# re-register the packages here.
+node -e "
+const fs = require('fs');
+const dir = process.env.PI_CODING_AGENT_DIR || (process.env.HOME + '/.pi/agent');
+const file = dir + '/settings.json';
+fs.mkdirSync(dir, { recursive: true });
+let settings = {};
+try { settings = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+if (!settings.packages) settings.packages = [];
+const extra = (process.env.PI_EXTRA_PACKAGES || '').trim();
+if (extra) {
+  extra.split(/\\s+/).forEach(pkg => {
+    const key = pkg.startsWith('npm:') ? pkg : 'npm:' + pkg;
+    if (!settings.packages.includes(key)) {
+      settings.packages.push(key);
+    }
+  });
+  fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+}
+"
+
+exec pi "$@"
+ENTRYPOINT_SCRIPT
+
+RUN chmod +x /entrypoint.sh
+
 ENV EDITOR=vim
 
-ENTRYPOINT ["pi"]
+ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
 if [[ $USE_TTY -eq 1 ]]; then

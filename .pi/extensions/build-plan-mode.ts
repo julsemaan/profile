@@ -2,6 +2,8 @@ import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 type HarnessMode = "build" | "plan";
+type BuildPlanCommand = HarnessMode | "on" | "off" | "toggle" | "status";
+type BuildPlanState = { enabled?: boolean; mode?: HarnessMode; previousThinkingLevel?: ThinkingLevel };
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "todo"];
@@ -114,18 +116,34 @@ function isPlanSafeCommand(command: string): boolean {
 }
 
 export default function buildPlanMode(pi: ExtensionAPI) {
+	let enabled = true;
 	let mode: HarnessMode = "build";
 	let previousThinkingLevel: ThinkingLevel | undefined;
 
 	function persistMode() {
-		pi.appendEntry(STATE_TYPE, { mode, previousThinkingLevel });
+		pi.appendEntry(STATE_TYPE, { enabled, mode, previousThinkingLevel });
 	}
 
 	function getBuildThinkingLevel(): ThinkingLevel {
 		return previousThinkingLevel ?? BUILD_DEFAULT_THINKING_LEVEL;
 	}
 
-	function applyMode(nextMode: HarnessMode, ctx: ExtensionContext) {
+	function setAllToolsActive() {
+		pi.setActiveTools(pi.getAllTools().map((tool) => tool.name));
+	}
+
+	function updateStatus(ctx: ExtensionContext) {
+		ctx.ui.setStatus(
+			"build-plan-mode",
+			!enabled
+				? ctx.ui.theme.fg("muted", "build+plan off")
+				: mode === "plan"
+					? ctx.ui.theme.fg("warning", "⏸ plan")
+					: ctx.ui.theme.fg("success", "⚒ build"),
+		);
+	}
+
+	function applyMode(nextMode: HarnessMode, ctx: ExtensionContext, notify = true) {
 		if (nextMode === "plan") {
 			if (mode !== "plan") {
 				previousThinkingLevel = pi.getThinkingLevel() as ThinkingLevel;
@@ -138,29 +156,52 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 		mode = nextMode;
 		pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
-		ctx.ui.setStatus(
-			"build-plan-mode",
-			mode === "plan"
-				? ctx.ui.theme.fg("warning", "⏸ plan")
-				: ctx.ui.theme.fg("success", "⚒ build"),
-		);
-		ctx.ui.notify(
-			mode === "plan"
-				? `Switched to plan mode (thinking: ${PLAN_THINKING_LEVEL})`
-				: `Switched to build mode (thinking: ${getBuildThinkingLevel()})`,
-			"info",
-		);
+		updateStatus(ctx);
+		if (notify) {
+			ctx.ui.notify(
+				mode === "plan"
+					? `Switched to plan mode (thinking: ${PLAN_THINKING_LEVEL})`
+					: `Switched to build mode (thinking: ${getBuildThinkingLevel()})`,
+				"info",
+			);
+		}
 		persistMode();
 	}
 
+	function setEnabled(nextEnabled: boolean, ctx: ExtensionContext, notify = true) {
+		if (enabled === nextEnabled) {
+			updateStatus(ctx);
+			if (notify) ctx.ui.notify(`Build+plan mode is already ${enabled ? "on" : "off"}.`, "info");
+			persistMode();
+			return;
+		}
+
+		enabled = nextEnabled;
+		if (enabled) {
+			applyMode(mode, ctx, false);
+		} else {
+			if (mode === "plan") pi.setThinkingLevel(getBuildThinkingLevel());
+			setAllToolsActive();
+			updateStatus(ctx);
+			persistMode();
+		}
+		if (notify) ctx.ui.notify(`Build+plan mode ${enabled ? "enabled" : "disabled"}.`, "info");
+	}
+
 	pi.registerCommand("plan", {
-		description: "Switch to read-only planning mode",
-		handler: async (_args, ctx) => applyMode("plan", ctx),
+		description: "Enable build+plan mode and switch to read-only planning mode",
+		handler: async (_args, ctx) => {
+			if (!enabled) setEnabled(true, ctx, false);
+			applyMode("plan", ctx);
+		},
 	});
 
 	pi.registerCommand("build", {
-		description: "Switch to implementation mode",
-		handler: async (_args, ctx) => applyMode("build", ctx),
+		description: "Enable build+plan mode and switch to implementation mode",
+		handler: async (_args, ctx) => {
+			if (!enabled) setEnabled(true, ctx, false);
+			applyMode("build", ctx);
+		},
 	});
 
 	pi.registerCommand("execute-plan", {
@@ -194,46 +235,85 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("mode", {
-		description: "Show or set current mode (build|plan)",
+		description: "Show or set current mode (build|plan|toggle)",
 		handler: async (args, ctx) => {
-			const next = args.trim();
+			const next = args.trim().toLowerCase();
 			if (!next) {
-				ctx.ui.notify(`Current mode: ${mode}`, "info");
+				ctx.ui.notify(`Build+plan: ${enabled ? "on" : "off"}; current mode: ${mode}`, "info");
+				return;
+			}
+			if (next === "toggle") {
+				if (!enabled) setEnabled(true, ctx, false);
+				applyMode(mode === "plan" ? "build" : "plan", ctx);
 				return;
 			}
 			if (next !== "build" && next !== "plan") {
-				ctx.ui.notify('Usage: /mode build or /mode plan', "warning");
+				ctx.ui.notify('Usage: /mode build, /mode plan, or /mode toggle', "warning");
 				return;
 			}
+			if (!enabled) setEnabled(true, ctx, false);
 			applyMode(next, ctx);
 		},
 	});
 
+	pi.registerCommand("build-plan", {
+		description: "Toggle build+plan top-level behavior (on|off|toggle|status|build|plan)",
+		handler: async (args, ctx) => {
+			const next = ((args.trim().toLowerCase() || "toggle") as BuildPlanCommand);
+			if (next === "status") {
+				ctx.ui.notify(`Build+plan: ${enabled ? "on" : "off"}; current mode: ${mode}`, "info");
+				return;
+			}
+			if (next === "toggle") {
+				setEnabled(!enabled, ctx);
+				return;
+			}
+			if (next === "on" || next === "off") {
+				setEnabled(next === "on", ctx);
+				return;
+			}
+			if (next === "build" || next === "plan") {
+				if (!enabled) setEnabled(true, ctx, false);
+				applyMode(next, ctx);
+				return;
+			}
+			ctx.ui.notify('Usage: /build-plan [on|off|toggle|status|build|plan]', "warning");
+		},
+	});
+
+	pi.registerShortcut("ctrl+shift+p", {
+		description: "Toggle build/plan mode",
+		handler: async (ctx) => {
+			if (!enabled) setEnabled(true, ctx, false);
+			applyMode(mode === "plan" ? "build" : "plan", ctx);
+		},
+	});
 
 	pi.on("session_start", async (_event, ctx) => {
 		const entries = ctx.sessionManager.getEntries();
 		const lastState = entries
 			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE)
-			.pop() as { data?: { mode?: HarnessMode; previousThinkingLevel?: ThinkingLevel } } | undefined;
+			.pop() as { data?: BuildPlanState } | undefined;
 
+		enabled = lastState?.data?.enabled !== false;
 		mode = lastState?.data?.mode === "plan" ? "plan" : "build";
 		previousThinkingLevel = lastState?.data?.previousThinkingLevel;
-		pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
-		if (mode === "plan") {
-			pi.setThinkingLevel(PLAN_THINKING_LEVEL);
+		if (enabled) {
+			pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
+			if (mode === "plan") {
+				pi.setThinkingLevel(PLAN_THINKING_LEVEL);
+			} else {
+				previousThinkingLevel = getBuildThinkingLevel();
+				pi.setThinkingLevel(previousThinkingLevel);
+			}
 		} else {
-			previousThinkingLevel = getBuildThinkingLevel();
-			pi.setThinkingLevel(previousThinkingLevel);
+			setAllToolsActive();
 		}
-		ctx.ui.setStatus(
-			"build-plan-mode",
-			mode === "plan"
-				? ctx.ui.theme.fg("warning", "⏸ plan")
-				: ctx.ui.theme.fg("success", "⚒ build"),
-		);
+		updateStatus(ctx);
 	});
 
 	pi.on("before_agent_start", async (event) => {
+		if (!enabled) return;
 		return {
 			systemPrompt:
 				event.systemPrompt + (mode === "plan" ? `\n\n${PLAN_INSTRUCTIONS}` : `\n\n${BUILD_INSTRUCTIONS}`),
@@ -241,7 +321,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", async (event) => {
-		if (mode !== "plan") return;
+		if (!enabled || mode !== "plan") return;
 
 		if (event.toolName === "edit" || event.toolName === "write") {
 			return {
