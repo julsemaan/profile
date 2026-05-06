@@ -10,7 +10,7 @@ USE_TTY=1
 MOUNT_HOME_PI=1
 
 # Extra npm packages to install and register as pi extensions.
-EXTRA_PI_PACKAGES=("pi-subagents")
+EXTRA_PI_PACKAGES=("pi-web-access")
 
 usage() {
   cat <<'USAGE'
