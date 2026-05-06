@@ -26,7 +26,7 @@ RUN /bin/bash -euo pipefail -c '\
 ARCH="$(dpkg --print-architecture)"; \
 case "$ARCH" in \
   amd64) KUBE_ARCH="amd64"; HELM_ARCH="amd64"; RG_ARCH="x86_64-unknown-linux-musl" ;; \
-  arm64) KUBE_ARCH="arm64"; HELM_ARCH="arm64"; RG_ARCH="aarch64-unknown-linux-musl" ;; \
+  arm64) KUBE_ARCH="arm64"; HELM_ARCH="arm64"; RG_ARCH="aarch64-unknown-linux-gnu" ;; \
   *) echo "Unsupported architecture for kubectl/helm/rg: $ARCH" >&2; exit 1 ;; \
 esac; \
 KUBE_VERSION="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"; \
