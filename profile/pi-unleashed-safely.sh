@@ -121,14 +121,13 @@ else
   REBUILD_DOCKER_ARG=""
 fi
 
+docker pull julsemaan/code-sandbox-img:latest
 docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" --build-arg PI_EXTRA_PACKAGES="$PI_EXTRA_PACKAGES" - <<'EOF'
 FROM julsemaan/code-sandbox-img:latest
 
 ARG PI_NPM_PACKAGE
 ARG PI_EXTRA_PACKAGES
 RUN npm i -g "$PI_NPM_PACKAGE"
-
-RUN apt-get update && apt-get install -y --no-install-recommends vim tmux ncurses-term xauth xclip xsel wl-clipboard && rm -rf /var/lib/apt/lists/*
 
 RUN if [ -n "$PI_EXTRA_PACKAGES" ]; then npm i -g $PI_EXTRA_PACKAGES; fi
 

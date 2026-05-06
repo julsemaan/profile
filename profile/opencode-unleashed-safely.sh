@@ -133,13 +133,12 @@ fi
 
 OPENCODE_NPM_PACKAGE="${OPENCODE_NPM_PACKAGE:-opencode-ai}"
 
+docker pull julsemaan/code-sandbox-img:latest
 docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg OPENCODE_NPM_PACKAGE="$OPENCODE_NPM_PACKAGE" - <<'EOF'
 FROM julsemaan/code-sandbox-img:latest
 
 ARG OPENCODE_NPM_PACKAGE
 RUN npm i -g "$OPENCODE_NPM_PACKAGE"
-
-RUN apt-get update && apt-get install -y --no-install-recommends vim tmux ncurses-term xauth xclip xsel wl-clipboard && rm -rf /var/lib/apt/lists/*
 
 ENV EDITOR=vim
 

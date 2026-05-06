@@ -5,6 +5,13 @@ RUN apt-get update \
     ca-certificates \
     curl \
     clang-format \
+    ncurses-term \
+    tmux \
+    vim \
+    wl-clipboard \
+    xauth \
+    xclip \
+    xsel \
  && rm -rf /var/lib/apt/lists/*
 
 RUN /bin/bash -euo pipefail -c '\
