@@ -95,7 +95,7 @@ else
 fi
 
 docker build $REBUILD_DOCKER_ARG -t "$IMAGE" - <<'EOF'
-FROM julsemaan/codex-dev-img:latest
+FROM julsemaan/code-sandbox-img:latest
 
 RUN npm i -g @openai/codex
 

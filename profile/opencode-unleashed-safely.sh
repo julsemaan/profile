@@ -134,7 +134,7 @@ fi
 OPENCODE_NPM_PACKAGE="${OPENCODE_NPM_PACKAGE:-opencode-ai}"
 
 docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg OPENCODE_NPM_PACKAGE="$OPENCODE_NPM_PACKAGE" - <<'EOF'
-FROM julsemaan/codex-dev-img:latest
+FROM julsemaan/code-sandbox-img:latest
 
 ARG OPENCODE_NPM_PACKAGE
 RUN npm i -g "$OPENCODE_NPM_PACKAGE"

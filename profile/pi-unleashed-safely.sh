@@ -122,7 +122,7 @@ else
 fi
 
 docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" --build-arg PI_EXTRA_PACKAGES="$PI_EXTRA_PACKAGES" - <<'EOF'
-FROM julsemaan/codex-dev-img:latest
+FROM julsemaan/code-sandbox-img:latest
 
 ARG PI_NPM_PACKAGE
 ARG PI_EXTRA_PACKAGES
