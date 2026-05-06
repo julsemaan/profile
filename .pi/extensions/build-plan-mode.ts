@@ -12,7 +12,6 @@ const BUILD_TOOLS = [
 	...PLAN_TOOLS,
 	"github_pr_review_reply",
 	"github_pr_comment_reply",
-	"review_feedback_subagent",
 	"edit",
 	"write",
 ];
