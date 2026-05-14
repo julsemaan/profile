@@ -99,6 +99,7 @@ add_alias gr 'git rebase'
 add_alias gm 'git merge'
 add_alias gs 'git status'
 add_alias gch 'git checkout'
+add_alias gautoreview 'git commit -m "[ai-review]" --allow-empty && gpush'
 
 gchjira() {
   local opt jira_url branch create_new=false
