@@ -525,6 +525,7 @@ define_keymap(re.compile("^org.gnome.Console$|^Kgx$|^deepin-terminal$|^Angry*IP*
 
 # Special overrides for terminals for shortcuts that conflict with General GUI block below.
 define_keymap(re.compile(termStr, re.IGNORECASE),{
+    K("C-Backspace"):             K("Alt-Shift-Backspace"), # Wordwise delete word left of cursor in terminals
     K("Alt-Backspace"):           K("Alt-Shift-Backspace"), # Wordwise delete word left of cursor in terminals
     K("Alt-Delete"):              [K("Esc"),K("d")],      # Wordwise delete word right of cursor in terminals
     K("RC-Backspace"):          K("C-u"),               # Wordwise delete line left of cursor in terminals
