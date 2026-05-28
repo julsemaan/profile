@@ -26,6 +26,10 @@
     "plan": {
       "mode": "primary",
       "model": "openai/gpt-high"
+    },
+    "update-bitbucket-pipe-pr": {
+      "mode": "subagent",
+      "model": "openai/gpt-balanced"
     }
   },
   "instructions": [],
@@ -95,6 +99,11 @@
       "template": "Run `go test ./...` and fix any test failures.",
       "description": "Run Go tests",
       "agent": "build"
+    },
+    "update-bitbucket-pipe-pr": {
+      "template": "$ARGUMENTS",
+      "description": "Create PRs to update a pipe image reference across Bitbucket repos. Example: update-bitbucket-pipe-pr repos: workspace/repo1, workspace/repo2 image: docker://...",
+      "agent": "update-bitbucket-pipe-pr"
     }
   },
   "provider": {
