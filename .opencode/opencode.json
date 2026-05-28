@@ -81,6 +81,11 @@
       "description": "Handle PR review feedback using the handle-pr-review-feedback agent",
       "agent": "build"
     },
+    "extract-feedback": {
+      "template": "Extract the feedback that is not yet addressed from $ARGUMENTS and put it in julsemaan-tmp/feedback.md",
+      "description": "Extract feedback from pull requests that is not yet addressed.",
+      "agent": "build"
+    },
     "plan": {
       "template": "$ARGUMENTS",
       "description": "Send prompt to plan agent",
