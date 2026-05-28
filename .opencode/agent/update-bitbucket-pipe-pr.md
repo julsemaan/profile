@@ -2,7 +2,7 @@
 description: >-
   Creates Bitbucket pull requests across multiple repositories to update a pipe
   image reference. Expects the list of repos and the new image reference to be
-  provided as context. Uses SSH key at /root/src/profile/id_rsa for git
+  provided as context. Uses SSH key id_rsa in the current directory for git
   operations and the bitbucket MCP server for pull request creation.
 mode: subagent
 model: openai/gpt-high
@@ -31,7 +31,7 @@ Pick a short unique branch name starting with the given branch prefix.
 
 ## Workflow for each repository
 
-1. Set up SSH: `eval $(ssh-agent -s)` then `ssh-add /root/src/profile/id_rsa`
+1. Use the key id_rsa in the current directory
 2. Clone the repo via SSH: `git clone git@bitbucket.org:<workspace>/<slug>.git`
 3. `cd` into the repo
 4. Create and switch to a new branch with a short unique name using the given prefix
