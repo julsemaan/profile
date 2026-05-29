@@ -26,6 +26,10 @@
     "plan": {
       "mode": "primary",
       "model": "openai/gpt-high"
+    },
+    "update-bitbucket-pipe-pr": {
+      "mode": "subagent",
+      "model": "openai/gpt-balanced"
     }
   },
   "instructions": [],
@@ -81,6 +85,11 @@
       "description": "Handle PR review feedback using the handle-pr-review-feedback agent",
       "agent": "build"
     },
+    "extract-feedback": {
+      "template": "Extract the feedback that is not yet addressed from $ARGUMENTS and put it in julsemaan-tmp/feedback.md",
+      "description": "Extract feedback from pull requests that is not yet addressed.",
+      "agent": "build"
+    },
     "plan": {
       "template": "$ARGUMENTS",
       "description": "Send prompt to plan agent",
@@ -90,6 +99,11 @@
       "template": "Run `go test ./...` and fix any test failures.",
       "description": "Run Go tests",
       "agent": "build"
+    },
+    "update-bitbucket-pipe-pr": {
+      "template": "$ARGUMENTS",
+      "description": "Create PRs to update a pipe image reference across Bitbucket repos. Example: update-bitbucket-pipe-pr repos: workspace/repo1, workspace/repo2 image: docker://...",
+      "agent": "update-bitbucket-pipe-pr"
     }
   },
   "provider": {

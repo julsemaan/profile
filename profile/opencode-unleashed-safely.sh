@@ -7,7 +7,9 @@ WORKDIR="$PWD"
 REBUILD=0
 USE_TTY=1
 SYSTEM_OPENCODE_CONFIG="/usr/local/etc/opencode/opencode.json"
+SYSTEM_OPENCODE_TUI_CONFIG="/usr/local/etc/opencode/tui.json"
 SYSTEM_OPENCODE_AGENT_DIR="/usr/local/etc/opencode/agent"
+SYSTEM_OPENCODE_PLUGIN_DIR="/usr/local/etc/opencode/plugins"
 
 usage() {
   cat <<'USAGE'
@@ -27,8 +29,12 @@ Environment:
                         Defaults to "opencode-ai".
   Config install        Copies /usr/local/etc/opencode/opencode.json to
                         ~/.config/opencode/opencode.json before launch,
-                        and copies /usr/local/etc/opencode/agent/*.md to
-                        ~/.config/opencode/agent/.
+                        copies /usr/local/etc/opencode/tui.json to
+                        ~/.config/opencode/tui.json, copies
+                        /usr/local/etc/opencode/agent/*.md to
+                        ~/.config/opencode/agent/, and copies
+                        /usr/local/etc/opencode/plugins/* to
+                        ~/.config/opencode/plugins/.
   Clipboard forwarding  Forwards terminal (TERM/TMUX/etc) and Wayland/X11
                         settings when available for clipboard integration.
 
@@ -110,7 +116,9 @@ CONTAINER_XDG_CACHE_HOME="${XDG_CACHE_HOME:-$CONTAINER_HOME/.cache}"
 CONTAINER_XDG_DATA_HOME="${XDG_DATA_HOME:-$CONTAINER_HOME/.local/share}"
 CONTAINER_XDG_STATE_HOME="${XDG_STATE_HOME:-$CONTAINER_HOME/.local/state}"
 HOST_OPENCODE_CONFIG_FILE="$HOST_OPENCODE_CONFIG/opencode.json"
+HOST_OPENCODE_TUI_CONFIG_FILE="$HOST_OPENCODE_CONFIG/tui.json"
 HOST_OPENCODE_AGENT_DIR="$HOST_OPENCODE_CONFIG/agent"
+HOST_OPENCODE_PLUGIN_DIR="$HOST_OPENCODE_CONFIG/plugins"
 
 if [[ ! -f "$SYSTEM_OPENCODE_CONFIG" ]]; then
   echo "Error: installed opencode config not found: $SYSTEM_OPENCODE_CONFIG" >&2
@@ -120,9 +128,18 @@ fi
 mkdir -p "$HOST_OPENCODE_HOME" "$HOST_OPENCODE_CONFIG" "$HOST_OPENCODE_CACHE" "$HOST_OPENCODE_DATA" "$HOST_OPENCODE_STATE"
 cp "$SYSTEM_OPENCODE_CONFIG" "$HOST_OPENCODE_CONFIG_FILE"
 
+if [[ -f "$SYSTEM_OPENCODE_TUI_CONFIG" ]]; then
+  cp "$SYSTEM_OPENCODE_TUI_CONFIG" "$HOST_OPENCODE_TUI_CONFIG_FILE"
+fi
+
 if [[ -d "$SYSTEM_OPENCODE_AGENT_DIR" ]]; then
   mkdir -p "$HOST_OPENCODE_AGENT_DIR"
   cp "$SYSTEM_OPENCODE_AGENT_DIR"/*.md "$HOST_OPENCODE_AGENT_DIR"/ 2>/dev/null || true
+fi
+
+if [[ -d "$SYSTEM_OPENCODE_PLUGIN_DIR" ]]; then
+  mkdir -p "$HOST_OPENCODE_PLUGIN_DIR"
+  cp "$SYSTEM_OPENCODE_PLUGIN_DIR"/* "$HOST_OPENCODE_PLUGIN_DIR"/ 2>/dev/null || true
 fi
 
 if [[ $REBUILD -eq 1 ]]; then
