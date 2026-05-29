@@ -133,38 +133,45 @@ RUN if [ -n "$PI_EXTRA_PACKAGES" ]; then npm i -g $PI_EXTRA_PACKAGES; fi
 
 ENV PI_EXTRA_PACKAGES "$PI_EXTRA_PACKAGES"
 
-RUN cat > /entrypoint.sh << 'ENTRYPOINT_SCRIPT'
-#!/bin/bash
-set -e
-
-# Ensure extra packages are registered in the runtime settings.json.
-# During image build, `pi install` wrote to root's settings, but at
-# runtime we use the host user's ~/.pi (bind-mounted), so we must
-# re-register the packages here.
-node -e "
-const fs = require('fs');
-const dir = process.env.PI_CODING_AGENT_DIR || (process.env.HOME + '/.pi/agent');
-const file = dir + '/settings.json';
-fs.mkdirSync(dir, { recursive: true });
-let settings = {};
-try { settings = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-if (!settings.packages) settings.packages = [];
-const extra = (process.env.PI_EXTRA_PACKAGES || '').trim();
-if (extra) {
-  extra.split(/\\s+/).forEach(pkg => {
-    const key = pkg.startsWith('npm:') ? pkg : 'npm:' + pkg;
-    if (!settings.packages.includes(key)) {
-      settings.packages.push(key);
-    }
-  });
-  fs.writeFileSync(file, JSON.stringify(settings, null, 2));
-}
-"
-
-exec pi "$@"
-ENTRYPOINT_SCRIPT
-
-RUN chmod +x /entrypoint.sh
+RUN printf '%s\n' \
+  '#!/bin/bash' \
+  'set -e' \
+  '' \
+  '# When ~/.pi is not bind-mounted from the host, auth.json may be mounted' \
+  '# into a temporary location. Copy it into the user-owned runtime directory' \
+  '# before touching sibling files like settings.json.' \
+  'if [ -n "${PI_AUTH_SOURCE:-}" ] && [ -f "$PI_AUTH_SOURCE" ]; then' \
+  '  mkdir -p "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"' \
+  '  cp "$PI_AUTH_SOURCE" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/auth.json"' \
+  'fi' \
+  '' \
+  '# Ensure extra packages are registered in the runtime settings.json.' \
+  '# During image build, `pi install` wrote to root'\''s settings, but at' \
+  '# runtime we use the host user'\''s ~/.pi (bind-mounted), so we must' \
+  '# re-register the packages here.' \
+  'node <<'\''NODE'\''' \
+  'const fs = require("fs");' \
+  'const dir = process.env.PI_CODING_AGENT_DIR || (process.env.HOME + "/.pi/agent");' \
+  'const file = dir + "/settings.json";' \
+  'fs.mkdirSync(dir, { recursive: true });' \
+  'let settings = {};' \
+  'try { settings = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}' \
+  'if (!settings.packages) settings.packages = [];' \
+  'const extra = (process.env.PI_EXTRA_PACKAGES || "").trim();' \
+  'if (extra) {' \
+  '  extra.split(/\\s+/).forEach(pkg => {' \
+  '    const key = pkg.startsWith("npm:") ? pkg : "npm:" + pkg;' \
+  '    if (!settings.packages.includes(key)) {' \
+  '      settings.packages.push(key);' \
+  '    }' \
+  '  });' \
+  '  fs.writeFileSync(file, JSON.stringify(settings, null, 2));' \
+  '}' \
+  'NODE' \
+  '' \
+  'exec pi "$@"' \
+  > /entrypoint.sh \
+ && chmod +x /entrypoint.sh
 
 ENV EDITOR=vim
 
@@ -211,12 +218,14 @@ done
 CLIPBOARD_DOCKER_FLAGS=()
 HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$(id -u),gid=$(id -g)")
 PI_HOME_DOCKER_FLAGS=()
+PI_RUNTIME_ENV_FLAGS=()
 
 if [[ $MOUNT_HOME_PI -eq 1 ]]; then
   PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
 elif [[ -f "$HOST_PI_AUTH" ]]; then
   PI_HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME/.pi:rw,exec,uid=$(id -u),gid=$(id -g)")
-  PI_HOME_DOCKER_FLAGS+=(-v "$HOST_PI_AUTH:$CONTAINER_HOME/.pi/agent/auth.json")
+  PI_HOME_DOCKER_FLAGS+=(-v "$HOST_PI_AUTH:/tmp/pi-auth.json:ro")
+  PI_RUNTIME_ENV_FLAGS=(-e PI_AUTH_SOURCE=/tmp/pi-auth.json)
 fi
 
 if [[ -n "${TMUX:-}" ]]; then
@@ -272,6 +281,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e HF_TOKEN \
   -e HUGGINGFACEHUB_API_TOKEN \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
+  "${PI_RUNTIME_ENV_FLAGS[@]}" \
   -e HOME="$CONTAINER_HOME" \
   -u "$(id -u):$(id -g)" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
