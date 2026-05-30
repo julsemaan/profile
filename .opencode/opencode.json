@@ -111,13 +111,21 @@
       "models": {
         "gpt-balanced": {
           "id": "gpt-5.4",
-          "name": "GPT Balanced"
+          "name": "GPT Balanced",
+          "limit": {
+            "context": 256000,
+            "output": 32768
+          }
         },
         "gpt-high": {
           "id": "gpt-5.4",
           "name": "GPT high",
           "options": {
             "reasoningEffort": "high"
+          },
+          "limit": {
+            "context": 256000,
+            "output": 32768
           }
         },
         "gpt-xhigh": {
@@ -125,8 +133,17 @@
           "name": "GPT xhigh",
           "options": {
             "reasoningEffort": "xhigh"
+          },
+          "limit": {
+            "context": 512000,
+            "output": 32768
           }
         }
+      },
+      "compaction": {
+        "auto": true,
+        "prune": true,
+        "reserved": 16000
       }
     }
   },
