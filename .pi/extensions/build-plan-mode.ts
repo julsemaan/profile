@@ -3,7 +3,14 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 type HarnessMode = "build" | "plan";
 type BuildPlanCommand = HarnessMode | "on" | "off" | "toggle" | "status";
-type BuildPlanState = { enabled?: boolean; mode?: HarnessMode; previousThinkingLevel?: ThinkingLevel };
+type ModelAlias = "custom/large" | "custom/medium";
+type ModelMap = Record<ModelAlias, string>;
+type BuildPlanState = {
+	enabled?: boolean;
+	mode?: HarnessMode;
+	previousThinkingLevel?: ThinkingLevel;
+	modelMap?: Partial<ModelMap>;
+};
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "todo"];
@@ -18,6 +25,11 @@ const BUILD_TOOLS = [
 const BUILD_DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 const PLAN_THINKING_LEVEL: ThinkingLevel = "high";
 const STATE_TYPE = "build-plan-mode";
+const MODEL_CONFIG_EVENT = "build-plan:model-config";
+const DEFAULT_MODEL_MAP: ModelMap = {
+	"custom/large": "openai-codex/gpt-5.4",
+	"custom/medium": "opencode/big-pickle",
+};
 
 const PLAN_INSTRUCTIONS = `
 IMPORTANT: You are in PLAN MODE.
@@ -89,7 +101,8 @@ function isPlanSafeCommand(command: string): boolean {
 
 	// Block common shell features that make allowlisting unreliable.
 	if (/[|&;><`$\\]/.test(trimmed)) return false;
-	if (/\b(sudo|rm|mv|cp|mkdir|rmdir|touch|chmod|chown|tee|xargs|kill|pkill|nohup|ssh|scp|sftp)\b/.test(trimmed)) return false;
+	if (/\b(sudo|rm|mv|cp|mkdir|rmdir|touch|chmod|chown|tee|xargs|kill|pkill|nohup|ssh|scp|sftp)\b/.test(trimmed))
+		return false;
 	if (/\b(npm|pnpm|yarn|bun|pip|cargo|make)\b/.test(trimmed) && !/\b(list|ls|why|info|outdated)\b/.test(trimmed)) {
 		return false;
 	}
@@ -114,13 +127,28 @@ function isPlanSafeCommand(command: string): boolean {
 	return allowed.some((pattern) => pattern.test(trimmed));
 }
 
+function parseModelRef(modelRef: string): { provider: string; modelId: string } | undefined {
+	const trimmed = modelRef.trim();
+	const slashIndex = trimmed.indexOf("/");
+	if (slashIndex <= 0 || slashIndex === trimmed.length - 1) return undefined;
+	return {
+		provider: trimmed.slice(0, slashIndex),
+		modelId: trimmed.slice(slashIndex + 1),
+	};
+}
+
 export default function buildPlanMode(pi: ExtensionAPI) {
 	let enabled = true;
 	let mode: HarnessMode = "build";
 	let previousThinkingLevel: ThinkingLevel | undefined;
+	let modelMap: ModelMap = { ...DEFAULT_MODEL_MAP };
 
 	function persistMode() {
-		pi.appendEntry(STATE_TYPE, { enabled, mode, previousThinkingLevel });
+		pi.appendEntry(STATE_TYPE, { enabled, mode, previousThinkingLevel, modelMap });
+	}
+
+	function emitModelConfig() {
+		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
 	}
 
 	function getBuildThinkingLevel(): ThinkingLevel {
@@ -142,11 +170,27 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		);
 	}
 
-	function applyMode(nextMode: HarnessMode, ctx: ExtensionContext, notify = true) {
+	async function setSessionModel(alias: ModelAlias, ctx: ExtensionContext, notifyOnFailure = true) {
+		const target = modelMap[alias];
+		const parsed = parseModelRef(target);
+		if (!parsed) {
+			if (notifyOnFailure) ctx.ui.notify(`Invalid model mapping for ${alias}: ${target}`, "warning");
+			return;
+		}
+
+		const model = ctx.modelRegistry.find(parsed.provider, parsed.modelId);
+		if (!model) {
+			if (notifyOnFailure) ctx.ui.notify(`Model ${target} not found for ${alias}`, "warning");
+			return;
+		}
+
+		const success = await pi.setModel(model);
+		if (!success && notifyOnFailure) ctx.ui.notify(`No API key available for ${target}`, "warning");
+	}
+
+	async function applyMode(nextMode: HarnessMode, ctx: ExtensionContext, notify = true) {
 		if (nextMode === "plan") {
-			if (mode !== "plan") {
-				previousThinkingLevel = pi.getThinkingLevel() as ThinkingLevel;
-			}
+			if (mode !== "plan") previousThinkingLevel = pi.getThinkingLevel() as ThinkingLevel;
 			pi.setThinkingLevel(PLAN_THINKING_LEVEL);
 		} else if (mode === "plan") {
 			previousThinkingLevel = getBuildThinkingLevel();
@@ -155,19 +199,21 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 		mode = nextMode;
 		pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
+		emitModelConfig();
+		await setSessionModel(mode === "plan" ? "custom/large" : "custom/medium", ctx);
 		updateStatus(ctx);
 		if (notify) {
 			ctx.ui.notify(
 				mode === "plan"
-					? `Switched to plan mode (thinking: ${PLAN_THINKING_LEVEL})`
-					: `Switched to build mode (thinking: ${getBuildThinkingLevel()})`,
+					? `Switched to plan mode (${modelMap["custom/large"]}; thinking: ${PLAN_THINKING_LEVEL})`
+					: `Switched to build mode (${modelMap["custom/medium"]}; thinking: ${getBuildThinkingLevel()})`,
 				"info",
 			);
 		}
 		persistMode();
 	}
 
-	function setEnabled(nextEnabled: boolean, ctx: ExtensionContext, notify = true) {
+	async function setEnabled(nextEnabled: boolean, ctx: ExtensionContext, notify = true) {
 		if (enabled === nextEnabled) {
 			updateStatus(ctx);
 			if (notify) ctx.ui.notify(`Build+plan mode is already ${enabled ? "on" : "off"}.`, "info");
@@ -177,7 +223,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 		enabled = nextEnabled;
 		if (enabled) {
-			applyMode(mode, ctx, false);
+			await applyMode(mode, ctx, false);
 		} else {
 			if (mode === "plan") pi.setThinkingLevel(getBuildThinkingLevel());
 			setAllToolsActive();
@@ -190,16 +236,16 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.registerCommand("plan", {
 		description: "Enable build+plan mode and switch to read-only planning mode",
 		handler: async (_args, ctx) => {
-			if (!enabled) setEnabled(true, ctx, false);
-			applyMode("plan", ctx);
+			if (!enabled) await setEnabled(true, ctx, false);
+			else await applyMode("plan", ctx);
 		},
 	});
 
 	pi.registerCommand("build", {
 		description: "Enable build+plan mode and switch to implementation mode",
 		handler: async (_args, ctx) => {
-			if (!enabled) setEnabled(true, ctx, false);
-			applyMode("build", ctx);
+			if (!enabled) await setEnabled(true, ctx, false);
+			else await applyMode("build", ctx);
 		},
 	});
 
@@ -233,6 +279,38 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("large-model", {
+		description: "Show or set model behind custom/large",
+		handler: async (args, ctx) => {
+			const next = args.trim();
+			if (!next) {
+				ctx.ui.notify(`custom/large -> ${modelMap["custom/large"]}`, "info");
+				return;
+			}
+			modelMap = { ...modelMap, "custom/large": next };
+			emitModelConfig();
+			persistMode();
+			if (enabled && mode === "plan") await setSessionModel("custom/large", ctx);
+			ctx.ui.notify(`custom/large -> ${modelMap["custom/large"]}`, "info");
+		},
+	});
+
+	pi.registerCommand("medium-model", {
+		description: "Show or set model behind custom/medium",
+		handler: async (args, ctx) => {
+			const next = args.trim();
+			if (!next) {
+				ctx.ui.notify(`custom/medium -> ${modelMap["custom/medium"]}`, "info");
+				return;
+			}
+			modelMap = { ...modelMap, "custom/medium": next };
+			emitModelConfig();
+			persistMode();
+			if (enabled && mode === "build") await setSessionModel("custom/medium", ctx);
+			ctx.ui.notify(`custom/medium -> ${modelMap["custom/medium"]}`, "info");
+		},
+	});
+
 	pi.registerCommand("mode", {
 		description: "Show or set current mode (build|plan|toggle)",
 		handler: async (args, ctx) => {
@@ -242,38 +320,38 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				return;
 			}
 			if (next === "toggle") {
-				if (!enabled) setEnabled(true, ctx, false);
-				applyMode(mode === "plan" ? "build" : "plan", ctx);
+				if (!enabled) await setEnabled(true, ctx, false);
+				else await applyMode(mode === "plan" ? "build" : "plan", ctx);
 				return;
 			}
 			if (next !== "build" && next !== "plan") {
 				ctx.ui.notify('Usage: /mode build, /mode plan, or /mode toggle', "warning");
 				return;
 			}
-			if (!enabled) setEnabled(true, ctx, false);
-			applyMode(next, ctx);
+			if (!enabled) await setEnabled(true, ctx, false);
+			else await applyMode(next, ctx);
 		},
 	});
 
 	pi.registerCommand("build-plan", {
 		description: "Toggle build+plan top-level behavior (on|off|toggle|status|build|plan)",
 		handler: async (args, ctx) => {
-			const next = ((args.trim().toLowerCase() || "toggle") as BuildPlanCommand);
+			const next = (args.trim().toLowerCase() || "toggle") as BuildPlanCommand;
 			if (next === "status") {
 				ctx.ui.notify(`Build+plan: ${enabled ? "on" : "off"}; current mode: ${mode}`, "info");
 				return;
 			}
 			if (next === "toggle") {
-				setEnabled(!enabled, ctx);
+				await setEnabled(!enabled, ctx);
 				return;
 			}
 			if (next === "on" || next === "off") {
-				setEnabled(next === "on", ctx);
+				await setEnabled(next === "on", ctx);
 				return;
 			}
 			if (next === "build" || next === "plan") {
-				if (!enabled) setEnabled(true, ctx, false);
-				applyMode(next, ctx);
+				if (!enabled) await setEnabled(true, ctx, false);
+				else await applyMode(next, ctx);
 				return;
 			}
 			ctx.ui.notify('Usage: /build-plan [on|off|toggle|status|build|plan]', "warning");
@@ -283,8 +361,8 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.registerShortcut("ctrl+shift+p", {
 		description: "Toggle build/plan mode",
 		handler: async (ctx) => {
-			if (!enabled) setEnabled(true, ctx, false);
-			applyMode(mode === "plan" ? "build" : "plan", ctx);
+			if (!enabled) await setEnabled(true, ctx, false);
+			else await applyMode(mode === "plan" ? "build" : "plan", ctx);
 		},
 	});
 
@@ -297,13 +375,20 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		enabled = lastState?.data?.enabled !== false;
 		mode = lastState?.data?.mode === "plan" ? "plan" : "build";
 		previousThinkingLevel = lastState?.data?.previousThinkingLevel;
+		modelMap = {
+			...DEFAULT_MODEL_MAP,
+			...(lastState?.data?.modelMap ?? {}),
+		};
+		emitModelConfig();
 		if (enabled) {
 			pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
 			if (mode === "plan") {
 				pi.setThinkingLevel(PLAN_THINKING_LEVEL);
+				await setSessionModel("custom/large", ctx, false);
 			} else {
 				previousThinkingLevel = getBuildThinkingLevel();
 				pi.setThinkingLevel(previousThinkingLevel);
+				await setSessionModel("custom/medium", ctx, false);
 			}
 		} else {
 			setAllToolsActive();

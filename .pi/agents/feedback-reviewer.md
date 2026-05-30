@@ -1,6 +1,7 @@
 ---
 name: feedback-reviewer
 description: "Review feedback items and recommend action (fix/reply/clarify/decline). Read-only access."
+model: custom/large
 tools: read, grep, find, ls
 ---
 

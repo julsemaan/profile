@@ -238,6 +238,7 @@ type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 async function runSingleAgent(
 	defaultCwd: string,
 	agents: AgentConfig[],
+	modelMap: Record<string, string>,
 	agentName: string,
 	task: string,
 	cwd: string | undefined,
@@ -263,7 +264,8 @@ async function runSingleAgent(
 	}
 
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
-	if (agent.model) args.push("--model", agent.model);
+	const resolvedModel = agent.model ? modelMap[agent.model] ?? agent.model : undefined;
+	if (resolvedModel) args.push("--model", resolvedModel);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
 
 	let tmpPromptDir: string | null = null;
@@ -277,7 +279,7 @@ async function runSingleAgent(
 		messages: [],
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-		model: agent.model,
+		model: resolvedModel,
 		step,
 	};
 
@@ -429,6 +431,14 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
+	let modelMap: Record<string, string> = {};
+	pi.events.on("build-plan:model-config", (data) => {
+		if (!data || typeof data !== "object") return;
+		modelMap = Object.fromEntries(
+			Object.entries(data as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+		);
+	});
+
 	pi.registerTool({
 		name: "subagent",
 		label: "Subagent",
@@ -524,6 +534,7 @@ export default function (pi: ExtensionAPI) {
 					const result = await runSingleAgent(
 						ctx.cwd,
 						agents,
+						modelMap,
 						step.agent,
 						taskWithContext,
 						step.cwd,
@@ -598,6 +609,7 @@ export default function (pi: ExtensionAPI) {
 					const result = await runSingleAgent(
 						ctx.cwd,
 						agents,
+						modelMap,
 						t.agent,
 						t.task,
 						t.cwd,
@@ -638,6 +650,7 @@ export default function (pi: ExtensionAPI) {
 				const result = await runSingleAgent(
 					ctx.cwd,
 					agents,
+					modelMap,
 					params.agent,
 					params.task,
 					params.cwd,

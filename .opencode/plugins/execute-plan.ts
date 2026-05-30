@@ -51,10 +51,15 @@ async function getSession(
 
 async function createSession(
   client: Parameters<TuiPlugin>[0]["client"],
-  directory?: string,
-  workspaceID?: string,
+  options: {
+    directory?: string
+    parentID?: string
+    title?: string
+    workspaceID?: string
+  },
 ): Promise<Session> {
-  const result = await client.session.create({ directory, workspaceID }, { throwOnError: true })
+  const { directory, parentID, title, workspaceID } = options
+  const result = await client.session.create({ directory, parentID, title, workspaceID }, { throwOnError: true })
   return result.data
 }
 
@@ -76,7 +81,7 @@ async function waitForAssistantReply(
     if (assistantMessages.length > previousAssistantCount) {
       const latest = assistantMessages[assistantMessages.length - 1]
       const text = getMessageText(latest)
-      if (text) return text
+      if (text && latest.time.completed) return text
     }
 
     await new Promise((resolve) => setTimeout(resolve, pollMs))
@@ -109,27 +114,41 @@ export const tui: TuiPlugin = async (api) => {
         message: "Requesting a final consolidated plan from the current session.",
       })
 
-      await api.client.session.promptAsync(
+      await api.client.session.prompt(
         {
           sessionID,
           directory,
+          agent: "plan",
           parts: [{ type: "text", text: buildFinalizePlanPrompt(rawArguments) }],
         },
         { throwOnError: true },
       )
 
       const plan = await waitForAssistantReply(api.client, sessionID, previousAssistantCount, directory)
-      const nextSession = await createSession(api.client, directory, currentSession.workspaceID)
-      await api.client.session.promptAsync(
-        {
+      const nextSession = await createSession(api.client, {
+        directory,
+        parentID: currentSession.id,
+        title: "Execute finalized plan",
+        workspaceID: currentSession.workspaceID,
+      })
+      void api.client.session
+        .prompt({
           sessionID: nextSession.id,
           directory,
+          agent: "build",
           parts: [{ type: "text", text: buildExecutionPrompt(plan, rawArguments) }],
-        },
-        { throwOnError: true },
-      )
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error)
+          api.ui.toast({
+            variant: "error",
+            message: `Failed to hand off finalized plan: ${message}`,
+          })
+        })
 
-      api.route.navigate("session", { sessionID: nextSession.id })
+      setTimeout(() => {
+        api.route.navigate("session", { sessionID: nextSession.id })
+      }, 50)
       api.ui.toast({
         variant: "success",
         message: "Started a fresh session from a finalized plan.",

@@ -1,6 +1,10 @@
 {
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.4",
+  "enabledModels": [
+    "openai-codex/gpt-5.4",
+    "opencode/big-pickle"
+  ],
   "compaction": {
     "enabled": true
   }

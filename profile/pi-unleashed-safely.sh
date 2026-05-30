@@ -10,7 +10,9 @@ USE_TTY=1
 MOUNT_HOME_PI=1
 
 # Extra npm packages to install and register as pi extensions.
-EXTRA_PI_PACKAGES=("pi-web-access")
+# `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
+# so install it explicitly to keep the extension loadable.
+EXTRA_PI_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui")
 
 usage() {
   cat <<'USAGE'
@@ -109,7 +111,11 @@ HOST_PI_HOME="$HOME/.pi"
 HOST_PI_AUTH="$HOST_PI_HOME/agent/auth.json"
 CONTAINER_HOME="$HOME"
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@mariozechner/pi-coding-agent}"
-PI_EXTRA_PACKAGES="$(printf '%s ' "${EXTRA_PI_PACKAGES[@]}")"
+PI_UNLEASHED_EXTRA_PACKAGES_JSON="[]"
+if [[ ${#EXTRA_PI_PACKAGES[@]} -gt 0 ]]; then
+  PI_UNLEASHED_EXTRA_PACKAGES_JSON="[$(printf '"npm:%s",' "${EXTRA_PI_PACKAGES[@]}") ]"
+  PI_UNLEASHED_EXTRA_PACKAGES_JSON="${PI_UNLEASHED_EXTRA_PACKAGES_JSON/, ]/]}"
+fi
 
 if [[ $MOUNT_HOME_PI -eq 1 ]]; then
   mkdir -p "$HOST_PI_HOME"
@@ -122,16 +128,16 @@ else
 fi
 
 docker pull julsemaan/code-sandbox-img:latest
-docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" --build-arg PI_EXTRA_PACKAGES="$PI_EXTRA_PACKAGES" - <<'EOF'
+docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" --build-arg PI_EXTRA_PACKAGES_JSON="$PI_UNLEASHED_EXTRA_PACKAGES_JSON" - <<'EOF'
 FROM julsemaan/code-sandbox-img:latest
 
 ARG PI_NPM_PACKAGE
-ARG PI_EXTRA_PACKAGES
+ARG PI_EXTRA_PACKAGES_JSON
 RUN npm i -g "$PI_NPM_PACKAGE"
 
-RUN if [ -n "$PI_EXTRA_PACKAGES" ]; then npm i -g $PI_EXTRA_PACKAGES; fi
+RUN node -e 'const pkgs = JSON.parse(process.env.PI_EXTRA_PACKAGES_JSON || "[]"); if (pkgs.length) require("child_process").execFileSync("npm", ["i", "-g", ...pkgs.map(pkg => pkg.replace(/^npm:/, ""))], { stdio: "inherit" });'
 
-ENV PI_EXTRA_PACKAGES "$PI_EXTRA_PACKAGES"
+ENV PI_UNLEASHED_EXTRA_PACKAGES_JSON "$PI_EXTRA_PACKAGES_JSON"
 
 RUN printf '%s\n' \
   '#!/bin/bash' \
@@ -156,17 +162,29 @@ RUN printf '%s\n' \
   'fs.mkdirSync(dir, { recursive: true });' \
   'let settings = {};' \
   'try { settings = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}' \
-  'if (!settings.packages) settings.packages = [];' \
-  'const extra = (process.env.PI_EXTRA_PACKAGES || "").trim();' \
-  'if (extra) {' \
-  '  extra.split(/\\s+/).forEach(pkg => {' \
-  '    const key = pkg.startsWith("npm:") ? pkg : "npm:" + pkg;' \
-  '    if (!settings.packages.includes(key)) {' \
-  '      settings.packages.push(key);' \
-  '    }' \
-  '  });' \
-  '  fs.writeFileSync(file, JSON.stringify(settings, null, 2));' \
+  'const managedPackages = JSON.parse(process.env.PI_UNLEASHED_EXTRA_PACKAGES_JSON || "[]");' \
+  'const normalizeStringPackageEntry = entry => entry.split(/\\s+/).filter(Boolean).map(pkg => pkg.startsWith("npm:") ? pkg : "npm:" + pkg);' \
+  'const normalizedPackages = [];' \
+  'const seen = new Set();' \
+  'const addPackage = entry => {' \
+  '  const key = typeof entry === "string" ? entry : JSON.stringify(entry);' \
+  '  if (!seen.has(key)) {' \
+  '    seen.add(key);' \
+  '    normalizedPackages.push(entry);' \
+  '  }' \
+  '};' \
+  'for (const entry of Array.isArray(settings.packages) ? settings.packages : []) {' \
+  '  if (typeof entry === "string") {' \
+  '    normalizeStringPackageEntry(entry.trim()).forEach(addPackage);' \
+  '    continue;' \
+  '  }' \
+  '  if (entry && typeof entry === "object" && typeof entry.source === "string") {' \
+  '    addPackage({ ...entry, source: entry.source.trim() });' \
+  '  }' \
   '}' \
+  'managedPackages.forEach(addPackage);' \
+  'settings.packages = normalizedPackages;' \
+  'fs.writeFileSync(file, JSON.stringify(settings, null, 2));' \
   'NODE' \
   '' \
   'exec pi "$@"' \
