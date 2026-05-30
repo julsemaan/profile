@@ -1,5 +1,7 @@
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { AutocompleteItem } from "@mariozechner/pi-tui";
+import { fuzzyFilter } from "@mariozechner/pi-tui";
 
 type HarnessMode = "build" | "plan";
 type BuildPlanCommand = HarnessMode | "on" | "off" | "toggle" | "status";
@@ -21,6 +23,7 @@ const BUILD_TOOLS = [
 	"github_pr_comment_reply",
 	"edit",
 	"write",
+	"subagent",
 ];
 const BUILD_DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 const PLAN_THINKING_LEVEL: ThinkingLevel = "high";
@@ -28,7 +31,7 @@ const STATE_TYPE = "build-plan-mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
 const DEFAULT_MODEL_MAP: ModelMap = {
 	"custom/large": "openai-codex/gpt-5.4",
-	"custom/medium": "opencode/big-pickle",
+	"custom/medium": "openai-codex/gpt-5.4",
 };
 
 const PLAN_INSTRUCTIONS = `
@@ -142,6 +145,13 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	let mode: HarnessMode = "build";
 	let previousThinkingLevel: ThinkingLevel | undefined;
 	let modelMap: ModelMap = { ...DEFAULT_MODEL_MAP };
+	let currentModelRegistry: any;
+
+	// Emit model config early so subagent tool can resolve aliases even in --no-session mode.
+	// This ensures nested subagent calls (e.g. orchestrator → worker) resolve correctly.
+	process.nextTick(() => {
+		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
+	});
 
 	function persistMode() {
 		pi.appendEntry(STATE_TYPE, { enabled, mode, previousThinkingLevel, modelMap });
@@ -233,6 +243,41 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		if (notify) ctx.ui.notify(`Build+plan mode ${enabled ? "enabled" : "disabled"}.`, "info");
 	}
 
+	function getModelArgumentCompletions(prefix: string, alias: ModelAlias): AutocompleteItem[] | null {
+		if (!currentModelRegistry) return null;
+		currentModelRegistry.refresh();
+		const models = currentModelRegistry.getAvailable();
+		if (!models || models.length === 0) return null;
+
+		const items = models.map((m: any) => ({
+			id: m.id,
+			provider: m.provider,
+			label: `${m.provider}/${m.id}`,
+		}));
+
+		// Include current alias value even if not in available list
+		const currentValue = modelMap[alias];
+		if (currentValue && !items.some((item: any) => item.label === currentValue)) {
+			const parsed = parseModelRef(currentValue);
+			if (parsed) {
+				items.unshift({
+					id: parsed.modelId,
+					provider: parsed.provider,
+					label: currentValue,
+				});
+			}
+		}
+
+		const filtered = fuzzyFilter(items, prefix, (item: any) => `${item.id} ${item.provider}`);
+		if (filtered.length === 0) return null;
+
+		return filtered.map((item: any) => ({
+			value: item.label,
+			label: item.id,
+			description: item.provider,
+		}));
+	}
+
 	pi.registerCommand("plan", {
 		description: "Enable build+plan mode and switch to read-only planning mode",
 		handler: async (_args, ctx) => {
@@ -281,6 +326,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	pi.registerCommand("large-model", {
 		description: "Show or set model behind custom/large",
+		getArgumentCompletions: (prefix: string) => getModelArgumentCompletions(prefix, "custom/large"),
 		handler: async (args, ctx) => {
 			const next = args.trim();
 			if (!next) {
@@ -297,6 +343,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	pi.registerCommand("medium-model", {
 		description: "Show or set model behind custom/medium",
+		getArgumentCompletions: (prefix: string) => getModelArgumentCompletions(prefix, "custom/medium"),
 		handler: async (args, ctx) => {
 			const next = args.trim();
 			if (!next) {
@@ -379,6 +426,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			...DEFAULT_MODEL_MAP,
 			...(lastState?.data?.modelMap ?? {}),
 		};
+		currentModelRegistry = ctx.modelRegistry;
 		emitModelConfig();
 		if (enabled) {
 			pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
