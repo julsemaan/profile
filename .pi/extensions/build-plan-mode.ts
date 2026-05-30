@@ -31,7 +31,7 @@ const STATE_TYPE = "build-plan-mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
 const DEFAULT_MODEL_MAP: ModelMap = {
 	"custom/large": "openai-codex/gpt-5.4",
-	"custom/medium": "openai-codex/gpt-5.4",
+	"custom/medium": "opencode/big-pickle",
 };
 
 const PLAN_INSTRUCTIONS = `
@@ -163,6 +163,20 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	function getBuildThinkingLevel(): ThinkingLevel {
 		return previousThinkingLevel ?? BUILD_DEFAULT_THINKING_LEVEL;
+	}
+
+	async function updateModelMap(nextModelMap: Partial<ModelMap>, ctx: ExtensionContext, notify: string) {
+		modelMap = { ...modelMap, ...nextModelMap };
+		emitModelConfig();
+		persistMode();
+		if (enabled) {
+			const activeAlias = mode === "plan" ? "custom/large" : "custom/medium";
+			if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
+		}
+		ctx.ui.notify(
+			`${notify}\ncustom/large -> ${modelMap["custom/large"]}\ncustom/medium -> ${modelMap["custom/medium"]}`,
+			"info",
+		);
 	}
 
 	function setAllToolsActive() {
@@ -333,11 +347,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				ctx.ui.notify(`custom/large -> ${modelMap["custom/large"]}`, "info");
 				return;
 			}
-			modelMap = { ...modelMap, "custom/large": next };
-			emitModelConfig();
-			persistMode();
-			if (enabled && mode === "plan") await setSessionModel("custom/large", ctx);
-			ctx.ui.notify(`custom/large -> ${modelMap["custom/large"]}`, "info");
+			await updateModelMap({ "custom/large": next }, ctx, "Updated model alias.");
 		},
 	});
 
@@ -350,11 +360,37 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				ctx.ui.notify(`custom/medium -> ${modelMap["custom/medium"]}`, "info");
 				return;
 			}
-			modelMap = { ...modelMap, "custom/medium": next };
-			emitModelConfig();
-			persistMode();
-			if (enabled && mode === "build") await setSessionModel("custom/medium", ctx);
-			ctx.ui.notify(`custom/medium -> ${modelMap["custom/medium"]}`, "info");
+			await updateModelMap({ "custom/medium": next }, ctx, "Updated model alias.");
+		},
+	});
+
+	pi.registerCommand("model-profile", {
+		description: "Set model alias profile (pub|priv)",
+		handler: async (args, ctx) => {
+			const profile = args.trim().toLowerCase();
+			if (profile === "pub") {
+				await updateModelMap(
+					{
+						"custom/large": "openai-codex/gpt-5.4",
+						"custom/medium": "opencode/big-pickle",
+					},
+					ctx,
+					"Applied model profile: pub.",
+				);
+				return;
+			}
+			if (profile === "priv") {
+				await updateModelMap(
+					{
+						"custom/large": "openai-codex/gpt-5.4",
+						"custom/medium": "openai-codex/gpt-5.4",
+					},
+					ctx,
+					"Applied model profile: priv.",
+				);
+				return;
+			}
+			ctx.ui.notify("Usage: /model-profile pub|priv", "warning");
 		},
 	});
 

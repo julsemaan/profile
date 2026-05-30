@@ -1,0 +1,1 @@
+- Allow to set the priv/pub mode via a file in julsemaan-tmp/
