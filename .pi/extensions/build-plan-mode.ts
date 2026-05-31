@@ -465,6 +465,21 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerShortcut("ctrl+;", {
+		description: "Cycle model profile (pub/priv)",
+		handler: async (ctx) => {
+			const profiles = Object.keys(MODEL_PROFILE_MAPS) as Exclude<ModelProfile, "custom">[];
+			const current = getCurrentModelProfile(modelMap);
+			const idx = profiles.indexOf(current as Exclude<ModelProfile, "custom">);
+			const next = idx === -1 || idx >= profiles.length - 1 ? profiles[0] : profiles[idx + 1];
+			await updateModelMap(
+				{ ...MODEL_PROFILE_MAPS[next] },
+				ctx,
+				`Cycled to model profile: ${next}.`,
+			);
+		},
+	});
+
 	pi.on("session_start", async (_event, ctx) => {
 		const entries = ctx.sessionManager.getEntries();
 		const lastState = entries
