@@ -45,6 +45,8 @@ IMPORTANT: You must use the todo tool to track every task.
   - beginning a new task
   - changing plan or scope
   - completing meaningful work
+- Build/implementation work must begin with a clear, multi-step todo list, not one vague item.
+  Structure work into concrete phases: inspect (gather information), implement (make changes), validate (verify correctness), follow-up (handle edge cases).
 - Todo use is required for task tracking, but it does not need to immediately precede every tool call.
 - Before using tools for a new task, ensure at least one relevant todo exists.
 `;
@@ -105,9 +107,25 @@ export default function todoExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event) => {
-		return {
+		const hasActiveTodos = todos.some((todo) => !todo.done);
+
+		const result: {
+			systemPrompt?: string;
+			message?: { customType: string; content: string; display: boolean };
+		} = {
 			systemPrompt: event.systemPrompt + `\n\n${TODO_ENFORCEMENT_INSTRUCTIONS}`,
 		};
+
+		if (!hasActiveTodos) {
+			result.message = {
+				customType: "todo-nudge",
+				content:
+					"Your first move: create an ordered, multi-step todo list breaking the request into concrete phases (inspect, implement, validate, follow-up). If the request is unclear, ask clarifying questions via questionnaire before writing the todo breakdown.",
+				display: false,
+			};
+		}
+
+		return result;
 	});
 
 	pi.on("tool_call", async (event) => {

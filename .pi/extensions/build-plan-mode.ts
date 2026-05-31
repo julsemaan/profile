@@ -72,6 +72,7 @@ IMPORTANT: You are in BUILD MODE.
 - Read files before editing them.
 - After making changes, validate them when practical.
 - Summarize what changed and any follow-up work.
+- Start by creating a clear, multi-step todo list from the request or plan before any other work.
 `;
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
