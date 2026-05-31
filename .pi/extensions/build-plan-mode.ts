@@ -4,8 +4,13 @@ import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { fuzzyFilter } from "@mariozechner/pi-tui";
 import * as fs from "fs";
 import * as path from "path";
+import {
+	discoverModes,
+	type ModeConfig,
+	type ModeRegistry,
+	type ThinkingLevel,
+} from "./modes.js";
 
-type HarnessMode = "build" | "plan";
 type ModelAlias = "custom/large" | "custom/medium";
 type AliasConfig = { model: string; thinkingLevel: ThinkingLevel };
 type ModelMap = Record<ModelAlias, AliasConfig>;
@@ -30,50 +35,17 @@ const MODEL_PROFILES: Record<Exclude<ModelProfile, "custom">, ModelProfileConfig
 	},
 };
 
-type BuildPlanState = {
-	mode?: HarnessMode;
+type AppState = {
+	mode?: string;
 	profile?: ModelProfile;
 	modelMap?: Partial<ModelMap>;
 };
-type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
-type ScopedModelSelection = { provider: string; modelId: string; thinkingLevel?: ThinkingLevel };
 
-const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "todo"];
-const PLAN_TOOLS = [...READ_ONLY_TOOLS, "github_pr_review_fetch"];
-const BUILD_TOOLS = [
-	...PLAN_TOOLS,
-	"github_pr_review_reply",
-	"github_pr_comment_reply",
-	"edit",
-	"write",
-	"subagent",
-];
 const STATE_TYPE = "build-plan-mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
 const FILE_OVERRIDE_RELPATH = "julsemaan-tmp/model-profile";
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv.modelMap);
-
-const PLAN_INSTRUCTIONS = `
-IMPORTANT: You are in PLAN MODE.
-- Do not modify files.
-- Use tools only to inspect the codebase and gather evidence.
-- You may look up online resources and documentation using bash with read-only network commands like curl.
-- Think through architecture, edge cases, risks, and tests.
-- If requirements are ambiguous, ask clarifying questions.
-- End with a concrete implementation plan.
-- Prefer a numbered plan with files to change and validation steps.
-`;
-
-const BUILD_INSTRUCTIONS = `
-IMPORTANT: You are in BUILD MODE.
-- You may edit files and implement the requested changes.
-- You may look up online resources and documentation using bash when helpful.
-- Keep changes focused and minimal.
-- Read files before editing them.
-- After making changes, validate them when practical.
-- Summarize what changed and any follow-up work.
-- Start by creating a clear, multi-step todo list from the request or plan before any other work.
-`;
+const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "todo"];
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
 	return (
@@ -118,7 +90,7 @@ function buildExecutionPrompt(plan: string, extraInstructions?: string): string 
 		.join("\n\n");
 }
 
-function isPlanSafeCommand(command: string): boolean {
+function isSafeBashCommand(command: string): boolean {
 	const trimmed = command.trim();
 	if (!trimmed) return false;
 
@@ -223,20 +195,38 @@ function getCurrentProfile(modelMap: ModelMap): ModelProfile {
 	return "custom";
 }
 
+function getActiveAlias(modeConfig: ModeConfig): ModelAlias {
+	// If mode config specifies a model that looks like an alias, use it
+	if (modeConfig.model === "custom/large" || modeConfig.model === "custom/medium") {
+		return modeConfig.model;
+	}
+	// Fall back: read-only modes use custom/large, build modes use custom/medium
+	return modeConfig.access === "read-only" ? "custom/large" : "custom/medium";
+}
+
 export default function buildPlanMode(pi: ExtensionAPI) {
-	let mode: HarnessMode = "build";
+	let mode: string = "build";
+	let modeRegistry: ModeRegistry = {
+		byName: new Map(),
+		byCommand: new Map(),
+		warnings: [],
+		builtinNames: new Set(),
+	};
 	let modelMap: ModelMap = structuredClone(DEFAULT_MODEL_MAP);
 	let currentModelRegistry: any;
 	let fileOverridePath: string | null = null;
 	let fileOverrideProfile: Exclude<ModelProfile, "custom"> | null = null;
 
+	function getActiveModeConfig(): ModeConfig | undefined {
+		return modeRegistry.byName.get(mode);
+	}
+
 	// Emit model config early so subagent tool can resolve aliases even in --no-session mode.
-	// This ensures nested subagent calls (e.g. orchestrator → worker) resolve correctly.
 	process.nextTick(() => {
 		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
 	});
 
-	function persistMode() {
+	function persistState() {
 		const profile = getCurrentProfile(modelMap);
 		pi.appendEntry(STATE_TYPE, { mode, profile, modelMap });
 	}
@@ -253,8 +243,9 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 		}
 		emitModelConfig();
-		persistMode();
-		const activeAlias = mode === "plan" ? "custom/large" : "custom/medium";
+		persistState();
+		const modeConfig = getActiveModeConfig();
+		const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
 		if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
 		updateStatus(ctx);
 		ctx.ui.notify(
@@ -264,14 +255,23 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	}
 
 	function updateStatus(ctx: ExtensionContext) {
+		const modeConfig = getActiveModeConfig();
 		const profile = getCurrentProfile(modelMap);
 		const suffix = ` · ${profile}`;
-		ctx.ui.setStatus(
-			"build-plan-mode",
-			mode === "plan"
-				? ctx.ui.theme.fg("warning", `⏸ plan${suffix}`)
-				: ctx.ui.theme.fg("success", `⚒ build${suffix}`),
-		);
+		if (modeConfig) {
+			const icon = modeConfig.statusIcon ?? (modeConfig.access === "read-only" ? "⏸" : "⚒");
+			const label = modeConfig.statusLabel ?? modeConfig.name;
+			const color = modeConfig.access === "read-only" ? "warning" : "success";
+			ctx.ui.setStatus(
+				"build-plan-mode",
+				ctx.ui.theme.fg(color as any, `${icon} ${label}${suffix}`),
+			);
+		} else {
+			ctx.ui.setStatus(
+				"build-plan-mode",
+				ctx.ui.theme.fg("error", `⚠ ${mode}${suffix}`),
+			);
+		}
 	}
 
 	async function setSessionModel(alias: ModelAlias, ctx: ExtensionContext, notifyOnFailure = true) {
@@ -295,25 +295,51 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		pi.setThinkingLevel(aliasConfig.thinkingLevel);
 	}
 
-	async function applyMode(nextMode: HarnessMode, ctx: ExtensionContext, notify = true) {
-		mode = nextMode;
-		pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
+	async function applyMode(nextMode: string, ctx: ExtensionContext, notify = true) {
+		const modeConfig = modeRegistry.byName.get(nextMode);
+		if (!modeConfig) {
+			ctx.ui.notify(`Unknown mode: "${nextMode}". Available: ${Array.from(modeRegistry.byName.keys()).join(", ")}`, "warning");
+			return;
+		}
 
-		const activeAlias = mode === "plan" ? "custom/large" : "custom/medium";
-		pi.setThinkingLevel(modelMap[activeAlias].thinkingLevel);
+		mode = nextMode;
+		pi.setActiveTools(modeConfig.tools);
+
+		// Determine model alias for this mode
+		const activeAlias = getActiveAlias(modeConfig);
+
+		// Resolve model: mode config's model field takes priority over alias
+		const resolvedModel = modeConfig.model && modeConfig.model !== "custom/large" && modeConfig.model !== "custom/medium"
+			? modeConfig.model
+			: undefined;
+
+		if (resolvedModel) {
+			// Direct provider/model reference from mode config
+			const parsed = parseModelRef(resolvedModel);
+			if (parsed) {
+				const model = ctx.modelRegistry.find(parsed.provider, parsed.modelId);
+				if (model) await pi.setModel(model);
+			}
+		} else {
+			// Use alias-based model selection
+			await setSessionModel(activeAlias, ctx, false);
+		}
+
+		// Thinking level: mode config overrides, else use alias config
+		const aliasConfig = modelMap[activeAlias];
+		const thinking = modeConfig.thinking ?? aliasConfig.thinkingLevel;
+		pi.setThinkingLevel(thinking);
 
 		emitModelConfig();
-		await setSessionModel(activeAlias, ctx);
 		updateStatus(ctx);
 		if (notify) {
+			const modelLabel = resolvedModel ?? aliasConfig.model;
 			ctx.ui.notify(
-				mode === "plan"
-					? `Switched to plan mode (${modelMap[activeAlias].model}; thinking: ${modelMap[activeAlias].thinkingLevel})`
-					: `Switched to build mode (${modelMap[activeAlias].model}; thinking: ${modelMap[activeAlias].thinkingLevel})`,
+				`Switched to ${modeConfig.name} mode (${modelLabel}; thinking: ${thinking})`,
 				"info",
 			);
 		}
-		persistMode();
+		persistState();
 	}
 
 	async function applyProfile(
@@ -324,13 +350,14 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	) {
 		modelMap = structuredClone(MODEL_PROFILES[profile].modelMap);
 
-		const activeAlias = mode === "plan" ? "custom/large" : "custom/medium";
+		const modeConfig = getActiveModeConfig();
+		const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
 		pi.setThinkingLevel(modelMap[activeAlias].thinkingLevel);
 
 		emitModelConfig();
 		await setSessionModel(activeAlias, ctx, false);
 		updateStatus(ctx);
-		persistMode();
+		persistState();
 
 		if (notify) {
 			ctx.ui.notify(
@@ -373,27 +400,22 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	async function syncFileOverride(ctx: ExtensionContext): Promise<boolean> {
 		const { profile: fileProfile, filePath } = readFileOverride(ctx);
 
-		// No file found
 		if (!filePath) {
 			if (fileOverridePath) {
-				// File was removed, clear tracking but don't auto-revert
 				fileOverridePath = null;
 				fileOverrideProfile = null;
 			}
 			return false;
 		}
 
-		// File has invalid content
 		if (!fileProfile) {
 			return false;
 		}
 
-		// File matches last applied file override
 		if (fileProfile === fileOverrideProfile && filePath === fileOverridePath) {
 			return false;
 		}
 
-		// Apply the profile from file
 		fileOverridePath = filePath;
 		fileOverrideProfile = fileProfile;
 		await applyProfile(fileProfile, ctx, `File override (${path.relative(ctx.cwd, filePath)})`);
@@ -406,12 +428,10 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		const trimmedPrefix = prefix.trim();
 		const spaceIndex = trimmedPrefix.indexOf(" ");
 
-		// Stage 2: after valid model + space, suggest thinking levels
 		if (spaceIndex >= 0) {
 			const modelPart = trimmedPrefix.slice(0, spaceIndex);
 			const thinkingPart = trimmedPrefix.slice(spaceIndex + 1).trimStart();
 
-			// Only offer thinking completions if model part looks valid
 			if (!modelPart.includes("/")) return null;
 			if (!parseModelRef(modelPart)) return null;
 
@@ -426,7 +446,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}));
 		}
 
-		// Stage 1: suggest models
 		currentModelRegistry.refresh();
 		const models = currentModelRegistry.getAvailable();
 		if (!models || models.length === 0) return null;
@@ -437,7 +456,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			label: `${m.provider}/${m.id}`,
 		}));
 
-		// Include current alias value even if not in available list
 		const currentValue = modelMap[alias].model;
 		if (currentValue && !items.some((item: any) => item.label === currentValue)) {
 			const parsed = parseModelRef(currentValue);
@@ -460,19 +478,21 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		}));
 	}
 
-	pi.registerCommand("plan", {
-		description: "Switch to read-only planning mode",
-		handler: async (_args, ctx) => {
-			await applyMode("plan", ctx);
-		},
-	});
+	// ── Register commands for each mode ──────────────────────────────────
 
-	pi.registerCommand("build", {
-		description: "Switch to implementation mode",
-		handler: async (_args, ctx) => {
-			await applyMode("build", ctx);
-		},
-	});
+	function registerModeCommands() {
+		for (const [name, cfg] of modeRegistry.byName) {
+			const cmd = cfg.command ?? name;
+			pi.registerCommand(cmd, {
+				description: `Switch to ${cfg.description}`,
+				handler: async (_args, ctx) => {
+					await applyMode(cfg.name, ctx);
+				},
+			});
+		}
+	}
+
+	// ── Commands ─────────────────────────────────────────────────────────
 
 	pi.registerCommand("execute-plan", {
 		description: "Start a fresh build session from the latest plan only",
@@ -582,29 +602,57 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("mode", {
-		description: "Show or set current mode (build|plan|toggle)",
+		description: "Show current mode or switch to named mode. Usage: /mode [name]",
 		handler: async (args, ctx) => {
 			const next = args.trim().toLowerCase();
 			if (!next) {
-				ctx.ui.notify(`Current mode: ${mode}`, "info");
+				const modeConfig = getActiveModeConfig();
+				if (modeConfig) {
+					ctx.ui.notify(
+						`Current mode: ${modeConfig.name} (${modeConfig.description}). Available: ${Array.from(modeRegistry.byName.keys()).join(", ")}`,
+						"info",
+					);
+				} else {
+					ctx.ui.notify(
+						`Current mode: ${mode} (unknown). Available: ${Array.from(modeRegistry.byName.keys()).join(", ")}`,
+						"info",
+					);
+				}
 				return;
 			}
 			if (next === "toggle") {
-				await applyMode(mode === "plan" ? "build" : "plan", ctx);
+				// Toggle between first two modes (usually build/plan)
+				const names = Array.from(modeRegistry.byName.keys());
+				const currentIdx = names.indexOf(mode);
+				if (currentIdx < 0 || currentIdx >= names.length - 1) {
+					await applyMode(names[0], ctx);
+				} else {
+					await applyMode(names[currentIdx + 1], ctx);
+				}
 				return;
 			}
-			if (next !== "build" && next !== "plan") {
-				ctx.ui.notify('Usage: /mode build, /mode plan, or /mode toggle', "warning");
+			const modeConfig = modeRegistry.byName.get(next);
+			if (!modeConfig) {
+				ctx.ui.notify(
+					`Unknown mode: "${next}". Available: ${Array.from(modeRegistry.byName.keys()).join(", ")}`,
+					"warning",
+				);
 				return;
 			}
-			await applyMode(next, ctx);
+			await applyMode(modeConfig.name, ctx);
 		},
 	});
 
 	pi.registerShortcut("ctrl+shift+p", {
-		description: "Toggle build/plan mode",
+		description: "Toggle between first two modes",
 		handler: async (ctx) => {
-			await applyMode(mode === "plan" ? "build" : "plan", ctx);
+			const names = Array.from(modeRegistry.byName.keys());
+			const currentIdx = names.indexOf(mode);
+			if (currentIdx < 0 || currentIdx >= names.length - 1) {
+				await applyMode(names[0], ctx);
+			} else {
+				await applyMode(names[currentIdx + 1], ctx);
+			}
 		},
 	});
 
@@ -619,13 +667,28 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		},
 	});
 
+	// ── Lifecycle handlers ──────────────────────────────────────────────
+
 	pi.on("session_start", async (_event, ctx) => {
+		// Discover modes from project
+		modeRegistry = discoverModes(ctx.cwd);
+
+		// Show warnings
+		for (const w of modeRegistry.warnings) {
+			ctx.ui.notify(w, "warning");
+		}
+
+		// Register per-mode commands (after discovery)
+		registerModeCommands();
+
 		const entries = ctx.sessionManager.getEntries();
 		const lastState = entries
 			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE)
-			.pop() as { data?: BuildPlanState } | undefined;
+			.pop() as { data?: AppState } | undefined;
 
-		mode = lastState?.data?.mode === "plan" ? "plan" : "build";
+		// Restore mode from persisted state, fall back to "build"
+		const savedMode = lastState?.data?.mode;
+		mode = savedMode && modeRegistry.byName.has(savedMode) ? savedMode : "build";
 
 		// Deep merge persisted alias config over defaults
 		const defaultMap = structuredClone(DEFAULT_MODEL_MAP);
@@ -643,14 +706,35 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		fileOverridePath = null;
 		fileOverrideProfile = null;
 
-		// Apply file override on top of persisted state (if present)
 		await syncFileOverride(ctx);
 
 		emitModelConfig();
-		const activeAlias = mode === "plan" ? "custom/large" : "custom/medium";
-		pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
-		pi.setThinkingLevel(modelMap[activeAlias].thinkingLevel);
-		await setSessionModel(activeAlias, ctx, false);
+
+		// Apply current mode config
+		const modeConfig = getActiveModeConfig();
+		if (modeConfig) {
+			pi.setActiveTools(modeConfig.tools);
+
+			const activeAlias = getActiveAlias(modeConfig);
+			const aliasConfig = modelMap[activeAlias];
+
+			// Mode's own model override
+			if (modeConfig.model && modeConfig.model !== "custom/large" && modeConfig.model !== "custom/medium") {
+				const parsed = parseModelRef(modeConfig.model);
+				if (parsed) {
+					const model = ctx.modelRegistry.find(parsed.provider, parsed.modelId);
+					if (model) await pi.setModel(model);
+				}
+			} else {
+				await setSessionModel(activeAlias, ctx, false);
+			}
+
+			pi.setThinkingLevel(modeConfig.thinking ?? aliasConfig.thinkingLevel);
+		} else {
+			// Fallback: should not happen since we validated mode is known
+			pi.setActiveTools(READ_ONLY_TOOLS);
+		}
+
 		updateStatus(ctx);
 	});
 
@@ -659,28 +743,30 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event) => {
+		const modeConfig = getActiveModeConfig();
+		const promptSuffix = modeConfig?.systemPrompt ? `\n\n${modeConfig.systemPrompt}` : "";
 		return {
-			systemPrompt:
-				event.systemPrompt + (mode === "plan" ? `\n\n${PLAN_INSTRUCTIONS}` : `\n\n${BUILD_INSTRUCTIONS}`),
+			systemPrompt: event.systemPrompt + promptSuffix,
 		};
 	});
 
 	pi.on("tool_call", async (event) => {
-		if (mode !== "plan") return;
+		const modeConfig = getActiveModeConfig();
+		if (!modeConfig || modeConfig.access === "build") return;
 
 		if (event.toolName === "edit" || event.toolName === "write") {
 			return {
 				block: true,
-				reason: "Plan mode is read-only. Switch to /build to modify files.",
+				reason: `${modeConfig.name} mode is read-only. Switch to /build to modify files.`,
 			};
 		}
 
-		if (event.toolName === "bash") {
+		if (modeConfig.safeBashOnly && event.toolName === "bash") {
 			const command = String(event.input.command ?? "");
-			if (!isPlanSafeCommand(command)) {
+			if (!isSafeBashCommand(command)) {
 				return {
 					block: true,
-					reason: `Plan mode only allows read-only bash commands. Blocked: ${command}`,
+					reason: `${modeConfig.name} mode only allows read-only bash commands. Blocked: ${command}`,
 				};
 			}
 		}
