@@ -193,7 +193,7 @@ export default function todoExtension(pi: ExtensionAPI) {
 
 					todo.done = true;
 					return {
-						content: [{ type: "text", text: `Marked todo #${todo.id} done` }],
+						content: [{ type: "text", text: `Marked todo #${todo.id} done: ${todo.text}` }],
 						details: getSnapshot("set_done", todos, nextId),
 					};
 				}
