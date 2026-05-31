@@ -1,3 +1,2 @@
 - Allow to set the priv/pub mode via a file in julsemaan-tmp/
 - The reasoning effort should be part of the model profile
-- The --no-home-pi-mount should be rewritten so that it doesn't mount the extensions from the home dir but mounts the rest to preserve the sessions

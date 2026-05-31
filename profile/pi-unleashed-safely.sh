@@ -7,7 +7,7 @@ MNT="$PWD"
 WORKDIR="$PWD"
 REBUILD=0
 USE_TTY=1
-MOUNT_HOME_PI=1
+HIDE_HOME_PI_EXTENSIONS=0
 
 # Extra npm packages to install and register as pi extensions.
 # `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
@@ -16,7 +16,7 @@ EXTRA_PI_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui")
 
 usage() {
   cat <<'USAGE'
-Usage: pi-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [--no-home-pi-mount] [-- <pi args...>]
+Usage: pi-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [--no-home-pi-extensions] [-- <pi args...>]
 
 Arguments:
   -m, --mount PATH    Host path to bind-mount into the container.
@@ -25,14 +25,16 @@ Arguments:
                       Defaults to the current working directory.
   -r, --rebuild       Rebuild the Docker image before running.
   --no-tty            Disable TTY allocation (useful to avoid carriage returns).
-  --no-home-pi-mount  Do not bind-mount ~/.pi from the host.
+  --no-home-pi-extensions  Mask ~/.pi/agent/extensions and prompts from the host
+                        (sessions, settings, auth, packages persist).
   -h, --help          Show this help text.
 
 Environment:
   PI_NPM_PACKAGE        NPM package name to install for the CLI.
                         Defaults to "@mariozechner/pi-coding-agent".
   Pi state persistence  Persists ~/.pi across runs for settings,
-                        auth, packages, and sessions unless disabled.
+                        auth, packages, and sessions.
+                        Use --no-home-pi-extensions to isolate extensions and prompts.
   Clipboard forwarding  Forwards terminal (TERM/TMUX/etc) and Wayland/X11
                         settings when available for clipboard integration.
 
@@ -81,8 +83,8 @@ while [[ $# -gt 0 ]]; do
       USE_TTY=0
       shift
       ;;
-    --no-home-pi-mount)
-      MOUNT_HOME_PI=0
+    --no-home-pi-extensions)
+      HIDE_HOME_PI_EXTENSIONS=1
       shift
       ;;
     *)
@@ -108,7 +110,6 @@ if [[ ! -d "$WORKDIR" ]]; then
 fi
 
 HOST_PI_HOME="$HOME/.pi"
-HOST_PI_AUTH="$HOST_PI_HOME/agent/auth.json"
 CONTAINER_HOME="$HOME"
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@mariozechner/pi-coding-agent}"
 PI_UNLEASHED_EXTRA_PACKAGES_JSON="[]"
@@ -117,9 +118,7 @@ if [[ ${#EXTRA_PI_PACKAGES[@]} -gt 0 ]]; then
   PI_UNLEASHED_EXTRA_PACKAGES_JSON="${PI_UNLEASHED_EXTRA_PACKAGES_JSON/, ]/]}"
 fi
 
-if [[ $MOUNT_HOME_PI -eq 1 ]]; then
-  mkdir -p "$HOST_PI_HOME"
-fi
+mkdir -p "$HOST_PI_HOME"
 
 if [[ $REBUILD -eq 1 ]]; then
   REBUILD_DOCKER_ARG="--no-cache"
@@ -142,15 +141,6 @@ ENV PI_UNLEASHED_EXTRA_PACKAGES_JSON "$PI_EXTRA_PACKAGES_JSON"
 RUN printf '%s\n' \
   '#!/bin/bash' \
   'set -e' \
-  '' \
-  '# When ~/.pi is not bind-mounted from the host, auth.json may be mounted' \
-  '# into a temporary location. Copy it into the user-owned runtime directory' \
-  '# before touching sibling files like settings.json.' \
-  'if [ -n "${PI_AUTH_SOURCE:-}" ] && [ -f "$PI_AUTH_SOURCE" ]; then' \
-  '  mkdir -p "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"' \
-  '  cp "$PI_AUTH_SOURCE" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/auth.json"' \
-  'fi' \
-  '' \
   '# Ensure extra packages are registered in the runtime settings.json.' \
   '# During image build, `pi install` wrote to root'\''s settings, but at' \
   '# runtime we use the host user'\''s ~/.pi (bind-mounted), so we must' \
@@ -235,15 +225,12 @@ done
 
 CLIPBOARD_DOCKER_FLAGS=()
 HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$(id -u),gid=$(id -g)")
-PI_HOME_DOCKER_FLAGS=()
-PI_RUNTIME_ENV_FLAGS=()
-
-if [[ $MOUNT_HOME_PI -eq 1 ]]; then
-  PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
-elif [[ -f "$HOST_PI_AUTH" ]]; then
-  PI_HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME/.pi:rw,exec,uid=$(id -u),gid=$(id -g)")
-  PI_HOME_DOCKER_FLAGS+=(-v "$HOST_PI_AUTH:/tmp/pi-auth.json:ro")
-  PI_RUNTIME_ENV_FLAGS=(-e PI_AUTH_SOURCE=/tmp/pi-auth.json)
+PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
+if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 ]]; then
+  mkdir -p "$HOST_PI_HOME/agent/extensions"
+  mkdir -p "$HOST_PI_HOME/agent/prompts"
+  PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/extensions:rw,exec,uid=$(id -u),gid=$(id -g)")
+  PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/prompts:rw,exec,uid=$(id -u),gid=$(id -g)")
 fi
 
 if [[ -n "${TMUX:-}" ]]; then
@@ -299,7 +286,6 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e HF_TOKEN \
   -e HUGGINGFACEHUB_API_TOKEN \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
-  "${PI_RUNTIME_ENV_FLAGS[@]}" \
   -e HOME="$CONTAINER_HOME" \
   -u "$(id -u):$(id -g)" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
