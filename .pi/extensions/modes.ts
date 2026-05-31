@@ -7,7 +7,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
+import { getAgentDir, parseFrontmatter } from "@mariozechner/pi-coding-agent";
 
 export type ModeAccess = "build" | "read-only";
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -223,6 +223,21 @@ function isDirectory(p: string): boolean {
 	}
 }
 
+/**
+ * Return the global modes directory (~/.pi/agent/modes/) if it exists.
+ * The install script puts .pi/modes/*.md into ~/.pi/agent/modes/.
+ */
+function getGlobalModesDir(): string | null {
+	try {
+		const agentDir = getAgentDir();
+		// getAgentDir returns ~/.pi/agent
+		const modesDir = path.join(agentDir, "modes");
+		return isDirectory(modesDir) ? modesDir : null;
+	} catch {
+		return null;
+	}
+}
+
 interface DiscoveryResult {
 	modes: ModeConfig[];
 	warnings: string[];
@@ -275,6 +290,11 @@ export interface ModeRegistry {
 /**
  * Discover all modes: built-in + file-backed from .pi/modes/*.md.
  * File-backed modes override built-in modes with same name (with warning).
+ *
+ * Discovery order (last wins for same-name modes):
+ * 1. Built-in modes (build, plan)
+ * 2. Global modes from ~/.pi/modes/
+ * 3. Project-local modes from cwd-walk .pi/modes/ (highest priority)
  */
 export function discoverModes(cwd: string): ModeRegistry {
 	const byName = new Map<string, ModeConfig>();
@@ -282,13 +302,12 @@ export function discoverModes(cwd: string): ModeRegistry {
 	const warnings: string[] = [];
 	const builtinNames = new Set<string>();
 
-	// Register built-ins
+	// 1. Register built-ins
 	for (const [name, config] of Object.entries(BUILTIN_MODES)) {
 		const mode: ModeConfig = { name, ...config };
 		byName.set(name, mode);
 
 		const cmd = mode.command ?? name;
-		// Prefer built-in command registration
 		if (!byCommand.has(cmd)) {
 			byCommand.set(cmd, mode);
 		}
@@ -296,7 +315,26 @@ export function discoverModes(cwd: string): ModeRegistry {
 		builtinNames.add(name);
 	}
 
-	// Discover file-backed modes
+	// 2. Discover global modes (~/.pi/modes/)
+	const globalModesDir = getGlobalModesDir();
+	if (globalModesDir) {
+		const globalResult = discoverModesFromDir(globalModesDir);
+		for (const w of globalResult.warnings) {
+			warnings.push(w);
+		}
+		for (const mode of globalResult.modes) {
+			const nameKey = mode.name.toLowerCase();
+			if (byName.has(nameKey)) {
+				warnings.push(
+					`Mode "${mode.name}" from ${mode.filePath} overrides built-in mode with same name`,
+				);
+			}
+			byName.set(nameKey, mode);
+			registerModeCommand(byCommand, mode, nameKey, warnings);
+		}
+	}
+
+	// 3. Discover project-local modes (cwd-walk) — highest priority
 	const piDir = findProjectPiDir(cwd);
 	if (piDir) {
 		const modesDir = path.join(piDir, "modes");
@@ -311,35 +349,46 @@ export function discoverModes(cwd: string): ModeRegistry {
 
 			if (byName.has(nameKey)) {
 				warnings.push(
-					`Mode "${mode.name}" from ${mode.filePath} overrides built-in mode with same name`,
+					`Mode "${mode.name}" from ${mode.filePath} overrides existing mode with same name`,
 				);
 			}
 
 			byName.set(nameKey, mode);
-
-			// Register command, warn on collision
-			const cmd = mode.command ?? nameKey;
-			if (byCommand.has(cmd) && byCommand.get(cmd)!.name !== mode.name) {
-				warnings.push(
-					`Command "/${cmd}" from mode "${mode.name}" (${mode.filePath}) collides with existing command for mode "${byCommand.get(cmd)!.name}". Skipping command registration.`,
-				);
-			} else {
-				byCommand.set(cmd, mode);
-			}
+			registerModeCommand(byCommand, mode, nameKey, warnings);
 		}
 	}
 
 	return { byName, byCommand, warnings, builtinNames };
 }
 
+function registerModeCommand(
+	byCommand: Map<string, ModeConfig>,
+	mode: ModeConfig,
+	nameKey: string,
+	warnings: string[],
+) {
+	const cmd = mode.command ?? nameKey;
+	if (byCommand.has(cmd) && byCommand.get(cmd)!.name !== mode.name) {
+		warnings.push(
+			`Command "/${cmd}" from mode "${mode.name}" (${mode.filePath}) collides with existing command for mode "${byCommand.get(cmd)!.name}". Skipping command registration.`,
+		);
+	} else {
+		byCommand.set(cmd, mode);
+	}
+}
+
 /**
  * Find the .pi/modes directory for the given cwd, if it exists.
+ * Falls back to the global modes directory (~/.pi/modes/).
  */
 export function findModesDir(cwd: string): string | null {
 	const piDir = findProjectPiDir(cwd);
-	if (!piDir) return null;
-	const modesDir = path.join(piDir, "modes");
-	return isDirectory(modesDir) ? modesDir : null;
+	if (piDir) {
+		const modesDir = path.join(piDir, "modes");
+		if (isDirectory(modesDir)) return modesDir;
+	}
+	// Fall back to global modes directory
+	return getGlobalModesDir();
 }
 
 /**

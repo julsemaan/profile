@@ -72,7 +72,7 @@ function install_pi_global_config {
   agent_dir="$home/.pi/agent"
 
   mkdir -p "$agent_dir"
-  rm -fr "$agent_dir/extensions" "$agent_dir/prompts" "$agent_dir/settings.json"
+  rm -fr "$agent_dir/extensions" "$agent_dir/prompts" "$agent_dir/agents" "$agent_dir/modes" "$agent_dir/settings.json" "$agent_dir/TODO.md"
   install_file "$profile_dir/.pi/." "$agent_dir"
 
   chown -R "$user": "$home/.pi"
