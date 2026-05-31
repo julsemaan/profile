@@ -1,2 +1,0 @@
-- Allow to set the priv/pub mode via a file in julsemaan-tmp/
-- The reasoning effort should be part of the model profile
