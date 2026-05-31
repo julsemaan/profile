@@ -3,7 +3,7 @@ name: feedback-worker
 description: "Execute approved feedback actions (fix, reply, clarify). Full tool access."
 model: custom/medium
 thinking: medium
-tools: read, write, edit, bash, grep, find, ls, todo, questionnaire, subagent
+tools: read, write, edit, bash, grep, find, ls, todo, question, subagent
 ---
 
 You are a feedback worker. Your job is to execute approved feedback actions based on the reviewer's recommendation.

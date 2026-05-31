@@ -45,7 +45,7 @@ For each feedback item (in order):
 - Mark the current feedback item todo as done using `todo(action: "set_done", id: <todo-id>)`
 
 #### d. Pause for User Review
-- Use the `questionnaire` tool to pause after processing the item
+- Use the `question` tool to pause after processing the item
 - Ask: "Item processed. What would you like to do?"
 - Options:
   - Continue to next item (default)
@@ -82,7 +82,7 @@ After all items are processed (or user stops early):
 - **Insufficient context**: Let reviewer recommend "clarify", worker will draft clarification request
 - **Declined items**: Note in summary, no action taken
 - **Reply-only items**: No code changes, just draft reply
-- **Non-interactive mode**: If questionnaire is not available, process all items without pausing
+- **Non-interactive mode**: If question is not available, process all items without pausing
 
 ## Output Contracts
 All subagent calls must use `agentScope: "both"` to include project-local agents.

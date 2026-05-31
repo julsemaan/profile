@@ -50,7 +50,7 @@ const VALID_ACCESS = new Set<string>(["build", "read-only"]);
 
 // ── Built-in defaults ──────────────────────────────────────────────────────
 
-const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "todo"];
+const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "question", "todo"];
 const PLAN_TOOLS = [...READ_ONLY_TOOLS, "github_pr_review_fetch"];
 const BUILD_TOOLS = [
 	...PLAN_TOOLS,

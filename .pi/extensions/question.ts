@@ -24,7 +24,7 @@ interface Answer {
 	index?: number;
 }
 
-interface QuestionnaireResult {
+interface QuestionResult {
 	questions: Question[];
 	answers: Answer[];
 	cancelled: boolean;
@@ -46,7 +46,7 @@ const QuestionSchema = Type.Object({
 	allowOther: Type.Optional(Type.Boolean({ description: "Allow a custom typed answer (default: true)" })),
 });
 
-const QuestionnaireParams = Type.Object({
+const QuestionParams = Type.Object({
 	questions: Type.Array(QuestionSchema, { description: "Questions to ask in order" }),
 });
 
@@ -94,7 +94,7 @@ function errorResult(
 	message: string,
 	questions: Question[] = [],
 	answers: Answer[] = [],
-): { content: { type: "text"; text: string }[]; details: QuestionnaireResult } {
+): { content: { type: "text"; text: string }[]; details: QuestionResult } {
 	return {
 		content: [{ type: "text", text: message }],
 		details: { questions, answers, cancelled: true },
@@ -113,10 +113,10 @@ function summarizeAnswers(questions: Question[], answers: Answer[], cancelled: b
 	});
 
 	if (cancelled) {
-		return lines.length > 0 ? `User cancelled the questionnaire. Partial answers:\n${lines.join("\n")}` : "User cancelled the questionnaire.";
+		return lines.length > 0 ? `User cancelled the question. Partial answers:\n${lines.join("\n")}` : "User cancelled the question.";
 	}
 
-	return lines.length > 0 ? `Questionnaire answers:\n${lines.join("\n")}` : "Questionnaire completed with no answers.";
+	return lines.length > 0 ? `Question answers:\n${lines.join("\n")}` : "Question completed with no answers.";
 }
 
 function buildOptions(question: Question): RenderOption[] {
@@ -127,7 +127,7 @@ function buildOptions(question: Question): RenderOption[] {
 	return options;
 }
 
-async function runRpcFallback(ctx: ExtensionContext, questions: Question[]): Promise<QuestionnaireResult> {
+async function runRpcFallback(ctx: ExtensionContext, questions: Question[]): Promise<QuestionResult> {
 	const answers: Answer[] = [];
 
 	for (const question of questions) {
@@ -183,7 +183,7 @@ async function runRpcFallback(ctx: ExtensionContext, questions: Question[]): Pro
 	return { questions, answers, cancelled: false };
 }
 
-function createQuestionnaireComponent(questions: Question[]) {
+function createQuestionComponent(questions: Question[]) {
 	return (tui, theme, _kb, done) => {
 		let questionIndex = 0;
 		let optionIndex = 0;
@@ -361,17 +361,17 @@ function createQuestionnaireComponent(questions: Question[]) {
 	};
 }
 
-export default function questionnaire(pi: ExtensionAPI) {
+export default function question(pi: ExtensionAPI) {
 	pi.registerTool({
-		name: "questionnaire",
-		label: "Questionnaire",
+		name: "question",
+		label: "Question",
 		description: "Ask the user several clarifying questions in one tool call, with suggested answers and optional custom input.",
 		promptSnippet: "Ask multiple clarification questions with suggested answers and optional custom input",
 		promptGuidelines: [
-			"Use questionnaire when you need multiple clarifications from the user before you can proceed.",
-			"Use questionnaire instead of asking several plain-text follow-up questions when suggested answers would make the interaction easier.",
+			"Use question when you need multiple clarifications from the user before you can proceed.",
+			"Use question instead of asking several plain-text follow-up questions when suggested answers would make the interaction easier.",
 		],
-		parameters: QuestionnaireParams,
+		parameters: QuestionParams,
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!ctx.hasUI) {
@@ -380,12 +380,12 @@ export default function questionnaire(pi: ExtensionAPI) {
 
 			const normalized = normalizeQuestions(params.questions);
 			if (!normalized.questions) {
-				return errorResult(normalized.error || "Error: Invalid questionnaire");
+				return errorResult(normalized.error || "Error: Invalid question");
 			}
 
 			const questions = normalized.questions;
-			const interactiveResult = await ctx.ui.custom<QuestionnaireResult | undefined>(
-				createQuestionnaireComponent(questions),
+			const interactiveResult = await ctx.ui.custom<QuestionResult | undefined>(
+				createQuestionComponent(questions),
 			);
 			const result = interactiveResult ?? (await runRpcFallback(ctx, questions));
 			const summary = summarizeAnswers(questions, result.answers, result.cancelled);
@@ -406,7 +406,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 		renderCall(args, theme, _context) {
 			const questions = Array.isArray(args.questions) ? (args.questions as Array<{ label?: string; id?: string }>) : [];
 			const labels = questions.map((question) => question.label || question.id || "?").join(", ");
-			let text = theme.fg("toolTitle", theme.bold("questionnaire "));
+			let text = theme.fg("toolTitle", theme.bold("question "));
 			text += theme.fg("muted", `${questions.length} question${questions.length === 1 ? "" : "s"}`);
 			if (labels) {
 				text += theme.fg("dim", ` (${truncateToWidth(labels, 40)})`);
@@ -415,7 +415,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 		},
 
 		renderResult(result, _options, theme, _context) {
-			const details = result.details as QuestionnaireResult | undefined;
+			const details = result.details as QuestionResult | undefined;
 			if (!details) {
 				const text = result.content[0];
 				return new Text(text?.type === "text" ? text.text : "", 0, 0);

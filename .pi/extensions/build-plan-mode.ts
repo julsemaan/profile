@@ -45,7 +45,7 @@ const STATE_TYPE = "build-plan-mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
 const FILE_OVERRIDE_RELPATH = "julsemaan-tmp/model-profile";
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv.modelMap);
-const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "todo"];
+const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "question", "todo"];
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
 	return (

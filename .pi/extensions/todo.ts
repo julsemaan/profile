@@ -120,7 +120,7 @@ export default function todoExtension(pi: ExtensionAPI) {
 			result.message = {
 				customType: "todo-nudge",
 				content:
-					"Your first move: create an ordered, multi-step todo list breaking the request into concrete phases (inspect, implement, validate, follow-up). If the request is unclear, ask clarifying questions via questionnaire before writing the todo breakdown.",
+					"Your first move: create an ordered, multi-step todo list breaking the request into concrete phases (inspect, implement, validate, follow-up). If the request is unclear, ask clarifying questions via question before writing the todo breakdown.",
 				display: false,
 			};
 		}
