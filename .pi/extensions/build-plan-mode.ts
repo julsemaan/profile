@@ -7,6 +7,19 @@ type HarnessMode = "build" | "plan";
 type BuildPlanCommand = HarnessMode | "on" | "off" | "toggle" | "status";
 type ModelAlias = "custom/large" | "custom/medium";
 type ModelMap = Record<ModelAlias, string>;
+type ModelProfile = "pub" | "priv" | "custom";
+
+const MODEL_PROFILE_MAPS: Record<Exclude<ModelProfile, "custom">, ModelMap> = {
+	pub: {
+		"custom/large": "openai-codex/gpt-5.4",
+		"custom/medium": "opencode/big-pickle",
+	},
+	priv: {
+		"custom/large": "openai-codex/gpt-5.4",
+		"custom/medium": "openai-codex/gpt-5.4",
+	},
+};
+
 type BuildPlanState = {
 	enabled?: boolean;
 	mode?: HarnessMode;
@@ -29,10 +42,7 @@ const BUILD_DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 const PLAN_THINKING_LEVEL: ThinkingLevel = "high";
 const STATE_TYPE = "build-plan-mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
-const DEFAULT_MODEL_MAP: ModelMap = {
-	"custom/large": "openai-codex/gpt-5.4",
-	"custom/medium": "opencode/big-pickle",
-};
+const DEFAULT_MODEL_MAP: ModelMap = { ...MODEL_PROFILE_MAPS.pub };
 
 const PLAN_INSTRUCTIONS = `
 IMPORTANT: You are in PLAN MODE.
@@ -140,6 +150,18 @@ function parseModelRef(modelRef: string): { provider: string; modelId: string } 
 	};
 }
 
+function getCurrentModelProfile(modelMap: ModelMap): ModelProfile {
+	for (const [profile, preset] of Object.entries(MODEL_PROFILE_MAPS)) {
+		if (
+			modelMap["custom/large"] === preset["custom/large"] &&
+			modelMap["custom/medium"] === preset["custom/medium"]
+		) {
+			return profile as ModelProfile;
+		}
+	}
+	return "custom";
+}
+
 export default function buildPlanMode(pi: ExtensionAPI) {
 	let enabled = true;
 	let mode: HarnessMode = "build";
@@ -173,6 +195,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			const activeAlias = mode === "plan" ? "custom/large" : "custom/medium";
 			if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
 		}
+		updateStatus(ctx);
 		ctx.ui.notify(
 			`${notify}\ncustom/large -> ${modelMap["custom/large"]}\ncustom/medium -> ${modelMap["custom/medium"]}`,
 			"info",
@@ -184,13 +207,15 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	}
 
 	function updateStatus(ctx: ExtensionContext) {
+		const profile = getCurrentModelProfile(modelMap);
+		const suffix = ` · ${profile}`;
 		ctx.ui.setStatus(
 			"build-plan-mode",
 			!enabled
-				? ctx.ui.theme.fg("muted", "build+plan off")
+				? ctx.ui.theme.fg("muted", `build+plan off${suffix}`)
 				: mode === "plan"
-					? ctx.ui.theme.fg("warning", "⏸ plan")
-					: ctx.ui.theme.fg("success", "⚒ build"),
+					? ctx.ui.theme.fg("warning", `⏸ plan${suffix}`)
+					: ctx.ui.theme.fg("success", `⚒ build${suffix}`),
 		);
 	}
 
@@ -365,32 +390,23 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("model-profile", {
-		description: "Set model alias profile (pub|priv)",
+		description: "Show or set model alias profile (pub|priv)",
 		handler: async (args, ctx) => {
 			const profile = args.trim().toLowerCase();
-			if (profile === "pub") {
+			if (!profile) {
+				const current = getCurrentModelProfile(modelMap);
+				ctx.ui.notify(`Current profile: ${current}`, "info");
+				return;
+			}
+			if (profile === "pub" || profile === "priv") {
 				await updateModelMap(
-					{
-						"custom/large": "openai-codex/gpt-5.4",
-						"custom/medium": "opencode/big-pickle",
-					},
+					{ ...MODEL_PROFILE_MAPS[profile] },
 					ctx,
-					"Applied model profile: pub.",
+					`Applied model profile: ${profile}.`,
 				);
 				return;
 			}
-			if (profile === "priv") {
-				await updateModelMap(
-					{
-						"custom/large": "openai-codex/gpt-5.4",
-						"custom/medium": "openai-codex/gpt-5.4",
-					},
-					ctx,
-					"Applied model profile: priv.",
-				);
-				return;
-			}
-			ctx.ui.notify("Usage: /model-profile pub|priv", "warning");
+			ctx.ui.notify("Usage: /model-profile [pub|priv]", "warning");
 		},
 	});
 
