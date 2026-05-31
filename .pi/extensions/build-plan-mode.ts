@@ -159,6 +159,49 @@ function parseModelRef(modelRef: string): { provider: string; modelId: string } 
 	};
 }
 
+function parseAliasArgs(
+	raw: string,
+): { model?: string; thinkingLevel?: ThinkingLevel } | { error: string } {
+	const trimmed = raw.trim();
+	if (!trimmed) return {};
+
+	const tokens = trimmed.split(/\s+/);
+
+	if (tokens.length === 1) {
+		const token = tokens[0];
+		if (token.includes("/")) {
+			if (!parseModelRef(token))
+				return { error: `Invalid model reference: "${token}". Expected format: provider/model` };
+			return { model: token };
+		}
+		if (isThinkingLevel(token)) {
+			return { thinkingLevel: token };
+		}
+		return {
+			error: `Invalid argument: "${token}". Expected provider/model or thinking level (off|minimal|low|medium|high|xhigh).`,
+		};
+	}
+
+	if (tokens.length === 2) {
+		const [modelToken, thinkingToken] = tokens;
+		if (!modelToken.includes("/"))
+			return {
+				error: `First argument must be a model reference (provider/model), got: "${modelToken}"`,
+			};
+		if (!parseModelRef(modelToken))
+			return { error: `Invalid model reference: "${modelToken}". Expected format: provider/model` };
+		if (!isThinkingLevel(thinkingToken))
+			return {
+				error: `Second argument must be a thinking level (off|minimal|low|medium|high|xhigh), got: "${thinkingToken}"`,
+			};
+		return { model: modelToken, thinkingLevel: thinkingToken };
+	}
+
+	return {
+		error: `Too many arguments. Usage: /command [provider/model] [thinking]`,
+	};
+}
+
 function isThinkingLevel(value: string): value is ThinkingLevel {
 	return value === "off" || value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
 }
@@ -356,8 +399,33 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		return true;
 	}
 
-	function getModelArgumentCompletions(prefix: string, alias: ModelAlias): AutocompleteItem[] | null {
+	function getAliasArgumentCompletions(prefix: string, alias: ModelAlias): AutocompleteItem[] | null {
 		if (!currentModelRegistry) return null;
+
+		const trimmedPrefix = prefix.trim();
+		const spaceIndex = trimmedPrefix.indexOf(" ");
+
+		// Stage 2: after valid model + space, suggest thinking levels
+		if (spaceIndex >= 0) {
+			const modelPart = trimmedPrefix.slice(0, spaceIndex);
+			const thinkingPart = trimmedPrefix.slice(spaceIndex + 1).trimStart();
+
+			// Only offer thinking completions if model part looks valid
+			if (!modelPart.includes("/")) return null;
+			if (!parseModelRef(modelPart)) return null;
+
+			const levels: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+			const matching = levels.filter((l) => l.startsWith(thinkingPart));
+			if (matching.length === 0) return null;
+
+			return matching.map((level) => ({
+				value: `${modelPart} ${level}`,
+				label: level,
+				description: "thinking level",
+			}));
+		}
+
+		// Stage 1: suggest models
 		currentModelRegistry.refresh();
 		const models = currentModelRegistry.getAvailable();
 		if (!models || models.length === 0) return null;
@@ -381,7 +449,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 		}
 
-		const filtered = fuzzyFilter(items, prefix, (item: any) => `${item.id} ${item.provider}`);
+		const filtered = fuzzyFilter(items, trimmedPrefix, (item: any) => `${item.id} ${item.provider}`);
 		if (filtered.length === 0) return null;
 
 		return filtered.map((item: any) => ({
@@ -436,28 +504,56 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("large-model", {
-		description: "Show or set model behind custom/large",
-		getArgumentCompletions: (prefix: string) => getModelArgumentCompletions(prefix, "custom/large"),
+		description: "Show or set model/thinking behind custom/large. Usage: /large-model [provider/model] [off|minimal|low|medium|high|xhigh]",
+		getArgumentCompletions: (prefix: string) => getAliasArgumentCompletions(prefix, "custom/large"),
 		handler: async (args, ctx) => {
-			const next = args.trim();
-			if (!next) {
-				ctx.ui.notify(`custom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})`, "info");
+			const parsed = parseAliasArgs(args);
+			if ("error" in parsed) {
+				ctx.ui.notify(parsed.error, "warning");
+				ctx.ui.notify(
+					`Usage: /large-model [provider/model] [off|minimal|low|medium|high|xhigh]\nCurrent: ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})`,
+					"info",
+				);
 				return;
 			}
-			await updateModelMap({ "custom/large": { model: next } }, ctx, "Updated model alias.");
+			if (!parsed.model && !parsed.thinkingLevel) {
+				ctx.ui.notify(
+					`custom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})`,
+					"info",
+				);
+				return;
+			}
+			const update: Partial<AliasConfig> = {};
+			if (parsed.model) update.model = parsed.model;
+			if (parsed.thinkingLevel) update.thinkingLevel = parsed.thinkingLevel;
+			await updateModelMap({ "custom/large": update }, ctx, "Updated model alias.");
 		},
 	});
 
 	pi.registerCommand("medium-model", {
-		description: "Show or set model behind custom/medium",
-		getArgumentCompletions: (prefix: string) => getModelArgumentCompletions(prefix, "custom/medium"),
+		description: "Show or set model/thinking behind custom/medium. Usage: /medium-model [provider/model] [off|minimal|low|medium|high|xhigh]",
+		getArgumentCompletions: (prefix: string) => getAliasArgumentCompletions(prefix, "custom/medium"),
 		handler: async (args, ctx) => {
-			const next = args.trim();
-			if (!next) {
-				ctx.ui.notify(`custom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`, "info");
+			const parsed = parseAliasArgs(args);
+			if ("error" in parsed) {
+				ctx.ui.notify(parsed.error, "warning");
+				ctx.ui.notify(
+					`Usage: /medium-model [provider/model] [off|minimal|low|medium|high|xhigh]\nCurrent: ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+					"info",
+				);
 				return;
 			}
-			await updateModelMap({ "custom/medium": { model: next } }, ctx, "Updated model alias.");
+			if (!parsed.model && !parsed.thinkingLevel) {
+				ctx.ui.notify(
+					`custom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+					"info",
+				);
+				return;
+			}
+			const update: Partial<AliasConfig> = {};
+			if (parsed.model) update.model = parsed.model;
+			if (parsed.thinkingLevel) update.thinkingLevel = parsed.thinkingLevel;
+			await updateModelMap({ "custom/medium": update }, ctx, "Updated model alias.");
 		},
 	});
 

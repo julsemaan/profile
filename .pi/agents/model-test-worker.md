@@ -1,7 +1,7 @@
 ---
 name: model-test-worker
 description: "Child worker that echoes input and reads settings, verifying model alias custom/medium."
-model: custom/medium
+model: custom/large
 tools: ls, read, todo
 ---
 
