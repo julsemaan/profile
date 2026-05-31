@@ -4,7 +4,6 @@ import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { fuzzyFilter } from "@mariozechner/pi-tui";
 
 type HarnessMode = "build" | "plan";
-type BuildPlanCommand = HarnessMode | "on" | "off" | "toggle" | "status";
 type ModelAlias = "custom/large" | "custom/medium";
 type ModelMap = Record<ModelAlias, string>;
 type ModelProfile = "pub" | "priv" | "custom";
@@ -21,7 +20,6 @@ const MODEL_PROFILE_MAPS: Record<Exclude<ModelProfile, "custom">, ModelMap> = {
 };
 
 type BuildPlanState = {
-	enabled?: boolean;
 	mode?: HarnessMode;
 	previousThinkingLevel?: ThinkingLevel;
 	modelMap?: Partial<ModelMap>;
@@ -168,7 +166,6 @@ function getCurrentModelProfile(modelMap: ModelMap): ModelProfile {
 }
 
 export default function buildPlanMode(pi: ExtensionAPI) {
-	let enabled = true;
 	let mode: HarnessMode = "build";
 	let previousThinkingLevel: ThinkingLevel | undefined;
 	let modelMap: ModelMap = { ...DEFAULT_MODEL_MAP };
@@ -181,7 +178,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	function persistMode() {
-		pi.appendEntry(STATE_TYPE, { enabled, mode, previousThinkingLevel, modelMap });
+		pi.appendEntry(STATE_TYPE, { mode, previousThinkingLevel, modelMap });
 	}
 
 	function emitModelConfig() {
@@ -196,10 +193,8 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		modelMap = { ...modelMap, ...nextModelMap };
 		emitModelConfig();
 		persistMode();
-		if (enabled) {
-			const activeAlias = mode === "plan" ? "custom/large" : "custom/medium";
-			if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
-		}
+		const activeAlias = mode === "plan" ? "custom/large" : "custom/medium";
+		if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
 		updateStatus(ctx);
 		ctx.ui.notify(
 			`${notify}\ncustom/large -> ${modelMap["custom/large"]}\ncustom/medium -> ${modelMap["custom/medium"]}`,
@@ -207,20 +202,14 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		);
 	}
 
-	function setAllToolsActive() {
-		pi.setActiveTools(pi.getAllTools().map((tool) => tool.name));
-	}
-
 	function updateStatus(ctx: ExtensionContext) {
 		const profile = getCurrentModelProfile(modelMap);
 		const suffix = ` · ${profile}`;
 		ctx.ui.setStatus(
 			"build-plan-mode",
-			!enabled
-				? ctx.ui.theme.fg("muted", `build+plan off${suffix}`)
-				: mode === "plan"
-					? ctx.ui.theme.fg("warning", `⏸ plan${suffix}`)
-					: ctx.ui.theme.fg("success", `⚒ build${suffix}`),
+			mode === "plan"
+				? ctx.ui.theme.fg("warning", `⏸ plan${suffix}`)
+				: ctx.ui.theme.fg("success", `⚒ build${suffix}`),
 		);
 	}
 
@@ -267,26 +256,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		persistMode();
 	}
 
-	async function setEnabled(nextEnabled: boolean, ctx: ExtensionContext, notify = true) {
-		if (enabled === nextEnabled) {
-			updateStatus(ctx);
-			if (notify) ctx.ui.notify(`Build+plan mode is already ${enabled ? "on" : "off"}.`, "info");
-			persistMode();
-			return;
-		}
-
-		enabled = nextEnabled;
-		if (enabled) {
-			await applyMode(mode, ctx, false);
-		} else {
-			if (mode === "plan") pi.setThinkingLevel(getBuildThinkingLevel());
-			setAllToolsActive();
-			updateStatus(ctx);
-			persistMode();
-		}
-		if (notify) ctx.ui.notify(`Build+plan mode ${enabled ? "enabled" : "disabled"}.`, "info");
-	}
-
 	function getModelArgumentCompletions(prefix: string, alias: ModelAlias): AutocompleteItem[] | null {
 		if (!currentModelRegistry) return null;
 		currentModelRegistry.refresh();
@@ -323,18 +292,16 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	}
 
 	pi.registerCommand("plan", {
-		description: "Enable build+plan mode and switch to read-only planning mode",
+		description: "Switch to read-only planning mode",
 		handler: async (_args, ctx) => {
-			if (!enabled) await setEnabled(true, ctx, false);
-			else await applyMode("plan", ctx);
+			await applyMode("plan", ctx);
 		},
 	});
 
 	pi.registerCommand("build", {
-		description: "Enable build+plan mode and switch to implementation mode",
+		description: "Switch to implementation mode",
 		handler: async (_args, ctx) => {
-			if (!enabled) await setEnabled(true, ctx, false);
-			else await applyMode("build", ctx);
+			await applyMode("build", ctx);
 		},
 	});
 
@@ -420,53 +387,25 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const next = args.trim().toLowerCase();
 			if (!next) {
-				ctx.ui.notify(`Build+plan: ${enabled ? "on" : "off"}; current mode: ${mode}`, "info");
+				ctx.ui.notify(`Current mode: ${mode}`, "info");
 				return;
 			}
 			if (next === "toggle") {
-				if (!enabled) await setEnabled(true, ctx, false);
-				else await applyMode(mode === "plan" ? "build" : "plan", ctx);
+				await applyMode(mode === "plan" ? "build" : "plan", ctx);
 				return;
 			}
 			if (next !== "build" && next !== "plan") {
 				ctx.ui.notify('Usage: /mode build, /mode plan, or /mode toggle', "warning");
 				return;
 			}
-			if (!enabled) await setEnabled(true, ctx, false);
-			else await applyMode(next, ctx);
-		},
-	});
-
-	pi.registerCommand("build-plan", {
-		description: "Toggle build+plan top-level behavior (on|off|toggle|status|build|plan)",
-		handler: async (args, ctx) => {
-			const next = (args.trim().toLowerCase() || "toggle") as BuildPlanCommand;
-			if (next === "status") {
-				ctx.ui.notify(`Build+plan: ${enabled ? "on" : "off"}; current mode: ${mode}`, "info");
-				return;
-			}
-			if (next === "toggle") {
-				await setEnabled(!enabled, ctx);
-				return;
-			}
-			if (next === "on" || next === "off") {
-				await setEnabled(next === "on", ctx);
-				return;
-			}
-			if (next === "build" || next === "plan") {
-				if (!enabled) await setEnabled(true, ctx, false);
-				else await applyMode(next, ctx);
-				return;
-			}
-			ctx.ui.notify('Usage: /build-plan [on|off|toggle|status|build|plan]', "warning");
+			await applyMode(next, ctx);
 		},
 	});
 
 	pi.registerShortcut("ctrl+shift+p", {
 		description: "Toggle build/plan mode",
 		handler: async (ctx) => {
-			if (!enabled) await setEnabled(true, ctx, false);
-			else await applyMode(mode === "plan" ? "build" : "plan", ctx);
+			await applyMode(mode === "plan" ? "build" : "plan", ctx);
 		},
 	});
 
@@ -491,7 +430,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE)
 			.pop() as { data?: BuildPlanState } | undefined;
 
-		enabled = lastState?.data?.enabled !== false;
 		mode = lastState?.data?.mode === "plan" ? "plan" : "build";
 		previousThinkingLevel = lastState?.data?.previousThinkingLevel;
 		modelMap = {
@@ -500,24 +438,19 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		};
 		currentModelRegistry = ctx.modelRegistry;
 		emitModelConfig();
-		if (enabled) {
-			pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
-			if (mode === "plan") {
-				pi.setThinkingLevel(PLAN_THINKING_LEVEL);
-				await setSessionModel("custom/large", ctx, false);
-			} else {
-				previousThinkingLevel = getBuildThinkingLevel();
-				pi.setThinkingLevel(previousThinkingLevel);
-				await setSessionModel("custom/medium", ctx, false);
-			}
+		pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
+		if (mode === "plan") {
+			pi.setThinkingLevel(PLAN_THINKING_LEVEL);
+			await setSessionModel("custom/large", ctx, false);
 		} else {
-			setAllToolsActive();
+			previousThinkingLevel = getBuildThinkingLevel();
+			pi.setThinkingLevel(previousThinkingLevel);
+			await setSessionModel("custom/medium", ctx, false);
 		}
 		updateStatus(ctx);
 	});
 
 	pi.on("before_agent_start", async (event) => {
-		if (!enabled) return;
 		return {
 			systemPrompt:
 				event.systemPrompt + (mode === "plan" ? `\n\n${PLAN_INSTRUCTIONS}` : `\n\n${BUILD_INSTRUCTIONS}`),
@@ -525,7 +458,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", async (event) => {
-		if (!enabled || mode !== "plan") return;
+		if (mode !== "plan") return;
 
 		if (event.toolName === "edit" || event.toolName === "write") {
 			return {

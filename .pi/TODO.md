@@ -1,1 +1,3 @@
 - Allow to set the priv/pub mode via a file in julsemaan-tmp/
+- When completing a todo, print the todo text
+- The --no-home-pi-mount should be rewritten so that it doesn't mount the extensions from the home dir but mounts the rest to preserve the sessions
