@@ -1,1 +1,0 @@
-- Should build a clear todo list when starting a build. Right now todo is underused.
