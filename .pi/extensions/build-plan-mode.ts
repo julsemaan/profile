@@ -2,27 +2,47 @@ import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { fuzzyFilter } from "@mariozechner/pi-tui";
+import * as fs from "fs";
+import * as path from "path";
 
 type HarnessMode = "build" | "plan";
 type ModelAlias = "custom/large" | "custom/medium";
 type ModelMap = Record<ModelAlias, string>;
 type ModelProfile = "pub" | "priv" | "custom";
 
-const MODEL_PROFILE_MAPS: Record<Exclude<ModelProfile, "custom">, ModelMap> = {
+type ModelProfileConfig = {
+	modelMap: ModelMap;
+	buildThinkingLevel: ThinkingLevel;
+	planThinkingLevel: ThinkingLevel;
+};
+
+const MODEL_PROFILES: Record<Exclude<ModelProfile, "custom">, ModelProfileConfig> = {
 	pub: {
-		"custom/large": "openai-codex/gpt-5.4",
-		"custom/medium": "opencode/big-pickle",
+		modelMap: {
+			"custom/large": "openai-codex/gpt-5.4",
+			"custom/medium": "opencode/big-pickle",
+		},
+		buildThinkingLevel: "high",
+		planThinkingLevel: "high",
 	},
 	priv: {
-		"custom/large": "openai-codex/gpt-5.4",
-		"custom/medium": "openai-codex/gpt-5.4",
+		modelMap: {
+			"custom/large": "openai-codex/gpt-5.4",
+			"custom/medium": "openai-codex/gpt-5.4",
+		},
+		buildThinkingLevel: "medium",
+		planThinkingLevel: "high",
 	},
 };
 
 type BuildPlanState = {
 	mode?: HarnessMode;
-	previousThinkingLevel?: ThinkingLevel;
+	profile?: ModelProfile;
 	modelMap?: Partial<ModelMap>;
+	buildThinkingLevel?: ThinkingLevel;
+	planThinkingLevel?: ThinkingLevel;
+	// Legacy fallback for sessions that never ran updated code
+	previousThinkingLevel?: ThinkingLevel;
 };
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 type ScopedModelSelection = { provider: string; modelId: string; thinkingLevel?: ThinkingLevel };
@@ -37,11 +57,12 @@ const BUILD_TOOLS = [
 	"write",
 	"subagent",
 ];
-const BUILD_DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
-const PLAN_THINKING_LEVEL: ThinkingLevel = "high";
+const DEFAULT_BUILD_THINKING: ThinkingLevel = "medium";
+const DEFAULT_PLAN_THINKING: ThinkingLevel = "high";
 const STATE_TYPE = "build-plan-mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
-const DEFAULT_MODEL_MAP: ModelMap = { ...MODEL_PROFILE_MAPS.pub };
+const FILE_OVERRIDE_RELPATH = "julsemaan-tmp/model-profile";
+const DEFAULT_MODEL_MAP: ModelMap = { ...MODEL_PROFILES.priv.modelMap };
 
 const PLAN_INSTRUCTIONS = `
 IMPORTANT: You are in PLAN MODE.
@@ -153,11 +174,17 @@ function isThinkingLevel(value: string): value is ThinkingLevel {
 	return value === "off" || value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
 }
 
-function getCurrentModelProfile(modelMap: ModelMap): ModelProfile {
-	for (const [profile, preset] of Object.entries(MODEL_PROFILE_MAPS)) {
+function getCurrentProfile(
+	modelMap: ModelMap,
+	buildThinkingLevel: ThinkingLevel,
+	planThinkingLevel: ThinkingLevel
+): ModelProfile {
+	for (const [profile, config] of Object.entries(MODEL_PROFILES)) {
 		if (
-			modelMap["custom/large"] === preset["custom/large"] &&
-			modelMap["custom/medium"] === preset["custom/medium"]
+			modelMap["custom/large"] === config.modelMap["custom/large"] &&
+			modelMap["custom/medium"] === config.modelMap["custom/medium"] &&
+			buildThinkingLevel === config.buildThinkingLevel &&
+			planThinkingLevel === config.planThinkingLevel
 		) {
 			return profile as ModelProfile;
 		}
@@ -167,9 +194,12 @@ function getCurrentModelProfile(modelMap: ModelMap): ModelProfile {
 
 export default function buildPlanMode(pi: ExtensionAPI) {
 	let mode: HarnessMode = "build";
-	let previousThinkingLevel: ThinkingLevel | undefined;
+	let buildThinkingLevel: ThinkingLevel = DEFAULT_BUILD_THINKING;
+	let planThinkingLevel: ThinkingLevel = DEFAULT_PLAN_THINKING;
 	let modelMap: ModelMap = { ...DEFAULT_MODEL_MAP };
 	let currentModelRegistry: any;
+	let fileOverridePath: string | null = null;
+	let fileOverrideProfile: Exclude<ModelProfile, "custom"> | null = null;
 
 	// Emit model config early so subagent tool can resolve aliases even in --no-session mode.
 	// This ensures nested subagent calls (e.g. orchestrator → worker) resolve correctly.
@@ -178,15 +208,12 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	function persistMode() {
-		pi.appendEntry(STATE_TYPE, { mode, previousThinkingLevel, modelMap });
+		const profile = getCurrentProfile(modelMap, buildThinkingLevel, planThinkingLevel);
+		pi.appendEntry(STATE_TYPE, { mode, profile, modelMap, buildThinkingLevel, planThinkingLevel });
 	}
 
 	function emitModelConfig() {
 		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
-	}
-
-	function getBuildThinkingLevel(): ThinkingLevel {
-		return previousThinkingLevel ?? BUILD_DEFAULT_THINKING_LEVEL;
 	}
 
 	async function updateModelMap(nextModelMap: Partial<ModelMap>, ctx: ExtensionContext, notify: string) {
@@ -203,7 +230,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	}
 
 	function updateStatus(ctx: ExtensionContext) {
-		const profile = getCurrentModelProfile(modelMap);
+		const profile = getCurrentProfile(modelMap, buildThinkingLevel, planThinkingLevel);
 		const suffix = ` · ${profile}`;
 		ctx.ui.setStatus(
 			"build-plan-mode",
@@ -232,28 +259,111 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	}
 
 	async function applyMode(nextMode: HarnessMode, ctx: ExtensionContext, notify = true) {
-		if (nextMode === "plan") {
-			if (mode !== "plan") previousThinkingLevel = pi.getThinkingLevel() as ThinkingLevel;
-			pi.setThinkingLevel(PLAN_THINKING_LEVEL);
-		} else if (mode === "plan") {
-			previousThinkingLevel = getBuildThinkingLevel();
-			pi.setThinkingLevel(previousThinkingLevel);
-		}
-
 		mode = nextMode;
 		pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
+
+		const level = mode === "plan" ? planThinkingLevel : buildThinkingLevel;
+		pi.setThinkingLevel(level);
+
 		emitModelConfig();
 		await setSessionModel(mode === "plan" ? "custom/large" : "custom/medium", ctx);
 		updateStatus(ctx);
 		if (notify) {
 			ctx.ui.notify(
 				mode === "plan"
-					? `Switched to plan mode (${modelMap["custom/large"]}; thinking: ${PLAN_THINKING_LEVEL})`
-					: `Switched to build mode (${modelMap["custom/medium"]}; thinking: ${getBuildThinkingLevel()})`,
+					? `Switched to plan mode (${modelMap["custom/large"]}; thinking: ${planThinkingLevel})`
+					: `Switched to build mode (${modelMap["custom/medium"]}; thinking: ${buildThinkingLevel})`,
 				"info",
 			);
 		}
 		persistMode();
+	}
+
+	async function applyProfile(
+		profile: Exclude<ModelProfile, "custom">,
+		ctx: ExtensionContext,
+		source: string,
+		notify = true,
+	) {
+		const config = MODEL_PROFILES[profile];
+		modelMap = { ...config.modelMap };
+		buildThinkingLevel = config.buildThinkingLevel;
+		planThinkingLevel = config.planThinkingLevel;
+
+		const level = mode === "plan" ? planThinkingLevel : buildThinkingLevel;
+		pi.setThinkingLevel(level);
+
+		emitModelConfig();
+		await setSessionModel(mode === "plan" ? "custom/large" : "custom/medium", ctx, false);
+		updateStatus(ctx);
+		persistMode();
+
+		if (notify) {
+			ctx.ui.notify(
+				`${source}: ${profile}\ncustom/large -> ${config.modelMap["custom/large"]}\ncustom/medium -> ${config.modelMap["custom/medium"]}\nbuild thinking: ${buildThinkingLevel}\nplan thinking: ${planThinkingLevel}`,
+				"info",
+			);
+		}
+	}
+
+	function readFileOverride(ctx: ExtensionContext): {
+		profile: Exclude<ModelProfile, "custom"> | null;
+		filePath: string | null;
+	} {
+		let dir = ctx.cwd;
+		while (true) {
+			const candidate = path.join(dir, FILE_OVERRIDE_RELPATH);
+			if (fs.existsSync(candidate)) {
+				try {
+					const content = fs.readFileSync(candidate, "utf-8").trim().toLowerCase();
+					if (content === "pub" || content === "priv") {
+						return { profile: content, filePath: candidate };
+					}
+					ctx.ui.notify(
+						`Invalid content in ${candidate}: expected "pub" or "priv", got "${content}"`,
+						"warning",
+					);
+					return { profile: null, filePath: candidate };
+				} catch (e) {
+					ctx.ui.notify(`Error reading ${candidate}: ${e}`, "warning");
+					return { profile: null, filePath: candidate };
+				}
+			}
+			const parent = path.dirname(dir);
+			if (parent === dir) break;
+			dir = parent;
+		}
+		return { profile: null, filePath: null };
+	}
+
+	async function syncFileOverride(ctx: ExtensionContext): Promise<boolean> {
+		const { profile: fileProfile, filePath } = readFileOverride(ctx);
+
+		// No file found
+		if (!filePath) {
+			if (fileOverridePath) {
+				// File was removed, clear tracking but don't auto-revert
+				fileOverridePath = null;
+				fileOverrideProfile = null;
+			}
+			return false;
+		}
+
+		// File has invalid content
+		if (!fileProfile) {
+			return false;
+		}
+
+		// File matches last applied file override
+		if (fileProfile === fileOverrideProfile && filePath === fileOverridePath) {
+			return false;
+		}
+
+		// Apply the profile from file
+		fileOverridePath = filePath;
+		fileOverrideProfile = fileProfile;
+		await applyProfile(fileProfile, ctx, `File override (${path.relative(ctx.cwd, filePath)})`);
+		return true;
 	}
 
 	function getModelArgumentCompletions(prefix: string, alias: ModelAlias): AutocompleteItem[] | null {
@@ -364,18 +474,20 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.registerCommand("model-profile", {
 		description: "Show or set model alias profile (pub|priv)",
 		handler: async (args, ctx) => {
+			if (fileOverridePath) {
+				ctx.ui.notify(
+					`File override active (${path.relative(ctx.cwd, fileOverridePath)}). Manual profile will be overwritten on next turn. Remove the file to keep manual setting.`,
+					"warning",
+				);
+			}
 			const profile = args.trim().toLowerCase();
 			if (!profile) {
-				const current = getCurrentModelProfile(modelMap);
+				const current = getCurrentProfile(modelMap, buildThinkingLevel, planThinkingLevel);
 				ctx.ui.notify(`Current profile: ${current}`, "info");
 				return;
 			}
 			if (profile === "pub" || profile === "priv") {
-				await updateModelMap(
-					{ ...MODEL_PROFILE_MAPS[profile] },
-					ctx,
-					`Applied model profile: ${profile}.`,
-				);
+				await applyProfile(profile, ctx, "Manual profile");
 				return;
 			}
 			ctx.ui.notify("Usage: /model-profile [pub|priv]", "warning");
@@ -412,15 +524,11 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.registerShortcut("ctrl+;", {
 		description: "Cycle model profile (pub/priv)",
 		handler: async (ctx) => {
-			const profiles = Object.keys(MODEL_PROFILE_MAPS) as Exclude<ModelProfile, "custom">[];
-			const current = getCurrentModelProfile(modelMap);
+			const profiles = Object.keys(MODEL_PROFILES) as Exclude<ModelProfile, "custom">[];
+			const current = getCurrentProfile(modelMap, buildThinkingLevel, planThinkingLevel);
 			const idx = profiles.indexOf(current as Exclude<ModelProfile, "custom">);
 			const next = idx === -1 || idx >= profiles.length - 1 ? profiles[0] : profiles[idx + 1];
-			await updateModelMap(
-				{ ...MODEL_PROFILE_MAPS[next] },
-				ctx,
-				`Cycled to model profile: ${next}.`,
-			);
+			await applyProfile(next, ctx, "Cycled profile");
 		},
 	});
 
@@ -431,23 +539,47 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			.pop() as { data?: BuildPlanState } | undefined;
 
 		mode = lastState?.data?.mode === "plan" ? "plan" : "build";
-		previousThinkingLevel = lastState?.data?.previousThinkingLevel;
 		modelMap = {
 			...DEFAULT_MODEL_MAP,
 			...(lastState?.data?.modelMap ?? {}),
 		};
+
+		// Restore thinking levels from state
+		if (lastState?.data?.profile && lastState.data.profile !== "custom") {
+			// Modern state: profile was persisted directly
+			buildThinkingLevel = lastState.data.buildThinkingLevel ?? MODEL_PROFILES[lastState.data.profile].buildThinkingLevel;
+			planThinkingLevel = lastState.data.planThinkingLevel ?? MODEL_PROFILES[lastState.data.profile].planThinkingLevel;
+		} else if (lastState?.data?.previousThinkingLevel !== undefined) {
+			// Legacy state: previousThinkingLevel was build thinking level
+			buildThinkingLevel = lastState.data.previousThinkingLevel;
+			planThinkingLevel = DEFAULT_PLAN_THINKING;
+		} else {
+			// No state or custom profile without explicit thinking
+			buildThinkingLevel = DEFAULT_BUILD_THINKING;
+			planThinkingLevel = DEFAULT_PLAN_THINKING;
+		}
+
 		currentModelRegistry = ctx.modelRegistry;
+		fileOverridePath = null;
+		fileOverrideProfile = null;
+
+		// Apply file override on top of persisted state (if present)
+		await syncFileOverride(ctx);
+
 		emitModelConfig();
 		pi.setActiveTools(mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS);
 		if (mode === "plan") {
-			pi.setThinkingLevel(PLAN_THINKING_LEVEL);
+			pi.setThinkingLevel(planThinkingLevel);
 			await setSessionModel("custom/large", ctx, false);
 		} else {
-			previousThinkingLevel = getBuildThinkingLevel();
-			pi.setThinkingLevel(previousThinkingLevel);
+			pi.setThinkingLevel(buildThinkingLevel);
 			await setSessionModel("custom/medium", ctx, false);
 		}
 		updateStatus(ctx);
+	});
+
+	pi.on("turn_start", async (_event, ctx) => {
+		await syncFileOverride(ctx);
 	});
 
 	pi.on("before_agent_start", async (event) => {
