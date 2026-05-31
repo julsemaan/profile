@@ -2,6 +2,7 @@
 name: model-test-worker
 description: "Child worker that echoes input and reads settings, verifying model alias custom/medium."
 model: custom/medium
+thinking: medium
 tools: ls, read, todo
 ---
 

@@ -151,6 +151,7 @@ interface SingleResult {
 	stopReason?: string;
 	errorMessage?: string;
 	step?: number;
+	command?: string;
 }
 
 interface SubagentDetails {
@@ -267,6 +268,7 @@ async function runSingleAgent(
 	const resolvedModel = agent.model ? modelMap[agent.model] ?? agent.model : undefined;
 	if (resolvedModel) args.push("--model", resolvedModel);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
+	if (agent.thinkingLevel) args.push("--thinking", agent.thinkingLevel);
 
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;
@@ -305,6 +307,7 @@ async function runSingleAgent(
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const invocation = getPiInvocation(args);
+			currentResult.command = [invocation.command, ...invocation.args].map(s => s.includes(' ') ? `"${s}"` : s).join(" ");
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
 				shell: false,
@@ -769,6 +772,11 @@ export default function (pi: ExtensionAPI) {
 					container.addChild(new Text(theme.fg("muted", "─── Task ───"), 0, 0));
 					container.addChild(new Text(theme.fg("dim", r.task), 0, 0));
 					container.addChild(new Spacer(1));
+					if (r.command) {
+						container.addChild(new Text(theme.fg("muted", "─── Command ───"), 0, 0));
+						container.addChild(new Text(theme.fg("dim", r.command), 0, 0));
+						container.addChild(new Spacer(1));
+					}
 					container.addChild(new Text(theme.fg("muted", "─── Output ───"), 0, 0));
 					if (displayItems.length === 0 && !finalOutput) {
 						container.addChild(new Text(theme.fg("muted", "(no output)"), 0, 0));
@@ -800,6 +808,7 @@ export default function (pi: ExtensionAPI) {
 				if (isError && r.stopReason) text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 				if (isError && r.errorMessage) text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
 				else if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
+				if (r.command) text += `\n${theme.fg("dim", r.command)}`;
 				else {
 					text += `\n${renderDisplayItems(displayItems, COLLAPSED_ITEM_COUNT)}`;
 					if (displayItems.length > COLLAPSED_ITEM_COUNT) text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
@@ -853,6 +862,8 @@ export default function (pi: ExtensionAPI) {
 							),
 						);
 						container.addChild(new Text(theme.fg("muted", "Task: ") + theme.fg("dim", r.task), 0, 0));
+						if (r.command)
+							container.addChild(new Text(theme.fg("muted", "Command: ") + theme.fg("dim", r.command), 0, 0));
 
 						// Show tool calls
 						for (const item of displayItems) {
@@ -895,6 +906,7 @@ export default function (pi: ExtensionAPI) {
 					const rIcon = r.exitCode === 0 ? theme.fg("success", "✓") : theme.fg("error", "✗");
 					const displayItems = getDisplayItems(r.messages);
 					text += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)} ${rIcon}`;
+					if (r.command) text += `\n${theme.fg("dim", r.command)}`;
 					if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
 					else text += `\n${renderDisplayItems(displayItems, 5)}`;
 				}
@@ -938,6 +950,8 @@ export default function (pi: ExtensionAPI) {
 							new Text(`${theme.fg("muted", "─── ") + theme.fg("accent", r.agent)} ${rIcon}`, 0, 0),
 						);
 						container.addChild(new Text(theme.fg("muted", "Task: ") + theme.fg("dim", r.task), 0, 0));
+						if (r.command)
+							container.addChild(new Text(theme.fg("muted", "Command: ") + theme.fg("dim", r.command), 0, 0));
 
 						// Show tool calls
 						for (const item of displayItems) {
@@ -981,6 +995,7 @@ export default function (pi: ExtensionAPI) {
 								: theme.fg("error", "✗");
 					const displayItems = getDisplayItems(r.messages);
 					text += `\n\n${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)} ${rIcon}`;
+					if (r.command) text += `\n${theme.fg("dim", r.command)}`;
 					if (displayItems.length === 0)
 						text += `\n${theme.fg("muted", r.exitCode === -1 ? "(running...)" : "(no output)")}`;
 					else text += `\n${renderDisplayItems(displayItems, 5)}`;

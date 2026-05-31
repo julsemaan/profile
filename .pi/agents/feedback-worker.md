@@ -2,6 +2,7 @@
 name: feedback-worker
 description: "Execute approved feedback actions (fix, reply, clarify). Full tool access."
 model: custom/medium
+thinking: medium
 tools: read, write, edit, bash, grep, find, ls, todo, questionnaire, subagent
 ---
 

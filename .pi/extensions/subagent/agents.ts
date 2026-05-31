@@ -13,6 +13,7 @@ export interface AgentConfig {
 	description: string;
 	tools?: string[];
 	model?: string;
+	thinkingLevel?: string;
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
@@ -60,11 +61,18 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			.map((t: string) => t.trim())
 			.filter(Boolean);
 
+		const validThinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
+		const thinkingLevel = frontmatter.thinking && validThinkingLevels.includes(frontmatter.thinking)
+			? frontmatter.thinking
+			: undefined;
+
 		agents.push({
 			name: frontmatter.name,
 			description: frontmatter.description,
 			tools: tools && tools.length > 0 ? tools : undefined,
 			model: frontmatter.model,
+			thinkingLevel,
 			systemPrompt: body,
 			source,
 			filePath,
