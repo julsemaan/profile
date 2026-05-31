@@ -27,6 +27,7 @@ type BuildPlanState = {
 	modelMap?: Partial<ModelMap>;
 };
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+type ScopedModelSelection = { provider: string; modelId: string; thinkingLevel?: ThinkingLevel };
 
 const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "todo"];
 const PLAN_TOOLS = [...READ_ONLY_TOOLS, "github_pr_review_fetch"];
@@ -148,6 +149,10 @@ function parseModelRef(modelRef: string): { provider: string; modelId: string } 
 		provider: trimmed.slice(0, slashIndex),
 		modelId: trimmed.slice(slashIndex + 1),
 	};
+}
+
+function isThinkingLevel(value: string): value is ThinkingLevel {
+	return value === "off" || value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
 }
 
 function getCurrentModelProfile(modelMap: ModelMap): ModelProfile {
