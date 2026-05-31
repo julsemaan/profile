@@ -239,7 +239,7 @@ type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 async function runSingleAgent(
 	defaultCwd: string,
 	agents: AgentConfig[],
-	modelMap: Record<string, string>,
+	modelMap: Record<string, { model: string; thinkingLevel?: string }>,
 	agentName: string,
 	task: string,
 	cwd: string | undefined,
@@ -265,10 +265,17 @@ async function runSingleAgent(
 	}
 
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
-	const resolvedModel = agent.model ? modelMap[agent.model] ?? agent.model : undefined;
+
+	// Resolve model from alias config
+	const aliasConfig = agent.model ? modelMap[agent.model] : undefined;
+	const resolvedModel = aliasConfig ? aliasConfig.model : agent.model ?? undefined;
 	if (resolvedModel) args.push("--model", resolvedModel);
+
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
-	if (agent.thinkingLevel) args.push("--thinking", agent.thinkingLevel);
+
+	// Agent frontmatter thinkingLevel overrides alias thinkingLevel
+	const resolvedThinking = agent.thinkingLevel ?? aliasConfig?.thinkingLevel;
+	if (resolvedThinking) args.push("--thinking", resolvedThinking);
 
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;
@@ -434,12 +441,22 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
-	let modelMap: Record<string, string> = {};
+	type AliasConfig = { model: string; thinkingLevel?: string };
+	let modelMap: Record<string, AliasConfig> = {};
 	pi.events.on("build-plan:model-config", (data) => {
 		if (!data || typeof data !== "object") return;
-		modelMap = Object.fromEntries(
-			Object.entries(data as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-		);
+		modelMap = {};
+		for (const [alias, config] of Object.entries(data as Record<string, unknown>)) {
+			if (typeof config === "object" && config !== null) {
+				const c = config as Record<string, unknown>;
+				if (typeof c.model === "string") {
+					modelMap[alias] = {
+						model: c.model,
+						thinkingLevel: typeof c.thinkingLevel === "string" ? c.thinkingLevel : undefined,
+					};
+				}
+			}
+		}
 	});
 
 	pi.registerTool({
