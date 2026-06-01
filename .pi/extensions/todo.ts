@@ -49,6 +49,11 @@ IMPORTANT: You must use the todo tool to track every task.
   Structure work into concrete phases: inspect (gather information), implement (make changes), validate (verify correctness), follow-up (handle edge cases).
 - Todo use is required for task tracking, but it does not need to immediately precede every tool call.
 - Before using tools for a new task, ensure at least one relevant todo exists.
+
+When no todos exist yet:
+- Your first action must be creating an ordered, multi-step todo list with inspect, implement, validate, follow-up phases.
+- After creating the todo list, continue immediately with the first concrete step in the same turn.
+- Do not stop after todo creation unless the request is ambiguous and requires asking clarifying questions via question.
 `;
 
 const TODO_READ_ONLY_TOOLS = new Set(["ls", "find", "grep", "read"]);
@@ -109,23 +114,12 @@ export default function todoExtension(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event) => {
 		const hasActiveTodos = todos.some((todo) => !todo.done);
 
-		const result: {
-			systemPrompt?: string;
-			message?: { customType: string; content: string; display: boolean };
-		} = {
+		// When no active todos, guidance is embedded in system prompt (see TODO_ENFORCEMENT_INSTRUCTIONS).
+		// No hidden message injection — model gets explicit continuation instructions in system prompt.
+
+		return {
 			systemPrompt: event.systemPrompt + `\n\n${TODO_ENFORCEMENT_INSTRUCTIONS}`,
 		};
-
-		if (!hasActiveTodos) {
-			result.message = {
-				customType: "todo-nudge",
-				content:
-					"Your first move: create an ordered, multi-step todo list breaking the request into concrete phases (inspect, implement, validate, follow-up). If the request is unclear, ask clarifying questions via question before writing the todo breakdown.",
-				display: false,
-			};
-		}
-
-		return result;
 	});
 
 	pi.on("tool_call", async (event) => {

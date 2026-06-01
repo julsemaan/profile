@@ -59,6 +59,8 @@ IMPORTANT: You are in BUILD MODE.
 - After making changes, validate them when practical.
 - Summarize what changed and any follow-up work.
 - Start by creating a clear, multi-step todo list from the request or plan before any other work.
+- After creating the todo list, continue working in the same turn — do not stop after todo creation.
+  Immediately start the first concrete step (read files, inspect code, or begin implementation).
 `;
 
 const PLAN_INSTRUCTIONS = `
@@ -74,6 +76,8 @@ IMPORTANT: You are in PLAN MODE.
 - If requirements are ambiguous, ask clarifying questions.
 - End with a concrete implementation plan.
 - Prefer a numbered plan with files to change and validation steps.
+- After creating the todo list, continue working in the same turn — do not stop after todo creation.
+  Immediately start the first inspection step (read files, grep code, gather evidence).
 `;
 
 export const BUILTIN_MODES: Record<string, Omit<ModeConfig, "name">> = {
