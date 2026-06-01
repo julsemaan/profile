@@ -15,8 +15,8 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 export interface ModeConfig {
 	name: string;
 	description: string;
-	/** Tools available in this mode. */
-	tools: string[];
+	/** Tools available in this mode. If not set, all registered tools are exposed. */
+	tools?: string[];
 	/** Model alias or direct provider/model ref. */
 	model?: string;
 	/** Thinking level for this mode. */
@@ -48,33 +48,7 @@ const VALID_THINKING_LEVELS = new Set<string>([
 
 const VALID_ACCESS = new Set<string>(["build", "read-only"]);
 
-// ── Built-in defaults ──────────────────────────────────────────────────────
-
-const READ_ONLY_TOOLS = [
-	"read",
-	"bash",
-	"grep",
-	"find",
-	"ls",
-	"question",
-	"todo",
-	"ketch_web_search",
-	"ketch_scrape",
-	"ketch_code_search",
-	"ketch_docs_search",
-	"web_search",
-  "fetch_content",
-  "code_search",
-];
-const PLAN_TOOLS = [...READ_ONLY_TOOLS, "github_pr_review_fetch"];
-const BUILD_TOOLS = [
-	...PLAN_TOOLS,
-	"github_pr_review_reply",
-	"github_pr_comment_reply",
-	"edit",
-	"write",
-	"subagent",
-];
+// ── Built-in defaults (tool arrays removed — all tools inherited from pi.getAllTools())
 
 const BUILD_INSTRUCTIONS = `
 IMPORTANT: You are in BUILD MODE.
@@ -89,10 +63,14 @@ IMPORTANT: You are in BUILD MODE.
 
 const PLAN_INSTRUCTIONS = `
 IMPORTANT: You are in PLAN MODE.
-- Do not modify files.
-- Use tools only to inspect the codebase and gather evidence.
-- You may look up online resources and documentation using bash with read-only network commands like curl.
-- Think through architecture, edge cases, risks, and tests.
+- Read-only mode: enforced by instruction, not tool restriction.
+- All tools may be available \u2014 do not misuse them.
+- Never use \`edit\` or \`write\`.
+- Never use \`bash\` for mutating commands.
+- Never change git state or working tree.
+- Never post PR reviews, comments, or replies.
+- Never use \`subagent\` to implement or cause side effects.
+- Use tools only for inspection, evidence gathering, research, and planning.
 - If requirements are ambiguous, ask clarifying questions.
 - End with a concrete implementation plan.
 - Prefer a numbered plan with files to change and validation steps.
@@ -101,7 +79,6 @@ IMPORTANT: You are in PLAN MODE.
 export const BUILTIN_MODES: Record<string, Omit<ModeConfig, "name">> = {
 	build: {
 		description: "Implementation mode - full tool access",
-		tools: BUILD_TOOLS,
 		access: "build",
 		safeBashOnly: false,
 		systemPrompt: BUILD_INSTRUCTIONS,
@@ -110,7 +87,6 @@ export const BUILTIN_MODES: Record<string, Omit<ModeConfig, "name">> = {
 	},
 	plan: {
 		description: "Read-only planning mode",
-		tools: PLAN_TOOLS,
 		access: "read-only",
 		safeBashOnly: true,
 		systemPrompt: PLAN_INSTRUCTIONS,
@@ -173,9 +149,7 @@ function loadModeFromFile(filePath: string): ModeConfig | { error: string } {
 				.split(",")
 				.map((t) => t.trim())
 				.filter(Boolean)
-			: access === "build"
-				? [...BUILD_TOOLS]
-				: [...READ_ONLY_TOOLS];
+			: undefined;
 
 	const model =
 		typeof frontmatter.model === "string" ? frontmatter.model.trim() : undefined;

@@ -65,15 +65,7 @@ function getTempStateFilePath(cwd: string): string {
 	return path.join(os.tmpdir(), `pi-model-state-${hash}.json`);
 }
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv.modelMap);
-const READ_ONLY_TOOLS = [
-	"read",
-	"bash",
-	"grep",
-	"find",
-	"ls",
-	"question",
-	"todo",
-];
+
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
 	return (
@@ -145,37 +137,7 @@ async function waitForTurnStart(ctx: ExtensionContext, timeoutMs = 5000): Promis
 	return false;
 }
 
-function isSafeBashCommand(command: string): boolean {
-	const trimmed = command.trim();
-	if (!trimmed) return false;
 
-	// Block common shell features that make allowlisting unreliable.
-	if (/[|&;><`$\\]/.test(trimmed)) return false;
-	if (/\b(sudo|rm|mv|cp|mkdir|rmdir|touch|chmod|chown|tee|xargs|kill|pkill|nohup|ssh|scp|sftp)\b/.test(trimmed))
-		return false;
-	if (/\b(npm|pnpm|yarn|bun|pip|cargo|make)\b/.test(trimmed) && !/\b(list|ls|why|info|outdated)\b/.test(trimmed)) {
-		return false;
-	}
-
-	const allowed = [
-		/^pwd$/,
-		/^ls(\s+.+)?$/,
-		/^find(\s+.+)?$/,
-		/^rg(\s+.+)?$/,
-		/^grep(\s+.+)?$/,
-		/^git\s+(status|diff|log|show|branch)(\s+.+)?$/,
-		/^cat\s+.+$/,
-		/^head(\s+.+)?$/,
-		/^tail(\s+.+)?$/,
-		/^sed\s+-n\s+.+$/,
-		/^wc(\s+.+)?$/,
-		/^tree(\s+.+)?$/,
-		/^curl(\s+.+)?$/,
-		/^wget\s+(-q\s+)?(-O-\s+)?https?:\/\/.+$/,
-	];
-
-	return allowed.some((pattern) => pattern.test(trimmed));
-}
 
 function parseModelRef(modelRef: string): { provider: string; modelId: string } | undefined {
 	const trimmed = modelRef.trim();
@@ -271,6 +233,11 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	let currentModelRegistry: any;
 	let fileOverridePath: string | null = null;
 	let fileOverrideProfile: BuiltinProfile | null = null;
+
+	function getModeToolNames(modeConfig?: ModeConfig): string[] {
+		if (modeConfig?.tools?.length) return modeConfig.tools;
+		return pi.getAllTools().map(t => t.name);
+	}
 
 	function getActiveModeConfig(): ModeConfig | undefined {
 		return modeRegistry.byName.get(mode);
@@ -382,7 +349,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		}
 
 		mode = nextMode;
-		pi.setActiveTools(modeConfig.tools);
+		pi.setActiveTools(getModeToolNames(modeConfig));
 
 		// Determine model alias for this mode
 		const activeAlias = getActiveAlias(modeConfig);
@@ -842,7 +809,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		// Apply current mode config
 		const modeConfig = getActiveModeConfig();
 		if (modeConfig) {
-			pi.setActiveTools(modeConfig.tools);
+			pi.setActiveTools(getModeToolNames(modeConfig));
 
 			const activeAlias = getActiveAlias(modeConfig);
 			const aliasConfig = modelMap[activeAlias];
@@ -861,7 +828,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			pi.setThinkingLevel(modeConfig.thinking ?? aliasConfig.thinkingLevel);
 		} else {
 			// Fallback: should not happen since we validated mode is known
-			pi.setActiveTools(READ_ONLY_TOOLS);
+			pi.setActiveTools(pi.getAllTools().map(t => t.name));
 		}
 
 		updateStatus(ctx);
@@ -879,25 +846,5 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		};
 	});
 
-	pi.on("tool_call", async (event) => {
-		const modeConfig = getActiveModeConfig();
-		if (!modeConfig || modeConfig.access === "build") return;
 
-		if (event.toolName === "edit" || event.toolName === "write") {
-			return {
-				block: true,
-				reason: `${modeConfig.name} mode is read-only. Switch to /build to modify files.`,
-			};
-		}
-
-		if (modeConfig.safeBashOnly && event.toolName === "bash") {
-			const command = String(event.input.command ?? "");
-			if (!isSafeBashCommand(command)) {
-				return {
-					block: true,
-					reason: `${modeConfig.name} mode only allows read-only bash commands. Blocked: ${command}`,
-				};
-			}
-		}
-	});
 }
