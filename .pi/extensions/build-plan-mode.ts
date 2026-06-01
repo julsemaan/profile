@@ -3,7 +3,9 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { fuzzyFilter } from "@mariozechner/pi-tui";
 import * as fs from "fs";
+import * as os from "node:os";
 import * as path from "path";
+import { createHash } from "node:crypto";
 import {
 	discoverModes,
 	type ModeConfig,
@@ -44,6 +46,11 @@ type AppState = {
 const STATE_TYPE = "build-plan-mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
 const FILE_OVERRIDE_RELPATH = "julsemaan-tmp/model-profile";
+
+function getTempStateFilePath(cwd: string): string {
+	const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 12);
+	return path.join(os.tmpdir(), `pi-model-state-${hash}.json`);
+}
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv.modelMap);
 const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "question", "todo"];
 
@@ -253,9 +260,33 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
 	});
 
-	function persistState() {
+	function persistStateToFile(cwd: string) {
+		const filePath = getTempStateFilePath(cwd);
+		try {
+			fs.writeFileSync(filePath, JSON.stringify({ modelMap }, null, 2), "utf-8");
+		} catch {
+			// File is secondary persistence; session entries are primary
+		}
+	}
+
+	function readStateFromFile(cwd: string): Partial<Record<ModelAlias, Partial<AliasConfig>>> | null {
+		const filePath = getTempStateFilePath(cwd);
+		try {
+			if (fs.existsSync(filePath)) {
+				const content = fs.readFileSync(filePath, "utf-8");
+				const data = JSON.parse(content);
+				if (data && data.modelMap) return data.modelMap;
+			}
+		} catch {
+			// Silently ignore corrupt/inaccessible file
+		}
+		return null;
+	}
+
+	function persistState(ctx?: ExtensionContext) {
 		const profile = getCurrentProfile(modelMap);
 		pi.appendEntry(STATE_TYPE, { mode, profile, modelMap });
+		if (ctx) persistStateToFile(ctx.cwd);
 	}
 
 	function emitModelConfig() {
@@ -270,7 +301,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 		}
 		emitModelConfig();
-		persistState();
+		persistState(ctx);
 		const modeConfig = getActiveModeConfig();
 		const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
 		if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
@@ -366,7 +397,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				"info",
 			);
 		}
-		persistState();
+		persistState(ctx);
 	}
 
 	async function applyProfile(
@@ -384,7 +415,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		emitModelConfig();
 		await setSessionModel(activeAlias, ctx, false);
 		updateStatus(ctx);
-		persistState();
+		persistState(ctx);
 
 		if (notify) {
 			ctx.ui.notify(
@@ -738,8 +769,11 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		const savedMode = lastState?.data?.mode;
 		mode = savedMode && modeRegistry.byName.has(savedMode) ? savedMode : "build";
 
-		// Deep merge persisted alias config over defaults
+		// Resolve modelMap with precedence: session entries > temp file > file override > default
 		const defaultMap = structuredClone(DEFAULT_MODEL_MAP);
+		let hasCustomState = false;
+
+		// 1. Session entries (highest override)
 		if (lastState?.data?.modelMap) {
 			for (const alias of Object.keys(lastState.data.modelMap) as ModelAlias[]) {
 				const saved = lastState.data.modelMap[alias];
@@ -747,14 +781,40 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 					defaultMap[alias] = { ...defaultMap[alias], ...saved };
 				}
 			}
+			hasCustomState = true;
 		}
-		modelMap = defaultMap;
+
+		// 2. Temp file (if no session entries)
+		if (!hasCustomState) {
+			const fileState = readStateFromFile(ctx.cwd);
+			if (fileState) {
+				for (const alias of Object.keys(fileState) as ModelAlias[]) {
+					const saved = fileState[alias];
+					if (saved) {
+						defaultMap[alias] = { ...defaultMap[alias], ...saved };
+					}
+				}
+				hasCustomState = true;
+			}
+		}
+
+		// 3. File override (julsemaan-tmp/model-profile) — applied without side effects
+		const { profile: fileProfile, filePath } = readFileOverride(ctx);
+		fileOverridePath = filePath;
+		fileOverrideProfile = fileProfile;
+
+		if (hasCustomState) {
+			// Session entries or temp file had custom state (highest priority)
+			modelMap = defaultMap;
+		} else if (fileProfile) {
+			// No custom state, fall back to file override profile
+			modelMap = structuredClone(MODEL_PROFILES[fileProfile].modelMap);
+		} else {
+			// Pure DEFAULT_MODEL_MAP (no override from any source)
+			modelMap = defaultMap;
+		}
 
 		currentModelRegistry = ctx.modelRegistry;
-		fileOverridePath = null;
-		fileOverrideProfile = null;
-
-		await syncFileOverride(ctx);
 
 		emitModelConfig();
 
