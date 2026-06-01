@@ -65,7 +65,15 @@ function getTempStateFilePath(cwd: string): string {
 	return path.join(os.tmpdir(), `pi-model-state-${hash}.json`);
 }
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv.modelMap);
-const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "question", "todo"];
+const READ_ONLY_TOOLS = [
+	"read",
+	"bash",
+	"grep",
+	"find",
+	"ls",
+	"question",
+	"todo",
+];
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
 	return (
