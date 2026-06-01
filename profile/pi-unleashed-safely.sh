@@ -12,7 +12,7 @@ HIDE_HOME_PI_EXTENSIONS=0
 # Extra npm packages to install and register as pi extensions.
 # `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
 # so install it explicitly to keep the extension loadable.
-EXTRA_PI_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui")
+EXTRA_PI_PACKAGES=("pi-caveman" "@earendil-works/pi-tui")
 
 usage() {
   cat <<'USAGE'
@@ -111,7 +111,7 @@ fi
 
 HOST_PI_HOME="$HOME/.pi"
 CONTAINER_HOME="$HOME"
-PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@mariozechner/pi-coding-agent}"
+PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
 PI_UNLEASHED_EXTRA_PACKAGES_JSON="[]"
 if [[ ${#EXTRA_PI_PACKAGES[@]} -gt 0 ]]; then
   PI_UNLEASHED_EXTRA_PACKAGES_JSON="[$(printf '"npm:%s",' "${EXTRA_PI_PACKAGES[@]}") ]"
