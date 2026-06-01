@@ -66,13 +66,13 @@ function getAssistantText(message: AssistantMessage): string {
 		.trim();
 }
 
-function getLastPlanText(ctx: ExtensionContext): string | undefined {
+function getLastAssistantEntry(ctx: ExtensionContext): { id: string; text: string } | undefined {
 	const branch = ctx.sessionManager.getBranch();
 	for (let i = branch.length - 1; i >= 0; i--) {
 		const entry = branch[i];
 		if (entry.type !== "message" || !isAssistantMessage(entry.message)) continue;
 		const text = getAssistantText(entry.message);
-		if (text) return text;
+		if (text) return { id: entry.id, text };
 	}
 	return undefined;
 }
@@ -88,6 +88,33 @@ function buildExecutionPrompt(plan: string, extraInstructions?: string): string 
 	]
 		.filter(Boolean)
 		.join("\n\n");
+}
+
+function buildFinalizePlanPrompt(extraInstructions?: string): string {
+	const extra = extraInstructions?.trim();
+	return [
+		"Provide the final implementation plan for this task.",
+		"Do not continue implementing.",
+		"Synthesize the full plan from the conversation so far instead of giving a partial update.",
+		"Return a self-contained plan that can be executed in a fresh context with no other conversation history.",
+		"Include concrete steps, files to inspect or change, risks, and validation steps.",
+		extra ? `Additional instructions for the plan: ${extra}` : undefined,
+	]
+		.filter(Boolean)
+		.join("\n\n");
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForTurnStart(ctx: ExtensionContext, timeoutMs = 5000): Promise<boolean> {
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < timeoutMs) {
+		if (!ctx.isIdle()) return true;
+		await sleep(50);
+	}
+	return false;
 }
 
 function isSafeBashCommand(command: string): boolean {
@@ -495,26 +522,47 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	// ── Commands ─────────────────────────────────────────────────────────
 
 	pi.registerCommand("execute-plan", {
-		description: "Start a fresh build session from the latest plan only",
+		description: "Finalize current plan, then start fresh build session from finalized plan only",
 		handler: async (args, ctx) => {
 			if (!ctx.isIdle()) {
 				ctx.ui.notify("Wait for the current turn to finish before executing the plan.", "warning");
 				return;
 			}
 
-			const plan = getLastPlanText(ctx);
-			if (!plan) {
-				ctx.ui.notify("No assistant plan found in the current session.", "warning");
+			const beforeEntry = getLastAssistantEntry(ctx);
+
+			ctx.ui.notify("Requesting final consolidated plan…", "info");
+			pi.sendUserMessage(buildFinalizePlanPrompt(args));
+
+			const started = await waitForTurnStart(ctx);
+			if (!started) {
+				ctx.ui.notify("Final plan request did not start. Handoff aborted.", "warning");
 				return;
 			}
 
-			const executionPrompt = buildExecutionPrompt(plan, args);
+			await ctx.waitForIdle();
+
+			const afterEntry = getLastAssistantEntry(ctx);
+			if (!afterEntry) {
+				ctx.ui.notify("Assistant did not produce a final plan. Handoff aborted.", "warning");
+				return;
+			}
+
+			if (beforeEntry && beforeEntry.id === afterEntry.id) {
+				ctx.ui.notify("Assistant did not produce a new plan. Handoff aborted.", "warning");
+				return;
+			}
+
+			const finalizedPlan = afterEntry.text;
+			const executionPrompt = buildExecutionPrompt(finalizedPlan, args);
 			const parentSession = ctx.sessionManager.getSessionFile();
 			const result = await ctx.newSession({
 				parentSession,
 				withSession: async (replacementCtx) => {
-					await replacementCtx.sendUserMessage(executionPrompt);
-					replacementCtx.ui.notify("Started fresh build session from latest plan.", "info");
+					// Fire-and-forget: don't await so TUI navigates to fresh session immediately
+					// instead of blocking until the entire plan execution completes.
+					replacementCtx.sendUserMessage(executionPrompt).catch(() => {});
+					replacementCtx.ui.notify("Started fresh build session from finalized plan.", "info");
 				},
 			});
 
