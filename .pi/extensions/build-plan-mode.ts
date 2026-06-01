@@ -114,10 +114,6 @@ function buildFinalizePlanPrompt(extraInstructions?: string): string {
 	const extra = extraInstructions?.trim();
 	return [
 		"Provide the final implementation plan for this task.",
-		"Do not continue implementing.",
-		"Synthesize the full plan from the conversation so far instead of giving a partial update.",
-		"Return a self-contained plan that can be executed in a fresh context with no other conversation history.",
-		"Include concrete steps, files to inspect or change, risks, and validation steps.",
 		extra ? `Additional instructions for the plan: ${extra}` : undefined,
 	]
 		.filter(Boolean)
