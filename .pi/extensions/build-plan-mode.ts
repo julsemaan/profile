@@ -16,17 +16,24 @@ import {
 type ModelAlias = "custom/large" | "custom/medium";
 type AliasConfig = { model: string; thinkingLevel: ThinkingLevel };
 type ModelMap = Record<ModelAlias, AliasConfig>;
-type ModelProfile = "pub" | "priv" | "custom";
+type BuiltinProfile = "pub" | "pubDeep" | "priv";
+type ModelProfile = BuiltinProfile | "custom";
 
 type ModelProfileConfig = {
 	modelMap: ModelMap;
 };
 
-const MODEL_PROFILES: Record<Exclude<ModelProfile, "custom">, ModelProfileConfig> = {
+const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
 	pub: {
 		modelMap: {
 			"custom/large": { model: "openai-codex/gpt-5.4", thinkingLevel: "high" },
 			"custom/medium": { model: "opencode/big-pickle", thinkingLevel: "high" },
+		},
+	},
+	pubDeep: {
+		modelMap: {
+			"custom/large": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "high" },
+			"custom/medium": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "medium" },
 		},
 	},
 	priv: {
@@ -36,6 +43,12 @@ const MODEL_PROFILES: Record<Exclude<ModelProfile, "custom">, ModelProfileConfig
 		},
 	},
 };
+
+const BUILTIN_PROFILES = Object.keys(MODEL_PROFILES) as BuiltinProfile[];
+function isBuiltinProfile(value: string): value is BuiltinProfile {
+	return (BUILTIN_PROFILES as readonly string[]).includes(value);
+}
+const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
 
 type AppState = {
 	mode?: string;
@@ -249,7 +262,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	let modelMap: ModelMap = structuredClone(DEFAULT_MODEL_MAP);
 	let currentModelRegistry: any;
 	let fileOverridePath: string | null = null;
-	let fileOverrideProfile: Exclude<ModelProfile, "custom"> | null = null;
+	let fileOverrideProfile: BuiltinProfile | null = null;
 
 	function getActiveModeConfig(): ModeConfig | undefined {
 		return modeRegistry.byName.get(mode);
@@ -401,7 +414,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	}
 
 	async function applyProfile(
-		profile: Exclude<ModelProfile, "custom">,
+		profile: BuiltinProfile,
 		ctx: ExtensionContext,
 		source: string,
 		notify = true,
@@ -426,7 +439,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	}
 
 	function readFileOverride(ctx: ExtensionContext): {
-		profile: Exclude<ModelProfile, "custom"> | null;
+		profile: BuiltinProfile | null;
 		filePath: string | null;
 	} {
 		let dir = ctx.cwd;
@@ -435,11 +448,11 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			if (fs.existsSync(candidate)) {
 				try {
 					const content = fs.readFileSync(candidate, "utf-8").trim().toLowerCase();
-					if (content === "pub" || content === "priv") {
+					if (isBuiltinProfile(content)) {
 						return { profile: content, filePath: candidate };
 					}
 					ctx.ui.notify(
-						`Invalid content in ${candidate}: expected "pub" or "priv", got "${content}"`,
+						`Invalid content in ${candidate}: expected ${BUILTIN_PROFILES.join(" or ")}, got "${content}"`,
 						"warning",
 					);
 					return { profile: null, filePath: candidate };
@@ -658,7 +671,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("model-profile", {
-		description: "Show or set model alias profile (pub|priv)",
+		description: `Show or set model alias profile (${BUILTIN_PROFILES_DISPLAY})`,
 		handler: async (args, ctx) => {
 			if (fileOverridePath) {
 				ctx.ui.notify(
@@ -672,11 +685,11 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				ctx.ui.notify(`Current profile: ${current}`, "info");
 				return;
 			}
-			if (profile === "pub" || profile === "priv") {
+			if (isBuiltinProfile(profile)) {
 				await applyProfile(profile, ctx, "Manual profile");
 				return;
 			}
-			ctx.ui.notify("Usage: /model-profile [pub|priv]", "warning");
+			ctx.ui.notify(`Usage: /model-profile [${BUILTIN_PROFILES_DISPLAY}]`, "warning");
 		},
 	});
 
@@ -736,11 +749,11 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerShortcut("ctrl+;", {
-		description: "Cycle model profile (pub/priv)",
+		description: `Cycle model profile (${BUILTIN_PROFILES_DISPLAY})`,
 		handler: async (ctx) => {
-			const profiles = Object.keys(MODEL_PROFILES) as Exclude<ModelProfile, "custom">[];
+			const profiles = Object.keys(MODEL_PROFILES) as BuiltinProfile[];
 			const current = getCurrentProfile(modelMap);
-			const idx = profiles.indexOf(current as Exclude<ModelProfile, "custom">);
+			const idx = profiles.indexOf(current as BuiltinProfile);
 			const next = idx === -1 || idx >= profiles.length - 1 ? profiles[0] : profiles[idx + 1];
 			await applyProfile(next, ctx, "Cycled profile");
 		},
