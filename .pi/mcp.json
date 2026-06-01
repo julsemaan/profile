@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "lifecycle": "lazy"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"],
+      "lifecycle": "lazy",
+      "idleTimeout": 5
+    },
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "auth": "bearer",
+      "bearerTokenEnv": "GH_MCP_TOKEN",
+      "lifecycle": "lazy"
+    },
+    "bitbucket": {
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "headers": {
+        "Authorization": "Basic $env:BB_MCP_TOKEN"
+      },
+      "lifecycle": "lazy"
+    }
+  }
+}

@@ -12,7 +12,7 @@ HIDE_HOME_PI_EXTENSIONS=0
 # Extra npm packages to install and register as pi extensions.
 # `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
 # so install it explicitly to keep the extension loadable.
-EXTRA_PI_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui")
+EXTRA_PI_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui" "pi-mcp-adapter")
 
 usage() {
   cat <<'USAGE'
@@ -319,6 +319,8 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e GITHUB_TOKEN \
   -e GH_TOKEN \
   -e BRAVE_API_KEY \
+  -e GH_MCP_TOKEN \
+  -e BB_MCP_TOKEN \
   -e CONTEXT7_API_KEY \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \
