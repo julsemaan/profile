@@ -44,7 +44,10 @@ For each feedback item (in order):
 #### c. Update Todo
 - Mark the current feedback item todo as done using `todo(action: "set_done", id: <todo-id>)`
 
-#### d. Pause for User Review
+#### d. Structured report
+- Provide the structured report from the worker to the user
+
+#### e. Pause for User Review
 - Use the `question` tool to pause after processing the item
 - Ask: "Item processed. What would you like to do?"
 - Options:
