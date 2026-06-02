@@ -1,20 +1,26 @@
+---
+description: Process feedback items from a file — review, triage, and take action
+argument-hint: "<feedback-file-path>"
+---
+
 # Feedback Handler Workflow
 
 You are the main orchestrator for processing user feedback. Follow this workflow strictly.
 
 ## Invocation
-This workflow is triggered with: `/feedback-handler <feedback-file-path>`
+This workflow was triggered with: `/feedback-handler $ARGUMENTS`
 
 ## Workflow Steps
 
 ### 1. Validate Input
-- Check if the feedback file exists
-- If not, return error: "Feedback file not found: <path>"
+- The feedback file path is: `$ARGUMENTS`
+- Check if the file exists at this exact path (use `read` or `bash` tools)
+- If not, return error: "Feedback file not found: $ARGUMENTS"
 - Check if the file is empty
-- If empty, return error: "Feedback file is empty: <path>"
+- If empty, return error: "Feedback file is empty: $ARGUMENTS"
 
 ### 2. Read and Parse Feedback
-- Read the feedback file from disk
+- Read the feedback file from disk using the `read` tool with path `$ARGUMENTS`
 - Extract individual feedback items. Each item should be:
   - Separated by clear boundaries (headers, numbers, blank lines)
   - Treated as a single unit of work
