@@ -1,0 +1,1 @@
+- Multiline copy/paste doesn't work and inserts empty spaces in between lines
