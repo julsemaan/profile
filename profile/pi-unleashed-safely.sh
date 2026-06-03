@@ -147,7 +147,7 @@ if command -v go >/dev/null 2>&1; then
   HOST_GOMODCACHE=$(go env GOMODCACHE 2>/dev/null || true)
   HOST_GOCACHE=$(go env GOCACHE 2>/dev/null || true)
 
-  [[ -n "$HOST_GOMODCACHE" ]] && mkdir -p "$HOST_GOMODCACHE" && GO_DOCKER_FLAGS+=(-v "$HOST_GOMODCACHE:$HOST_GOMODCACHE:ro")
+  [[ -n "$HOST_GOMODCACHE" ]] && mkdir -p "$HOST_GOMODCACHE" && GO_DOCKER_FLAGS+=(-v "$HOST_GOMODCACHE:$HOST_GOMODCACHE:rw")
   [[ -n "$HOST_GOCACHE" ]] && mkdir -p "$HOST_GOCACHE" && GO_DOCKER_FLAGS+=(-v "$HOST_GOCACHE:$HOST_GOCACHE:rw")
 
   # Forward Go env vars (only if set on host)
