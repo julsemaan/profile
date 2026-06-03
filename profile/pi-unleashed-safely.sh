@@ -41,6 +41,16 @@ Environment:
                         scraping, and library docs.
                         Config (~/.config/ketch) and cache (~/.cache/ketch)
                         persist via bind mounts.
+  Go cache reuse       Detects Go environment on the host and mounts
+                        GOMODCACHE (read-only) and GOCACHE into the container,
+                        reusing downloaded Go modules without exposing
+                        credentials. Private modules cached on host are
+                        available for container builds.
+                        Forwarded vars: GOPATH, GOMODCACHE, GOCACHE,
+                        GOPRIVATE, GONOPROXY, GONOSUMDB, GOVCS.
+                        GOFLAGS defaults to -mod=readonly.
+                        For fully offline builds, run 'go mod vendor' on host
+                        and use -mod=vendor.
 
 Examples:
   ./pi-unleashed-safely.sh
@@ -127,6 +137,28 @@ mkdir -p "$HOST_PI_HOME"
 HOST_KETCH_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/ketch"
 HOST_KETCH_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/ketch"
 mkdir -p "$HOST_KETCH_CONFIG" "$HOST_KETCH_CACHE"
+
+# Go cache discovery for private module reuse in container builds.
+# Discovers host Go paths, creates cache dirs, and builds bind-mount flags.
+# No credentials (SSH, git, netrc) are forwarded -- container sees only
+# already-downloaded module files.
+GO_DOCKER_FLAGS=()
+if command -v go >/dev/null 2>&1; then
+  HOST_GOMODCACHE=$(go env GOMODCACHE 2>/dev/null || true)
+  HOST_GOCACHE=$(go env GOCACHE 2>/dev/null || true)
+
+  [[ -n "$HOST_GOMODCACHE" ]] && mkdir -p "$HOST_GOMODCACHE" && GO_DOCKER_FLAGS+=(-v "$HOST_GOMODCACHE:$HOST_GOMODCACHE:ro")
+  [[ -n "$HOST_GOCACHE" ]] && mkdir -p "$HOST_GOCACHE" && GO_DOCKER_FLAGS+=(-v "$HOST_GOCACHE:$HOST_GOCACHE:rw")
+
+  # Forward Go env vars (only if set on host)
+  for go_env in GOPATH GOMODCACHE GOCACHE GOPRIVATE GONOPROXY GONOSUMDB GOVCS; do
+    val=$(go env "$go_env" 2>/dev/null || true)
+    [[ -n "$val" ]] && GO_DOCKER_FLAGS+=(-e "$go_env")
+  done
+fi
+
+# GOFLAGS: default to -mod=readonly unless host overrides
+GOFLAGS_VALUE="${GOFLAGS:--mod=readonly}"
 
 if [[ $REBUILD -eq 1 ]]; then
   REBUILD_DOCKER_ARG="--no-cache"
@@ -327,5 +359,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -u "$(id -u):$(id -g)" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
   "${KETCH_DOCKER_FLAGS[@]}" \
+  "${GO_DOCKER_FLAGS[@]}" \
+  -e GOFLAGS="$GOFLAGS_VALUE" \
   -v "$MNT:$MNT" -w "$WORKDIR" \
   "$IMAGE" "${PI_ARGS[@]}"
