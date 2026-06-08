@@ -134,6 +134,29 @@ fi
 
 mkdir -p "$HOST_PI_HOME"
 
+HOST_UID="$(id -u)"
+HOST_GID="$(id -g)"
+
+# Preflight: repair ~/.pi ownership so container bind-mount writes work.
+# Container runs as host uid:gid, bad ownership breaks writes.
+if find "$HOST_PI_HOME" -xdev \( ! -uid "$HOST_UID" -o ! -gid "$HOST_GID" \) -print -quit 2>/dev/null | grep -q .; then
+  echo "[pi-unleashed-safely] Repairing $HOST_PI_HOME ownership..." >&2
+  if [[ "$(id -u)" -eq 0 ]]; then
+    find "$HOST_PI_HOME" -xdev \( ! -uid "$HOST_UID" -o ! -gid "$HOST_GID" \) -exec chown -h "$HOST_UID:$HOST_GID" {} + || {
+      echo "Error: failed to chown $HOST_PI_HOME (running as root)" >&2
+      exit 1
+    }
+  elif command -v sudo >/dev/null 2>&1; then
+    find "$HOST_PI_HOME" -xdev \( ! -uid "$HOST_UID" -o ! -gid "$HOST_GID" \) -exec sudo chown -h "$HOST_UID:$HOST_GID" {} + || {
+      echo "Error: failed to repair $HOST_PI_HOME ownership (sudo denied or chown failed)" >&2
+      exit 1
+    }
+  else
+    echo "Error: $HOST_PI_HOME has files not owned by $HOST_UID:$HOST_GID but sudo is not available" >&2
+    exit 1
+  fi
+fi
+
 HOST_KETCH_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/ketch"
 HOST_KETCH_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/ketch"
 mkdir -p "$HOST_KETCH_CONFIG" "$HOST_KETCH_CACHE"
