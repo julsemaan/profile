@@ -55,11 +55,12 @@ For each feedback item (in order):
 
 #### e. Pause for User Review
 - Use the `question` tool to pause after processing the item
+- Provide a summary of how the feedback item was processed
 - Ask: "Item processed. What would you like to do?"
 - Options:
   - Continue to next item (default)
   - Stop processing
-  - Re-process this item
+  - Re-process this item (user must be able to provide input that is taken in consideration for the reprocessing)
 - If user chooses to stop, break the loop
 
 ### 5. Final Summary
