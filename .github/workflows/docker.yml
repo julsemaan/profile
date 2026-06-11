@@ -7,10 +7,16 @@ on:
       - master
     tags:
       - "v*.*.*"
+    paths:
+      - code-sandbox/**
+      - .github/workflows/docker.yml
   pull_request:
     branches:
       - main
       - master
+    paths:
+      - code-sandbox/**
+      - .github/workflows/docker.yml
   workflow_dispatch:
 
 permissions:
