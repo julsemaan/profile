@@ -1,0 +1,2 @@
+- A command like gch that either has completion of branch names or opens something that allows to pick the branch due to the lack of autocompletion on gch
+- When using gpoh, it doesn't work consistently on branches other than master, perhaps due to some missing .git/config for the branch. I'd like that config to not be necessary for gpoh to work.
