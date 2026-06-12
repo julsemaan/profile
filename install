@@ -68,15 +68,92 @@ function install_file {
   fi
 }
 
+function sync_file_atomic {
+  local src="$1"
+  local dst="$2"
+
+  local dst_dir tmp
+  dst_dir=$(dirname "$dst")
+  mkdir -p "$dst_dir"
+
+  tmp=$(mktemp "$dst.XXXXXXXXXX")
+  cp -a "$src" "$tmp"
+  mv -f "$tmp" "$dst"
+}
+
+function sync_dir_in_place {
+  local src_dir="$1"
+  local dst_dir="$2"
+  local src_names entry base src_entry dst_entry found s_name
+
+  mkdir -p "$dst_dir"
+
+  # Collect source entry basenames
+  src_names=()
+  while IFS= read -r entry; do
+    src_names+=("$entry")
+  done < <(ls -A "$src_dir" 2>/dev/null || true)
+
+  # Sync each source entry into dst
+  for base in "${src_names[@]}"; do
+    src_entry="$src_dir/$base"
+    dst_entry="$dst_dir/$base"
+    if [ -f "$src_entry" ]; then
+      sync_file_atomic "$src_entry" "$dst_entry"
+    elif [ -d "$src_entry" ]; then
+      sync_dir_in_place "$src_entry" "$dst_entry"
+    fi
+  done
+
+  # Remove stale entries in dst that are missing from source
+  for entry in "$dst_dir"/* "$dst_dir"/.*; do
+    [ -e "$entry" ] || continue
+    base=$(basename "$entry")
+    [ "$base" = "." ] && continue
+    [ "$base" = ".." ] && continue
+
+    found=0
+    for s_name in "${src_names[@]}"; do
+      if [ "$s_name" = "$base" ]; then
+        found=1
+        break
+      fi
+    done
+
+    if [ "$found" -eq 0 ]; then
+      echo "  Removing stale: $entry"
+      rm -fr "$entry"
+    fi
+  done
+}
+
 function install_pi_global_config {
-  home="$1"
-  user="$2"
-  profile_dir="$3"
+  local home="$1"
+  local user="$2"
+  local profile_dir="$3"
+  local agent_dir pi_src managed_files managed_dirs f d
+
   agent_dir="$home/.pi/agent"
+  pi_src="$profile_dir/.pi"
 
   mkdir -p "$agent_dir"
-  rm -fr "$agent_dir/extensions" "$agent_dir/prompts" "$agent_dir/agents" "$agent_dir/modes" "$agent_dir/settings.json" "$agent_dir/TODO.md"
-  install_file "$profile_dir/.pi/." "$agent_dir"
+
+  managed_files="settings.json models.json mcp.json TODO.md"
+  managed_dirs="extensions prompts agents modes"
+
+  # Sync managed files atomically (no delete-before-copy window)
+  for f in $managed_files; do
+    if [ -f "$pi_src/$f" ]; then
+      sync_file_atomic "$pi_src/$f" "$agent_dir/$f"
+    fi
+  done
+
+  # Sync managed dirs in-place (no whole-tree rm -fr)
+  for d in $managed_dirs; do
+    if [ -d "$pi_src/$d" ]; then
+      sync_dir_in_place "$pi_src/$d" "$agent_dir/$d"
+    fi
+  done
 
   chown -R "$user": "$home/.pi"
 }
