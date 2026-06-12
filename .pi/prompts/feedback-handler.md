@@ -40,15 +40,19 @@ For each feedback item (in order):
 - Call subagent with parameters: `agent="feedback-reviewer"`, `task="<feedback item text>"`, `agentScope="both"`
 - Capture the reviewer's structured recommendation (Decision, Rationale, Suggested Action, Confidence)
 
-#### b. Execution Phase
+#### b. Human Input Phase
+- Use the `question` tool to present the reviewer's recommendation to the user
+- Let the user choose to:
+  - Accept the recommendation (default)
+  - Modify the recommendation (user can edit Decision, Rationale, Suggested Action)
+  - Reject the recommendation (user can provide their own input for Decision, Rationale, Suggested Action)
+
+#### c. Execution Phase
 - Use the `subagent` tool to invoke the `feedback-worker` agent with:
   - The original feedback item
   - The reviewer's recommendation
 - Call subagent with parameters: agent="feedback-worker", task="Feedback: <item>\n\nReviewer Recommendation:\nDecision: <decision>\nRationale: <rationale>\nSuggested Action: <action>\nConfidence: <confidence>", agentScope="both"
 - Capture the worker's structured report (Decision, Rationale, Action Taken, Files Changed, Validation, Suggested Reply)
-
-#### c. Update Todo
-- Mark the current feedback item todo as done using `todo(action: "set_done", id: <todo-id>)`
 
 #### d. Structured report
 - Provide the structured report from the worker to the user
@@ -62,6 +66,9 @@ For each feedback item (in order):
   - Stop processing
   - Re-process this item (user must be able to provide input that is taken in consideration for the reprocessing)
 - If user chooses to stop, break the loop
+
+#### f. Update Todo
+- When the user chooses to continue to the next item or stop processing, mark the current feedback item todo as done using `todo(action: "set_done", id: <todo-id>)`
 
 ### 5. Final Summary
 After all items are processed (or user stops early):
