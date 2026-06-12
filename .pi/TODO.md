@@ -1,3 +1,0 @@
-- Multiline copy/paste doesn't work and inserts empty spaces in between lines
-- Fix perms before launchign sandbox
-- Forcing todo sometimes breaks where agents create a todo but are still unable to proceed. This happens inconsistently and is hard to reproduce.
