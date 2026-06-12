@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Editor, type EditorTheme, Key, Text, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { Editor, type EditorTheme, Key, Text, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 interface QuestionOption {
@@ -49,6 +49,12 @@ const QuestionSchema = Type.Object({
 const QuestionParams = Type.Object({
 	questions: Type.Array(QuestionSchema, { description: "Questions to ask in order" }),
 });
+
+function addWrapped(lines: string[], text: string, width: number) {
+	for (const line of wrapTextWithAnsi(text, width)) {
+		lines.push(truncateToWidth(line, width));
+	}
+}
 
 function normalizeQuestions(
 	questions: Array<{
@@ -117,6 +123,21 @@ function summarizeAnswers(questions: Question[], answers: Answer[], cancelled: b
 	}
 
 	return lines.length > 0 ? `Question answers:\n${lines.join("\n")}` : "Question completed with no answers.";
+}
+
+/** Check if question content is too tall for TUI custom dialog, fall back to RPC. */
+function hasTallContent(questions: Question[]): boolean {
+	let totalNewlines = 0;
+	for (const q of questions) {
+		totalNewlines += (q.prompt.match(/\n/g) || []).length;
+		for (const opt of q.options) {
+			totalNewlines += (opt.label.match(/\n/g) || []).length;
+			if (opt.description) {
+				totalNewlines += (opt.description.match(/\n/g) || []).length;
+			}
+		}
+	}
+	return totalNewlines > 15;
 }
 
 function buildOptions(question: Question): RenderOption[] {
@@ -304,7 +325,7 @@ function createQuestionComponent(questions: Question[]) {
 			add(theme.fg("accent", theme.bold(` Question ${questionIndex + 1} of ${questions.length}`)));
 			add(theme.fg("muted", ` ${question.label}`));
 			lines.push("");
-			add(theme.fg("text", ` ${question.prompt}`));
+			addWrapped(lines, ` ${theme.fg("text", question.prompt)}`, width);
 			lines.push("");
 
 			for (let i = 0; i < options.length; i++) {
@@ -315,7 +336,7 @@ function createQuestionComponent(questions: Question[]) {
 				const suffix = option.isOther && inputMode ? " ✎" : "";
 				add(prefix + theme.fg(color, `${i + 1}. ${option.label}${suffix}`));
 				if (option.description) {
-					add(`     ${theme.fg("muted", option.description)}`);
+					addWrapped(lines, `     ${theme.fg("muted", option.description)}`, width);
 				}
 			}
 
@@ -327,7 +348,7 @@ function createQuestionComponent(questions: Question[]) {
 					const answer = answers.get(previousQuestion.id);
 					if (!answer) continue;
 					const prefix = answer.wasCustom ? "(wrote) " : "";
-					add(`  ${theme.fg("dim", `${previousQuestion.label}: `)}${theme.fg("text", `${prefix}${answer.label}`)}`);
+					addWrapped(lines, `  ${theme.fg("dim", `${previousQuestion.label}: `)}${theme.fg("text", `${prefix}${answer.label}`)}`, width);
 				}
 			}
 
@@ -384,10 +405,19 @@ export default function question(pi: ExtensionAPI) {
 			}
 
 			const questions = normalized.questions;
-			const interactiveResult = await ctx.ui.custom<QuestionResult | undefined>(
-				createQuestionComponent(questions),
-			);
-			const result = interactiveResult ?? (await runRpcFallback(ctx, questions));
+
+			// custom() is TUI-only; use RPC fallback for non-TUI UI modes
+			// Also skip custom() for tall content that may still flicker upstream
+			let result: QuestionResult;
+			if (ctx.mode === "tui" && !hasTallContent(questions)) {
+				const interactiveResult = await ctx.ui.custom<QuestionResult | undefined>(
+					createQuestionComponent(questions),
+				);
+				result = interactiveResult ?? (await runRpcFallback(ctx, questions));
+			} else {
+				result = await runRpcFallback(ctx, questions);
+			}
+
 			const summary = summarizeAnswers(questions, result.answers, result.cancelled);
 
 			if (result.cancelled) {

@@ -42,7 +42,9 @@ For each feedback item (in order):
 
 #### b. Human Input Phase
 - Use the `question` tool to present the reviewer's recommendation to the user
-- Let the user choose to:
+- **Your assistant output (above the question) must include a summary of the feedback item and the intended action.** Keep the question prompt short and single-purpose.
+- Example prompt: `Reviewer recommends: fix. Accept?`
+- Options:
   - Accept the recommendation (default)
   - Modify the recommendation (user can edit Decision, Rationale, Suggested Action)
   - Reject the recommendation (user can provide their own input for Decision, Rationale, Suggested Action)
@@ -59,8 +61,8 @@ For each feedback item (in order):
 
 #### e. Pause for User Review
 - Use the `question` tool to pause after processing the item
-- Provide a summary of how the feedback item was processed
-- Ask: "Item processed. What would you like to do?"
+- **Put the processing summary in your own assistant output, not inside the question body.**
+- Keep the question prompt short: `Item processed. Next step?`
 - Options:
   - Continue to next item (default)
   - Stop processing
