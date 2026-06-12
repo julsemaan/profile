@@ -2,6 +2,40 @@
 # return if we are not in a tty
 [ -z "$PS1" ] && return
 
+# --- Bashrc reload mechanism ---
+# Trigger file path, used to signal other shells to reload their bashrc
+__JPROFILE_BASHRC_TRIGGER_FILE="$HOME/.bashrc-reload-trigger"
+if [ -f "$__JPROFILE_BASHRC_TRIGGER_FILE" ]; then
+  __JPROFILE_LAST_BASHRC_TRIGGER="$(cat "$__JPROFILE_BASHRC_TRIGGER_FILE" 2>/dev/null)"
+fi
+
+# Checks for bashrc reload trigger from another shell
+# Runs on every prompt via PROMPT_COMMAND
+jprofile_prompt_hook() {
+  # Check for bashrc reload trigger from another shell
+  if [ -f "$__JPROFILE_BASHRC_TRIGGER_FILE" ]; then
+    local current_trigger
+    current_trigger="$(cat "$__JPROFILE_BASHRC_TRIGGER_FILE" 2>/dev/null)"
+    if [ -n "$current_trigger" ] && [ "$current_trigger" != "$__JPROFILE_LAST_BASHRC_TRIGGER" ]; then
+      __JPROFILE_LAST_BASHRC_TRIGGER="$current_trigger"
+      if [ -z "$__JPROFILE_RELOADING_BASHRC" ]; then
+        __JPROFILE_RELOADING_BASHRC=1
+        source ~/.bashrc
+        unset __JPROFILE_RELOADING_BASHRC
+      fi
+    fi
+  fi
+}
+
+# Helper command to trigger a reload across all shells for this user
+trigger-bashrc-reload() {
+  echo "$(date +%s):$$:$RANDOM" > "$__JPROFILE_BASHRC_TRIGGER_FILE"
+}
+
+alias rbrc-all='trigger-bashrc-reload'
+
+# --- End bashrc reload mechanism ---
+
 export EDITOR=vim
 
 source /etc/bash_completion
@@ -33,6 +67,14 @@ function parse_git_branch {
 # Includes history -a to ensure it's preserved on every command, not on shell exit
 PS1="\$(history -a)\u\[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;196m\]@\H\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] [\w] {\[$(tput sgr0)\]\[\033[38;5;4m\]\$?\[$(tput sgr0)\]\[\033[38;5;15m\]} \$(parse_git_branch) \n\[$(tput bold)\]\\$\[$(tput sgr0)\] \[$(tput sgr0)\]"
 shopt -s histappend
+
+# Register the prompt hook via PROMPT_COMMAND
+# jprofile_prompt_hook only checks for reload triggers (history -a is in PS1)
+if [ -z "$PROMPT_COMMAND" ]; then
+  PROMPT_COMMAND='jprofile_prompt_hook'
+elif [[ "$PROMPT_COMMAND" != *"jprofile_prompt_hook"* ]]; then
+  PROMPT_COMMAND="$PROMPT_COMMAND;jprofile_prompt_hook"
+fi
 
 ## will set the terminal title to the current command
 trap 'printf "\033]0;%s\007" "${BASH_COMMAND//[^[:print:]]/}"' DEBUG
@@ -209,7 +251,7 @@ if [ -z "${BLE_ENABLE+x}" ]; then
     BLE_ENABLE=yes
   fi
 fi
-if [ "$BLE_ENABLE" = "yes" ] && [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
+if [ -z "$__JPROFILE_RELOADING_BASHRC" ] && [ "$BLE_ENABLE" = "yes" ] && [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
   source /usr/local/etc/ble.sh/out/ble.sh
   bind '"\e\C-?": backward-kill-word'
 fi
@@ -219,8 +261,10 @@ bind '"\C-xa": alias-expand-line'
 
 if [ -f /usr/local/etc/.fzf.bash ]; then
   export PATH="/usr/local/etc/fzf/bin/:$PATH"
-  source /usr/local/etc/.fzf.bash
-  _ble_contrib_fzf_base=/usr/local/etc/fzf
+  if [ -z "$__JPROFILE_RELOADING_BASHRC" ]; then
+    source /usr/local/etc/.fzf.bash
+    _ble_contrib_fzf_base=/usr/local/etc/fzf
+  fi
 
 
 	_fzf_comprun() {
@@ -241,7 +285,9 @@ fi
 if [ -d /usr/local/etc/.tmuxifier ]; then
   export PATH="/usr/local/etc/.tmuxifier/bin:$PATH"
   export TMUXIFIER_LAYOUT_PATH=/usr/local/etc/tmuxifiers/
-  eval "$(tmuxifier init -)"
+  if [ -z "$__JPROFILE_RELOADING_BASHRC" ]; then
+    eval "$(tmuxifier init -)"
+  fi
 fi
 
 export PATH="/opt/nvim-linux64/bin:$PATH"

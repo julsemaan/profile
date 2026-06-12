@@ -158,6 +158,18 @@ function install_pi_global_config {
   chown -R "$user": "$home/.pi"
 }
 
+function trigger_bashrc_reload_for_user {
+  local home="$1"
+  local user="$2"
+  local trigger_file token
+
+  trigger_file="$home/.bashrc-reload-trigger"
+  token="$(date +%s):$$:$RANDOM"
+
+  printf '%s\n' "$token" > "$trigger_file"
+  chown "$user": "$trigger_file"
+}
+
 check_cmd git
 check_cmd make
 check_cmd gawk
@@ -266,6 +278,7 @@ for home in "${homes[@]}"; do
       install_tpm $home
       install_nvim_profile $home
       install_pi_global_config $home `basename $home` $d
+      trigger_bashrc_reload_for_user $home `basename $home`
     fi
   fi
 done
