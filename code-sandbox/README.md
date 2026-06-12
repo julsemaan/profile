@@ -15,7 +15,16 @@ This image starts from `node:25-bookworm` and installs common tooling used by co
 
 ## Publishing
 
-GitHub Actions builds the image for pull requests and publishes `julsemaan/code-sandbox-img` on pushes to the default branch or version tags.
+GitHub Actions builds and publishes `julsemaan/code-sandbox-img` when sandbox-related files change:
+
+- **Push to `main`/`master`** — image is built and pushed to Docker Hub.
+- **Version tag (`v*.*.*`)** — image is built and pushed to Docker Hub regardless of changed files.
+- **Pull request** — image is built (but not pushed) for validation.
+- **Manual dispatch** — always available via `workflow_dispatch`.
+
+The workflow only triggers on changes to:
+- `code-sandbox/`
+- `.github/workflows/docker.yml`
 
 Required repository secrets:
 
