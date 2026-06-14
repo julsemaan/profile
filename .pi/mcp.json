@@ -2,13 +2,6 @@
   "mcpServers": {
     "context7": {
       "url": "https://mcp.context7.com/mcp",
-      "lifecycle": "lazy"
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["@playwright/mcp@latest"],
-      "lifecycle": "lazy",
-      "idleTimeout": 5
     },
     "github": {
       "url": "https://api.githubcopilot.com/mcp/",
