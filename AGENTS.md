@@ -87,7 +87,7 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
   system config, install packages globally, or access sensitive files.
 - The agent's home directory is a **tmpfs** (ephemeral), so no state persists on the host.
 - Selected host paths are explicitly bind-mounted for persistence (e.g., pi's `~/.pi`, opencode's
-  config/cache/data, ketch config/cache).
+  config/cache/data).
 - **Clipboard integration** is achieved by forwarding terminal environment variables and mounting
   tmux/X11/Wayland sockets when available.
 - **Go module cache** is mounted from the host (read-only by default) to reuse downloaded modules.
@@ -118,7 +118,7 @@ Located at the repository root, the `.pi/` directory configures the pi coding ag
 - **`settings.json`** — Default provider/model (`openai-codex/gpt-5.4`), enabled models, compaction.
 - **`models.json`** — Provider overrides (e.g., DeepSeek context window).
 - **`mcp.json`** — MCP server definitions (Context7 docs, Playwright, GitHub MCP, Bitbucket MCP).
-- **`extensions/`** — Custom pi extensions (ketch integration for web/code/docs search, todo tracking,
+- **`extensions/`** — Custom pi extensions (todo tracking,
   build-plan mode, question asking, subagent delegation, modes switcher).
 - **`agents/`** — Custom agent definitions (feedback-reviewer, feedback-worker,
   model-test-orchestrator, model-test-worker).

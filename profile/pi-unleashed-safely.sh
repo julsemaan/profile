@@ -37,10 +37,6 @@ Environment:
                         Use --no-home-pi-extensions to isolate extensions and prompts.
   Clipboard forwarding  Forwards terminal (TERM/TMUX/etc) and Wayland/X11
                         settings when available for clipboard integration.
-  Ketch persistence     Installs ketch CLI for web search, code search,
-                        scraping, and library docs.
-                        Config (~/.config/ketch) and cache (~/.cache/ketch)
-                        persist via bind mounts.
   Go cache reuse       Detects Go environment on the host and mounts
                         GOMODCACHE (read-only) and GOCACHE into the container,
                         reusing downloaded Go modules without exposing
@@ -157,9 +153,6 @@ if find "$HOST_PI_HOME" -xdev \( ! -uid "$HOST_UID" -o ! -gid "$HOST_GID" \) -pr
   fi
 fi
 
-HOST_KETCH_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/ketch"
-HOST_KETCH_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/ketch"
-mkdir -p "$HOST_KETCH_CONFIG" "$HOST_KETCH_CACHE"
 
 # Go cache discovery for private module reuse in container builds.
 # Discovers host Go paths, creates cache dirs, and builds bind-mount flags.
@@ -201,22 +194,6 @@ RUN node -e 'const pkgs = JSON.parse(process.env.PI_EXTRA_PACKAGES_JSON || "[]")
 
 ENV PI_UNLEASHED_EXTRA_PACKAGES_JSON "$PI_EXTRA_PACKAGES_JSON"
 
-RUN /bin/bash -euo pipefail -c '\
-KETCH_VERSION="v0.9.3"; \
-ARCH="$(dpkg --print-architecture)"; \
-case "$ARCH" in \
-  amd64) KETCH_ARCH="x86_64" ;; \
-  arm64) KETCH_ARCH="arm64" ;; \
-  *) echo "Unsupported architecture for ketch: $ARCH" >&2; exit 1 ;; \
-esac; \
-TARBALL="ketch_${KETCH_VERSION#v}_linux_${KETCH_ARCH}.tar.gz"; \
-DOWNLOAD_URL="https://github.com/1broseidon/ketch/releases/download/${KETCH_VERSION}/${TARBALL}"; \
-TMPDIR="$(mktemp -d)"; \
-trap "rm -rf $TMPDIR" EXIT; \
-curl -fL --max-time 120 "$DOWNLOAD_URL" -o "$TMPDIR/ketch.tar.gz"; \
-tar -xzf "$TMPDIR/ketch.tar.gz" -C "$TMPDIR"; \
-install -m 0755 "$TMPDIR/ketch" /usr/local/bin/ketch; \
-'
 
 RUN printf '%s\n' \
   '#!/bin/bash' \
@@ -313,11 +290,6 @@ if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 ]]; then
   PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/prompts:rw,exec,uid=$(id -u),gid=$(id -g)")
 fi
 
-KETCH_DOCKER_FLAGS=(
-  -v "$HOST_KETCH_CONFIG:$CONTAINER_HOME/.config/ketch"
-  -v "$HOST_KETCH_CACHE:$CONTAINER_HOME/.cache/ketch"
-)
-
 if [[ -n "${TMUX:-}" ]]; then
   TMUX_SOCKET_PATH="${TMUX%%,*}"
   if [[ -S "$TMUX_SOCKET_PATH" ]]; then
@@ -381,7 +353,6 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e HOME="$CONTAINER_HOME" \
   -u "$(id -u):$(id -g)" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
-  "${KETCH_DOCKER_FLAGS[@]}" \
   "${GO_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
   -v "$MNT:$MNT" -w "$WORKDIR" \
