@@ -156,10 +156,7 @@
       "type": "local",
       "command": [
         "npx",
-        "@playwright/mcp@latest",
-        "--executable-path",
-        "/usr/bin/chromium",
-        "--headless"
+        "@playwright/mcp@latest"
       ]
     },
     "gh_grep": {
