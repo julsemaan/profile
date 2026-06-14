@@ -6,7 +6,7 @@
     },
     "playwright": {
       "command": "npx",
-      "args": ["@playwright/mcp@latest"],
+      "args": ["@playwright/mcp@latest", "--executable-path", "/usr/bin/chromium", "--headless"],
       "lifecycle": "lazy",
       "idleTimeout": 5
     },

@@ -304,7 +304,10 @@ for var_name in "${TERMINAL_ENV_VARS[@]}"; do
 done
 
 CLIPBOARD_DOCKER_FLAGS=()
-HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$(id -u),gid=$(id -g)")
+HOME_DOCKER_FLAGS=(
+  --tmpfs "$CONTAINER_HOME:rw,exec,uid=$(id -u),gid=$(id -g)"
+  --tmpfs "$CONTAINER_HOME/.cache:rw,exec,uid=$(id -u),gid=$(id -g)"
+)
 PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
 if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 ]]; then
   mkdir -p "$HOST_PI_HOME/agent/extensions"
