@@ -719,7 +719,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerShortcut("ctrl+;", {
+	pi.registerShortcut("alt+m", {
 		description: `Cycle model profile (${BUILTIN_PROFILES_DISPLAY})`,
 		handler: async (ctx) => {
 			const profiles = Object.keys(MODEL_PROFILES) as BuiltinProfile[];
