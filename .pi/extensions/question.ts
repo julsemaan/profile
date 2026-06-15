@@ -389,11 +389,13 @@ export default function question(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "question",
 		label: "Question",
-		description: "Ask the user several clarifying questions in one tool call, with suggested answers and optional custom input.",
-		promptSnippet: "Ask multiple clarification questions with suggested answers and optional custom input",
+		description: "Ask the user one or more clarifying questions in one tool call, with suggested answers and optional custom input.",
+		promptSnippet: "Ask one or more clarification questions with suggested answers and optional custom input",
 		promptGuidelines: [
-			"Use question when you need multiple clarifications from the user before you can proceed.",
-			"Use question instead of asking several plain-text follow-up questions when suggested answers would make the interaction easier.",
+			"Use question when you need user clarification, decisions, confirmations, prioritization, or other required input before you can proceed.",
+			"Single-question question tool calls are valid and preferred when only one blocking question is needed.",
+			"Prefer question over assistant-message follow-up questions when you need user input through UI with suggested answers or structured response capture.",
+			"Iterative interviews or discovery flows may ask one question per tool call instead of batching many questions at once.",
 		],
 		parameters: QuestionParams,
 
