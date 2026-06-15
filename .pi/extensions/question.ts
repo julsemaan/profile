@@ -32,6 +32,9 @@ interface QuestionResult {
 
 type RenderOption = QuestionOption & { isOther?: boolean };
 
+const HERDR_BLOCKED_EVENT = "herdr:blocked";
+const HERDR_QUESTION_LABEL = "Waiting for user input";
+
 const QuestionOptionSchema = Type.Object({
 	value: Type.String({ description: "The value returned when selected" }),
 	label: Type.String({ description: "Display label for the option" }),
@@ -406,16 +409,22 @@ export default function question(pi: ExtensionAPI) {
 
 			const questions = normalized.questions;
 
-			// custom() is TUI-only; use RPC fallback for non-TUI UI modes
-			// Also skip custom() for tall content that may still flicker upstream
+			pi.events.emit(HERDR_BLOCKED_EVENT, { active: true, label: HERDR_QUESTION_LABEL });
+
 			let result: QuestionResult;
-			if (ctx.mode === "tui" && !hasTallContent(questions)) {
-				const interactiveResult = await ctx.ui.custom<QuestionResult | undefined>(
-					createQuestionComponent(questions),
-				);
-				result = interactiveResult ?? (await runRpcFallback(ctx, questions));
-			} else {
-				result = await runRpcFallback(ctx, questions);
+			try {
+				// custom() is TUI-only; use RPC fallback for non-TUI UI modes
+				// Also skip custom() for tall content that may still flicker upstream
+				if (ctx.mode === "tui" && !hasTallContent(questions)) {
+					const interactiveResult = await ctx.ui.custom<QuestionResult | undefined>(
+						createQuestionComponent(questions),
+					);
+					result = interactiveResult ?? (await runRpcFallback(ctx, questions));
+				} else {
+					result = await runRpcFallback(ctx, questions);
+				}
+			} finally {
+				pi.events.emit(HERDR_BLOCKED_EVENT, { active: false, label: HERDR_QUESTION_LABEL });
 			}
 
 			const summary = summarizeAnswers(questions, result.answers, result.cancelled);
