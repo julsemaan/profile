@@ -596,7 +596,8 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 					});
 				},
 				withSession: async (replacementCtx) => {
-					await applyMode("build", replacementCtx, false);
+					// New session already restores build mode from custom state during session_start.
+					// Do not call helpers that capture old `pi` here; stale session-bound objects throw.
 					// Fire-and-forget: don't await so TUI navigates to fresh session immediately
 					// instead of blocking until the entire plan execution completes.
 					replacementCtx.sendUserMessage(executionPrompt).catch(() => {});
