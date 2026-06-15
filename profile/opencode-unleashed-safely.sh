@@ -1,6 +1,9 @@
 #!/bin/bash
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 IMAGE="opencode-unleashed-safely:latest"
 MNT="$PWD"
 WORKDIR="$PWD"
@@ -108,12 +111,43 @@ if [[ ! -d "$WORKDIR" ]]; then
   exit 1
 fi
 
-HOST_OPENCODE_HOME="$HOME/.opencode"
-HOST_OPENCODE_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
-HOST_OPENCODE_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/opencode"
-HOST_OPENCODE_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/opencode"
-HOST_OPENCODE_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/opencode"
-CONTAINER_HOME="$HOME"
+# --- Host identity resolution (sudo-safe) ---
+RESOLVED_UID=""
+RESOLVED_GID=""
+RESOLVED_USER=""
+RESOLVED_HOME=""
+
+if [[ -n "${SUDO_UID:-}" && -n "${SUDO_GID:-}" && -n "${SUDO_USER:-}" ]]; then
+  RESOLVED_UID="$SUDO_UID"
+  RESOLVED_GID="$SUDO_GID"
+  RESOLVED_USER="$SUDO_USER"
+  RESOLVED_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || true)"
+  if [[ -z "$RESOLVED_HOME" ]]; then
+    echo "Error: unable to resolve home directory for sudo user '$SUDO_USER'" >&2
+    exit 1
+  fi
+else
+  RESOLVED_UID="$(id -u)"
+  RESOLVED_GID="$(id -g)"
+  RESOLVED_USER="$(id -un)"
+  RESOLVED_HOME="$HOME"
+fi
+
+# Safe host-dir creation: mkdir -p + chown if running as root-for-other-user
+ensure_host_dir() {
+  local dir="$1"
+  mkdir -p "$dir"
+  if [[ $EUID -eq 0 && "$RESOLVED_UID" != "0" ]]; then
+    chown "$RESOLVED_UID:$RESOLVED_GID" "$dir"
+  fi
+}
+
+HOST_OPENCODE_HOME="$RESOLVED_HOME/.opencode"
+HOST_OPENCODE_CONFIG="${XDG_CONFIG_HOME:-$RESOLVED_HOME/.config}/opencode"
+HOST_OPENCODE_CACHE="${XDG_CACHE_HOME:-$RESOLVED_HOME/.cache}/opencode"
+HOST_OPENCODE_DATA="${XDG_DATA_HOME:-$RESOLVED_HOME/.local/share}/opencode"
+HOST_OPENCODE_STATE="${XDG_STATE_HOME:-$RESOLVED_HOME/.local/state}/opencode"
+CONTAINER_HOME="$RESOLVED_HOME"
 CONTAINER_XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$CONTAINER_HOME/.config}"
 CONTAINER_XDG_CACHE_HOME="${XDG_CACHE_HOME:-$CONTAINER_HOME/.cache}"
 CONTAINER_XDG_DATA_HOME="${XDG_DATA_HOME:-$CONTAINER_HOME/.local/share}"
@@ -128,7 +162,11 @@ if [[ ! -f "$SYSTEM_OPENCODE_CONFIG" ]]; then
   exit 1
 fi
 
-mkdir -p "$HOST_OPENCODE_HOME" "$HOST_OPENCODE_CONFIG" "$HOST_OPENCODE_CACHE" "$HOST_OPENCODE_DATA" "$HOST_OPENCODE_STATE"
+ensure_host_dir "$HOST_OPENCODE_HOME"
+ensure_host_dir "$HOST_OPENCODE_CONFIG"
+ensure_host_dir "$HOST_OPENCODE_CACHE"
+ensure_host_dir "$HOST_OPENCODE_DATA"
+ensure_host_dir "$HOST_OPENCODE_STATE"
 cp "$SYSTEM_OPENCODE_CONFIG" "$HOST_OPENCODE_CONFIG_FILE"
 
 if [[ -f "$SYSTEM_OPENCODE_TUI_CONFIG" ]]; then
@@ -136,12 +174,12 @@ if [[ -f "$SYSTEM_OPENCODE_TUI_CONFIG" ]]; then
 fi
 
 if [[ -d "$SYSTEM_OPENCODE_AGENT_DIR" ]]; then
-  mkdir -p "$HOST_OPENCODE_AGENT_DIR"
+  ensure_host_dir "$HOST_OPENCODE_AGENT_DIR"
   cp "$SYSTEM_OPENCODE_AGENT_DIR"/*.md "$HOST_OPENCODE_AGENT_DIR"/ 2>/dev/null || true
 fi
 
 if [[ -d "$SYSTEM_OPENCODE_PLUGIN_DIR" ]]; then
-  mkdir -p "$HOST_OPENCODE_PLUGIN_DIR"
+  ensure_host_dir "$HOST_OPENCODE_PLUGIN_DIR"
   cp "$SYSTEM_OPENCODE_PLUGIN_DIR"/* "$HOST_OPENCODE_PLUGIN_DIR"/ 2>/dev/null || true
 fi
 
@@ -154,7 +192,7 @@ fi
 OPENCODE_NPM_PACKAGE="${OPENCODE_NPM_PACKAGE:-opencode-ai}"
 
 docker pull julsemaan/code-sandbox-img:latest
-docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg OPENCODE_NPM_PACKAGE="$OPENCODE_NPM_PACKAGE" - <<'EOF'
+docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg OPENCODE_NPM_PACKAGE="$OPENCODE_NPM_PACKAGE" -f- "$SCRIPT_DIR" <<'EOF'
 FROM julsemaan/code-sandbox-img:latest
 
 ARG OPENCODE_NPM_PACKAGE
@@ -218,7 +256,7 @@ for var_name in "${HERDR_ENV_VARS[@]}"; do
 done
 
 CLIPBOARD_DOCKER_FLAGS=()
-HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$(id -u),gid=$(id -g)")
+HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
 
 if [[ -n "${TMUX:-}" ]]; then
   TMUX_SOCKET_PATH="${TMUX%%,*}"
@@ -242,7 +280,7 @@ if [[ -n "${DISPLAY:-}" ]]; then
     CLIPBOARD_DOCKER_FLAGS+=(-v /tmp/.X11-unix:/tmp/.X11-unix)
   fi
 
-  HOST_XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+  HOST_XAUTHORITY="${XAUTHORITY:-$RESOLVED_HOME/.Xauthority}"
   if [[ -f "$HOST_XAUTHORITY" ]]; then
     CLIPBOARD_DOCKER_FLAGS+=(-e XAUTHORITY="$HOST_XAUTHORITY")
     CLIPBOARD_DOCKER_FLAGS+=(-v "$HOST_XAUTHORITY:$HOST_XAUTHORITY:ro")
@@ -270,7 +308,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e XDG_CACHE_HOME="$CONTAINER_XDG_CACHE_HOME" \
   -e XDG_DATA_HOME="$CONTAINER_XDG_DATA_HOME" \
   -e XDG_STATE_HOME="$CONTAINER_XDG_STATE_HOME" \
-  -u "$(id -u):$(id -g)" \
+  -u "$RESOLVED_UID:$RESOLVED_GID" \
   -v "$HOST_OPENCODE_HOME:$CONTAINER_HOME/.opencode" \
   -v "$HOST_OPENCODE_CONFIG:$CONTAINER_XDG_CONFIG_HOME/opencode" \
   -v "$HOST_OPENCODE_CACHE:$CONTAINER_XDG_CACHE_HOME/opencode" \

@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 IMAGE="codex-unleashed-safely:latest"
 MNT="$PWD"
 WORKDIR="$PWD"
@@ -99,7 +101,7 @@ else
   REBUILD_DOCKER_ARG=""
 fi
 
-docker build $REBUILD_DOCKER_ARG -t "$IMAGE" - <<'EOF'
+docker build $REBUILD_DOCKER_ARG -t "$IMAGE" -f- "$SCRIPT_DIR" <<'EOF'
 FROM julsemaan/code-sandbox-img:latest
 
 RUN npm i -g @openai/codex

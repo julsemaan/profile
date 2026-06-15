@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 IMAGE="pi-unleashed-safely:latest"
 MNT="$PWD"
 WORKDIR="$PWD"
@@ -124,8 +126,39 @@ if [[ ! -d "$WORKDIR" ]]; then
   exit 1
 fi
 
-HOST_PI_HOME="$HOME/.pi"
-CONTAINER_HOME="$HOME"
+# --- Host identity resolution (sudo-safe) ---
+RESOLVED_UID=""
+RESOLVED_GID=""
+RESOLVED_USER=""
+RESOLVED_HOME=""
+
+if [[ -n "${SUDO_UID:-}" && -n "${SUDO_GID:-}" && -n "${SUDO_USER:-}" ]]; then
+  RESOLVED_UID="$SUDO_UID"
+  RESOLVED_GID="$SUDO_GID"
+  RESOLVED_USER="$SUDO_USER"
+  RESOLVED_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || true)"
+  if [[ -z "$RESOLVED_HOME" ]]; then
+    echo "Error: unable to resolve home directory for sudo user '$SUDO_USER'" >&2
+    exit 1
+  fi
+else
+  RESOLVED_UID="$(id -u)"
+  RESOLVED_GID="$(id -g)"
+  RESOLVED_USER="$(id -un)"
+  RESOLVED_HOME="$HOME"
+fi
+
+# Safe host-dir creation: mkdir -p + chown if running as root-for-other-user
+ensure_host_dir() {
+  local dir="$1"
+  mkdir -p "$dir"
+  if [[ $EUID -eq 0 && "$RESOLVED_UID" != "0" ]]; then
+    chown "$RESOLVED_UID:$RESOLVED_GID" "$dir"
+  fi
+}
+
+HOST_PI_HOME="$RESOLVED_HOME/.pi"
+CONTAINER_HOME="$RESOLVED_HOME"
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
 PI_UNLEASHED_EXTRA_PACKAGES_JSON="[]"
 if [[ ${#EXTRA_PI_PACKAGES[@]} -gt 0 ]]; then
@@ -133,31 +166,24 @@ if [[ ${#EXTRA_PI_PACKAGES[@]} -gt 0 ]]; then
   PI_UNLEASHED_EXTRA_PACKAGES_JSON="${PI_UNLEASHED_EXTRA_PACKAGES_JSON/, ]/]}"
 fi
 
-mkdir -p "$HOST_PI_HOME"
+ensure_host_dir "$HOST_PI_HOME"
 
-HOST_UID="$(id -u)"
-HOST_GID="$(id -g)"
-
-# Preflight: repair ~/.pi ownership so container bind-mount writes work.
-# Container runs as host uid:gid, bad ownership breaks writes.
-if find "$HOST_PI_HOME" -xdev \( ! -uid "$HOST_UID" -o ! -gid "$HOST_GID" \) -print -quit 2>/dev/null | grep -q .; then
-  echo "[pi-unleashed-safely] Repairing $HOST_PI_HOME ownership..." >&2
-  if [[ "$(id -u)" -eq 0 ]]; then
-    find "$HOST_PI_HOME" -xdev \( ! -uid "$HOST_UID" -o ! -gid "$HOST_GID" \) -exec chown -h "$HOST_UID:$HOST_GID" {} + || {
-      echo "Error: failed to chown $HOST_PI_HOME (running as root)" >&2
+# Ownership preflight: detect and repair existing root-owned state
+# in host ~/.pi before container starts.
+if [[ -d "$HOST_PI_HOME" ]]; then
+  BROKEN_FILES=$(find "$HOST_PI_HOME" -not -user "$RESOLVED_UID" -print -quit 2>/dev/null || true)
+  if [[ -n "$BROKEN_FILES" ]]; then
+    if [[ $EUID -eq 0 ]]; then
+      echo "Fixing ownership of $HOST_PI_HOME (running as root)..."
+      chown -R "$RESOLVED_UID:$RESOLVED_GID" "$HOST_PI_HOME"
+    else
+      echo "Error: Some files in $HOST_PI_HOME are not owned by you ($RESOLVED_USER)." >&2
+      echo "Run this to repair:" >&2
+      echo "  sudo chown -R \"$(id -u):$(id -g)\" \"$HOST_PI_HOME\"" >&2
       exit 1
-    }
-  elif command -v sudo >/dev/null 2>&1; then
-    find "$HOST_PI_HOME" -xdev \( ! -uid "$HOST_UID" -o ! -gid "$HOST_GID" \) -exec sudo chown -h "$HOST_UID:$HOST_GID" {} + || {
-      echo "Error: failed to repair $HOST_PI_HOME ownership (sudo denied or chown failed)" >&2
-      exit 1
-    }
-  else
-    echo "Error: $HOST_PI_HOME has files not owned by $HOST_UID:$HOST_GID but sudo is not available" >&2
-    exit 1
+    fi
   fi
 fi
-
 
 # Go cache discovery for private module reuse in container builds.
 # Discovers host Go paths, creates cache dirs, and builds bind-mount flags.
@@ -188,7 +214,7 @@ else
 fi
 
 docker pull julsemaan/code-sandbox-img:latest
-docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" --build-arg PI_EXTRA_PACKAGES_JSON="$PI_UNLEASHED_EXTRA_PACKAGES_JSON" - <<'EOF'
+docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" --build-arg PI_EXTRA_PACKAGES_JSON="$PI_UNLEASHED_EXTRA_PACKAGES_JSON" -f- "$SCRIPT_DIR" <<'EOF'
 FROM julsemaan/code-sandbox-img:latest
 
 ARG PI_NPM_PACKAGE
@@ -301,13 +327,13 @@ for var_name in "${HERDR_ENV_VARS[@]}"; do
 done
 
 CLIPBOARD_DOCKER_FLAGS=()
-HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$(id -u),gid=$(id -g)")
+HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
 PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
 if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 ]]; then
   mkdir -p "$HOST_PI_HOME/agent/extensions"
   mkdir -p "$HOST_PI_HOME/agent/prompts"
-  PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/extensions:rw,exec,uid=$(id -u),gid=$(id -g)")
-  PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/prompts:rw,exec,uid=$(id -u),gid=$(id -g)")
+  PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/extensions:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
+  PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/prompts:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
 fi
 
 if [[ -n "${TMUX:-}" ]]; then
@@ -332,7 +358,7 @@ if [[ -n "${DISPLAY:-}" ]]; then
     CLIPBOARD_DOCKER_FLAGS+=(-v /tmp/.X11-unix:/tmp/.X11-unix)
   fi
 
-  HOST_XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+  HOST_XAUTHORITY="${XAUTHORITY:-$RESOLVED_HOME/.Xauthority}"
   if [[ -f "$HOST_XAUTHORITY" ]]; then
     CLIPBOARD_DOCKER_FLAGS+=(-e XAUTHORITY="$HOST_XAUTHORITY")
     CLIPBOARD_DOCKER_FLAGS+=(-v "$HOST_XAUTHORITY:$HOST_XAUTHORITY:ro")
@@ -379,7 +405,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e CONTEXT7_API_KEY \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \
-  -u "$(id -u):$(id -g)" \
+  -u "$RESOLVED_UID:$RESOLVED_GID" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
   "${GO_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
