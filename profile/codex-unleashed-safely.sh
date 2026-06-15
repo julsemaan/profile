@@ -21,6 +21,11 @@ Arguments:
   --no-tty            Disable TTY allocation (useful to avoid carriage returns).
   -h, --help          Show this help text.
 
+Environment:
+  Herdr forwarding    Forwards `HERDR_*` runtime vars when present and
+                      bind-mounts `HERDR_SOCKET_PATH` parent dir so
+                      container path matches host path.
+
 Examples:
   ./codex-unleashed-safely.sh
   ./codex-unleashed-safely.sh --rebuild --mount /home/julien/src
@@ -110,8 +115,31 @@ else
   DOCKER_NO_TTY_ENV_FLAGS="-e NO_COLOR=1 -e TERM=dumb"
 fi
 
+HERDR_DOCKER_FLAGS=()
+HERDR_ENV_VARS=(
+  HERDR_ENV
+  HERDR_SOCKET_PATH
+  HERDR_PANE_ID
+  HERDR_TAB_ID
+  HERDR_WORKSPACE_ID
+)
+
+for var_name in "${HERDR_ENV_VARS[@]}"; do
+  if [[ -n "${!var_name:-}" ]]; then
+    HERDR_DOCKER_FLAGS+=(-e "$var_name")
+  fi
+done
+
+if [[ -n "${HERDR_SOCKET_PATH:-}" ]]; then
+  HERDR_SOCKET_DIR="$(dirname "$HERDR_SOCKET_PATH")"
+  if [[ -d "$HERDR_SOCKET_DIR" ]]; then
+    HERDR_DOCKER_FLAGS+=(-v "$HERDR_SOCKET_DIR:$HERDR_SOCKET_DIR")
+  fi
+fi
+
 docker run --rm $DOCKER_TTY_FLAGS \
   $DOCKER_NO_TTY_ENV_FLAGS \
+  "${HERDR_DOCKER_FLAGS[@]}" \
   -e OPENAI_API_KEY \
   -e CODEX_APPROVALS=never \
   -e CODEX_HOME=/codex \

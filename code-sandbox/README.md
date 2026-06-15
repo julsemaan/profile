@@ -43,6 +43,11 @@ RUN npm i -g @openai/codex
 ENTRYPOINT ["codex", "--dangerously-bypass-approvals-and-sandbox"]
 ```
 
+Herdr compatibility:
+
+- Forward `HERDR_ENV`, `HERDR_SOCKET_PATH`, `HERDR_PANE_ID`, `HERDR_TAB_ID`, `HERDR_WORKSPACE_ID` into container when present.
+- Bind-mount `HERDR_SOCKET_PATH` parent dir into same path inside container so Unix socket remains reachable without path rewrite.
+
 Reference implementations:
 
 - [`codex-unleashed-safely.sh`](https://github.com/julsemaan/profile/blob/master/profile/codex-unleashed-safely.sh)

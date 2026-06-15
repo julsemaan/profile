@@ -27,6 +27,8 @@ Arguments:
   --no-tty            Disable TTY allocation (useful to avoid carriage returns).
   --no-home-pi-extensions  Mask ~/.pi/agent/extensions and prompts from the host
                         (sessions, settings, auth, packages persist).
+                        Warning: can hide host-installed integrations like
+                        Herdr `herdr-agent-state.ts`.
   -h, --help          Show this help text.
 
 Environment:
@@ -37,6 +39,9 @@ Environment:
                         Use --no-home-pi-extensions to isolate extensions and prompts.
   Clipboard forwarding  Forwards terminal (TERM/TMUX/etc) and Wayland/X11
                         settings when available for clipboard integration.
+  Herdr forwarding      Forwards `HERDR_*` runtime vars when present and
+                        bind-mounts `HERDR_SOCKET_PATH` parent dir so
+                        container path matches host path.
   Go cache reuse       Detects Go environment on the host and mounts
                         GOMODCACHE (read-only) and GOCACHE into the container,
                         reusing downloaded Go modules without exposing
@@ -280,6 +285,21 @@ for var_name in "${TERMINAL_ENV_VARS[@]}"; do
   fi
 done
 
+HERDR_DOCKER_FLAGS=()
+HERDR_ENV_VARS=(
+  HERDR_ENV
+  HERDR_SOCKET_PATH
+  HERDR_PANE_ID
+  HERDR_TAB_ID
+  HERDR_WORKSPACE_ID
+)
+
+for var_name in "${HERDR_ENV_VARS[@]}"; do
+  if [[ -n "${!var_name:-}" ]]; then
+    HERDR_DOCKER_FLAGS+=(-e "$var_name")
+  fi
+done
+
 CLIPBOARD_DOCKER_FLAGS=()
 HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$(id -u),gid=$(id -g)")
 PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
@@ -295,6 +315,13 @@ if [[ -n "${TMUX:-}" ]]; then
   if [[ -S "$TMUX_SOCKET_PATH" ]]; then
     TMUX_SOCKET_DIR="$(dirname "$TMUX_SOCKET_PATH")"
     CLIPBOARD_DOCKER_FLAGS+=(-v "$TMUX_SOCKET_DIR:$TMUX_SOCKET_DIR")
+  fi
+fi
+
+if [[ -n "${HERDR_SOCKET_PATH:-}" ]]; then
+  HERDR_SOCKET_DIR="$(dirname "$HERDR_SOCKET_PATH")"
+  if [[ -d "$HERDR_SOCKET_DIR" ]]; then
+    HERDR_DOCKER_FLAGS+=(-v "$HERDR_SOCKET_DIR:$HERDR_SOCKET_DIR")
   fi
 fi
 
@@ -322,6 +349,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   $DOCKER_NO_TTY_ENV_FLAGS \
   "${TERMINAL_DOCKER_FLAGS[@]}" \
   "${CLIPBOARD_DOCKER_FLAGS[@]}" \
+  "${HERDR_DOCKER_FLAGS[@]}" \
   "${HOME_DOCKER_FLAGS[@]}" \
   -e OPENCODE_API_KEY \
   -e OPENAI_API_KEY \
