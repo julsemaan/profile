@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Editor, type EditorTheme, Key, Text, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { ringTmuxBellOnce } from "./tmux-bell";
 
 interface QuestionOption {
 	value: string;
@@ -149,18 +150,6 @@ function buildOptions(question: Question): RenderOption[] {
 		options.push({ value: "__other__", label: "Type something.", isOther: true });
 	}
 	return options;
-}
-
-function ringTmuxBellOnce() {
-	if (!process.env.TMUX && !process.env.TMUX_PANE) {
-		return;
-	}
-
-	try {
-		process.stdout.write("\x07");
-	} catch {
-		// best-effort only
-	}
 }
 
 async function runRpcFallback(ctx: ExtensionContext, questions: Question[]): Promise<QuestionResult> {
