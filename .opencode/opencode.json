@@ -39,7 +39,8 @@
       "*": "allow",
       "*.env": "deny",
       "*.env.*": "deny",
-      "*.env.example": "allow"
+      "*.env.example": "allow",
+      "/home/julien/src/profile/.opencode/get-shit-done/*": "allow"
     },
     "edit": "allow",
     "glob": "allow",
@@ -51,7 +52,8 @@
       "~/.opencode/**": "allow",
       "~/go/**": "allow",
       "/opencode/**": "allow",
-      "/tmp/**": "allow"
+      "/tmp/**": "allow",
+      "/home/julien/src/profile/.opencode/get-shit-done/*": "allow"
     },
     "webfetch": "allow",
     "websearch": "allow",
