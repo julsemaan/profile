@@ -29,38 +29,38 @@ toggle_sidebar = "prefix+shift+b"
 # Left/right arrows already work for pane-left/pane-right in navigate mode.
 navigate_workspace_up = "up"
 navigate_workspace_down = "down"
-navigate_pane_left = "a"
-navigate_pane_down = "s"
-navigate_pane_up = "w"
-navigate_pane_right = "d"
 
-# Stable split fallback keys.
-# Desired tmux parity: prefix+" for stacked split, prefix+% for side-by-side split.
-# Herdr docs confirm named punctuation like `minus`, but docs seen do not confirm
-# quote/percent key names. Use documented fallback keys for now.
-split_horizontal = "prefix+minus"
-split_vertical = "prefix+v"
+# Tmux-parity splits.
+split_horizontal = "prefix+double_quote"
+split_vertical = "prefix+percent"
+
+# Move built-in pane focus off h/j/k/l so tmux-like resize binds can use them.
+focus_pane_left = "ctrl+h"
+focus_pane_down = "ctrl+j"
+focus_pane_up = "ctrl+k"
+focus_pane_right = "ctrl+l"
 
 [[keys.command]]
-key = "ctrl+h"
+key = "prefix+h"
 type = "shell"
 command = "herdr pane resize --direction left --amount 0.1 --current"
 description = "resize pane left"
 
 [[keys.command]]
-key = "ctrl+j"
+key = "prefix+j"
 type = "shell"
 command = "herdr pane resize --direction down --amount 0.1 --current"
 description = "resize pane down"
 
 [[keys.command]]
-key = "ctrl+k"
+key = "prefix+k"
 type = "shell"
 command = "herdr pane resize --direction up --amount 0.1 --current"
 description = "resize pane up"
 
 [[keys.command]]
-key = "ctrl+l"
+key = "prefix+l"
 type = "shell"
 command = "herdr pane resize --direction right --amount 0.1 --current"
 description = "resize pane right"
+
