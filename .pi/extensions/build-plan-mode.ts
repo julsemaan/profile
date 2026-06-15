@@ -65,7 +65,8 @@ function getTempStateFilePath(cwd: string): string {
 	return path.join(os.tmpdir(), `pi-model-state-${hash}.json`);
 }
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv.modelMap);
-
+const DEFAULT_NEW_SESSION_MODE = "plan";
+const DEFAULT_EXISTING_SESSION_MODE = "build";
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
 	return (
@@ -217,8 +218,22 @@ function getActiveAlias(modeConfig: ModeConfig): ModelAlias {
 	return modeConfig.access === "read-only" ? "custom/large" : "custom/medium";
 }
 
+function getDefaultModeForSession(
+	reason: string,
+	modeRegistry: ModeRegistry,
+	lastState?: { data?: AppState },
+): string {
+	const savedMode = lastState?.data?.mode;
+	if (savedMode && modeRegistry.byName.has(savedMode)) return savedMode;
+
+	// Saved mode wins. No saved mode: startup/new => plan. Legacy resume/reload/fork => build.
+	return reason === "startup" || reason === "new"
+		? DEFAULT_NEW_SESSION_MODE
+		: DEFAULT_EXISTING_SESSION_MODE;
+}
+
 export default function buildPlanMode(pi: ExtensionAPI) {
-	let mode: string = "build";
+	let mode: string = DEFAULT_EXISTING_SESSION_MODE;
 	let modeRegistry: ModeRegistry = {
 		byName: new Map(),
 		byCommand: new Map(),
@@ -573,7 +588,15 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			const parentSession = ctx.sessionManager.getSessionFile();
 			const result = await ctx.newSession({
 				parentSession,
+				setup: async (sessionManager) => {
+					sessionManager.appendCustomEntry(STATE_TYPE, {
+						mode: "build",
+						profile: getCurrentProfile(modelMap),
+						modelMap: structuredClone(modelMap),
+					});
+				},
 				withSession: async (replacementCtx) => {
+					await applyMode("build", replacementCtx, false);
 					// Fire-and-forget: don't await so TUI navigates to fresh session immediately
 					// instead of blocking until the entire plan execution completes.
 					replacementCtx.sendUserMessage(executionPrompt).catch(() => {});
@@ -732,7 +755,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	// ── Lifecycle handlers ──────────────────────────────────────────────
 
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", async (event, ctx) => {
 		// Discover modes from project
 		modeRegistry = discoverModes(ctx.cwd);
 
@@ -749,9 +772,9 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE)
 			.pop() as { data?: AppState } | undefined;
 
-		// Restore mode from persisted state, fall back to "build"
-		const savedMode = lastState?.data?.mode;
-		mode = savedMode && modeRegistry.byName.has(savedMode) ? savedMode : "build";
+		// Saved mode wins. No saved mode: startup/new sessions default to plan;
+		// legacy resumed/reloaded/forked sessions default to build.
+		mode = getDefaultModeForSession(event.reason, modeRegistry, lastState);
 
 		// Resolve modelMap with precedence: session entries > temp file > file override > default
 		const defaultMap = structuredClone(DEFAULT_MODEL_MAP);
