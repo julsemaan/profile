@@ -5,4 +5,4 @@ theme = Catppuccin Macchiato
 term = xterm-256color
 bell-features = title,attention,audio,no-system
 bell-audio-path = ~/.config/ghostty/bell.wav
-bell-audio-volume = 0.5
+bell-audio-volume = 1.0
