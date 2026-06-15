@@ -3,7 +3,8 @@
   "defaultModel": "gpt-5.4",
   "enabledModels": [
     "openai-codex/gpt-5.4",
-    "opencode/big-pickle"
+    "opencode/big-pickle",
+    "github-copilot/gpt-5.4"
   ],
   "compaction": {
     "enabled": true

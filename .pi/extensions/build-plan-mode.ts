@@ -16,7 +16,7 @@ import {
 type ModelAlias = "custom/large" | "custom/medium";
 type AliasConfig = { model: string; thinkingLevel: ThinkingLevel };
 type ModelMap = Record<ModelAlias, AliasConfig>;
-type BuiltinProfile = "pub" | "pubDeep" | "priv";
+type BuiltinProfile = "pub" | "pubDeep" | "priv" | "copilotPriv";
 type ModelProfile = BuiltinProfile | "custom";
 
 type ModelProfileConfig = {
@@ -40,6 +40,12 @@ const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
 		modelMap: {
 			"custom/large": { model: "openai-codex/gpt-5.4", thinkingLevel: "high" },
 			"custom/medium": { model: "openai-codex/gpt-5.4", thinkingLevel: "medium" },
+		},
+	},
+	copilotPriv: {
+		modelMap: {
+			"custom/large": { model: "github-copilot/gpt-5.4", thinkingLevel: "high" },
+			"custom/medium": { model: "github-copilot/gpt-5.4", thinkingLevel: "medium" },
 		},
 	},
 };
