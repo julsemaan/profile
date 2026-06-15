@@ -317,11 +317,12 @@ for home in "${homes[@]}"; do
       install_file /usr/local/etc/.inputrc $home/.inputrc `basename $home`
       install_file /usr/local/etc/.blerc $home/.blerc `basename $home`
 
-      mkdir -p $home/.config/ghostty $home/.config/kinto $home/.config/direnv
-      chown `basename $home`: $home/.config/ghostty $home/.config/kinto $home/.config/direnv
+      mkdir -p $home/.config/ghostty $home/.config/kinto $home/.config/direnv $home/.config/herdr
+      chown `basename $home`: $home/.config/ghostty $home/.config/kinto $home/.config/direnv $home/.config/herdr
       install_file $d/utils/config.ghostty $home/.config/ghostty/config `basename $home`
       install_file $d/utils/kinto.py $home/.config/kinto/kinto.py `basename $home`
       install_file $d/profile/direnv-config.toml $home/.config/direnv/config.toml `basename $home`
+      install_file $d/profile/herdr-config.toml $home/.config/herdr/config.toml `basename $home`
     
       BASHRC="$home/.bashrc"
       if ! grep 'source /usr/local/etc/.bashrc_append' $BASHRC > /dev/null 2>&1 ; then

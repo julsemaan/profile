@@ -1,0 +1,66 @@
+# Tmux-like Herdr keymap.
+# Source of truth: profile/herdr-config.toml in repo.
+# Installed to: ~/.config/herdr/config.toml
+#
+# Unsupported tmux bindings in current Herdr docs/API:
+# - window/tab reorder (`prefix+o`, `prefix+p`)
+# - synchronize panes / broadcast input (`prefix+e`, `prefix+E`)
+# - clear history (`prefix+K`)
+# - equalize layouts (`C-M-z`, `C-M-x`)
+
+[terminal]
+new_cwd = "follow"
+
+[ui]
+prompt_new_tab_name = true
+
+[keys]
+prefix = "ctrl+a"
+reload_config = "prefix+r"
+previous_tab = "prefix+b"
+copy_mode = "prefix+esc"
+new_tab = "prefix+c"
+
+# Move conflicting defaults away from tmux-like bindings.
+resize_mode = "prefix+shift+r"
+toggle_sidebar = "prefix+shift+b"
+
+# Keep navigate-mode pane movement off h/j/k/l so prefix+h/j/k/l can resize.
+# Left/right arrows already work for pane-left/pane-right in navigate mode.
+navigate_workspace_up = "up"
+navigate_workspace_down = "down"
+navigate_pane_left = "a"
+navigate_pane_down = "s"
+navigate_pane_up = "w"
+navigate_pane_right = "d"
+
+# Stable split fallback keys.
+# Desired tmux parity: prefix+" for stacked split, prefix+% for side-by-side split.
+# Herdr docs confirm named punctuation like `minus`, but docs seen do not confirm
+# quote/percent key names. Use documented fallback keys for now.
+split_horizontal = "prefix+minus"
+split_vertical = "prefix+v"
+
+[[keys.command]]
+key = "ctrl+h"
+type = "shell"
+command = "herdr pane resize --direction left --amount 0.1 --current"
+description = "resize pane left"
+
+[[keys.command]]
+key = "ctrl+j"
+type = "shell"
+command = "herdr pane resize --direction down --amount 0.1 --current"
+description = "resize pane down"
+
+[[keys.command]]
+key = "ctrl+k"
+type = "shell"
+command = "herdr pane resize --direction up --amount 0.1 --current"
+description = "resize pane up"
+
+[[keys.command]]
+key = "ctrl+l"
+type = "shell"
+command = "herdr pane resize --direction right --amount 0.1 --current"
+description = "resize pane right"
