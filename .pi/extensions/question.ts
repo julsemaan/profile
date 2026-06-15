@@ -151,6 +151,18 @@ function buildOptions(question: Question): RenderOption[] {
 	return options;
 }
 
+function ringTmuxBellOnce() {
+	if (!process.env.TMUX && !process.env.TMUX_PANE) {
+		return;
+	}
+
+	try {
+		process.stdout.write("\x07");
+	} catch {
+		// best-effort only
+	}
+}
+
 async function runRpcFallback(ctx: ExtensionContext, questions: Question[]): Promise<QuestionResult> {
 	const answers: Answer[] = [];
 
@@ -412,6 +424,7 @@ export default function question(pi: ExtensionAPI) {
 			const questions = normalized.questions;
 
 			pi.events.emit(HERDR_BLOCKED_EVENT, { active: true, label: HERDR_QUESTION_LABEL });
+			ringTmuxBellOnce();
 
 			let result: QuestionResult;
 			try {
