@@ -127,7 +127,7 @@ function sync_dir_in_place {
   done
 }
 
-function merge_json_atomic {
+function sync_pi_settings_preserving_runtime {
   local src="$1"
   local dst="$2"
 
@@ -136,40 +136,34 @@ function merge_json_atomic {
   mkdir -p "$dst_dir"
 
   if [ ! -f "$dst" ]; then
-    # dst missing: atomic copy from src
-    echo "  Installing Pi JSON: $dst (new)"
-    tmp=$(mktemp "$dst.XXXXXXXXXX")
-    cp -a "$src" "$tmp"
-    mv -f "$tmp" "$dst"
+    echo "  Installing Pi settings: $dst (new)"
+    sync_file_atomic "$src" "$dst"
     return
   fi
 
-  # Both exist: deep-merge JSON, src overrides dst for keys src defines
-  echo "  Merging Pi settings: $dst"
-  echo "  Preserving existing runtime keys in $dst"
+  echo "  Syncing Pi settings with runtime package preservation: $dst"
   tmp=$(mktemp "$dst.XXXXXXXXXX")
 
-  python3 -c "
-import sys, json
+  python3 - "$src" "$dst" "$tmp" <<'PY'
+import json
+import sys
 
-with open('$src') as f:
-    src_data = json.load(f)
-with open('$dst') as f:
-    dst_data = json.load(f)
+src, dst, tmp = sys.argv[1:4]
 
-def deep_merge(base, overlay):
-    for key, value in overlay.items():
-        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            deep_merge(base[key], value)
-        else:
-            base[key] = value
-    return base
+with open(src, encoding='utf-8') as f:
+    result = json.load(f)
+with open(dst, encoding='utf-8') as f:
+    host = json.load(f)
 
-merged = deep_merge(dst_data, src_data)
-with open('$tmp', 'w') as f:
-    json.dump(merged, f, indent=2)
-    f.write('\\n')
-"
+if isinstance(host.get('packages'), list):
+    result['packages'] = host['packages']
+elif 'packages' in result:
+    result.pop('packages', None)
+
+with open(tmp, 'w', encoding='utf-8') as f:
+    json.dump(result, f, indent=2)
+    f.write('\n')
+PY
 
   mv -f "$tmp" "$dst"
 }
@@ -178,26 +172,22 @@ function install_pi_global_config {
   local home="$1"
   local user="$2"
   local profile_dir="$3"
-  local agent_dir pi_src managed_files managed_dirs f d
+  local agent_dir pi_src managed_dirs exact_sync_files f d
 
   agent_dir="$home/.pi/agent"
   pi_src="$profile_dir/.pi"
 
   mkdir -p "$agent_dir"
 
-  merge_files="settings.json models.json mcp.json"
-  sync_files="TODO.md"
+  exact_sync_files="mcp.json models.json TODO.md"
   managed_dirs="extensions prompts agents modes skills"
 
-  # Merge mutable JSON config files (preserve runtime keys)
-  for f in $merge_files; do
-    if [ -f "$pi_src/$f" ]; then
-      merge_json_atomic "$pi_src/$f" "$agent_dir/$f"
-    fi
-  done
+  if [ -f "$pi_src/settings.json" ]; then
+    sync_pi_settings_preserving_runtime "$pi_src/settings.json" "$agent_dir/settings.json"
+  fi
 
-  # Sync non-runtime files atomically (no delete-before-copy window)
-  for f in $sync_files; do
+  # Sync install-managed files atomically (no delete-before-copy window)
+  for f in $exact_sync_files; do
     if [ -f "$pi_src/$f" ]; then
       sync_file_atomic "$pi_src/$f" "$agent_dir/$f"
     fi
