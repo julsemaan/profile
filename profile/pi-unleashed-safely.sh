@@ -18,7 +18,7 @@ EXTRA_PI_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui" "pi-mcp
 
 usage() {
   cat <<'USAGE'
-Usage: pi-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [--no-home-pi-extensions] [-- <pi args...>]
+Usage: pi-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [--dev] [-- <pi args...>]
 
 Arguments:
   -m, --mount PATH    Host path to bind-mount into the container.
@@ -27,10 +27,10 @@ Arguments:
                       Defaults to the current working directory.
   -r, --rebuild       Rebuild the Docker image before running.
   --no-tty            Disable TTY allocation (useful to avoid carriage returns).
-  --no-home-pi-extensions  Mask ~/.pi/agent/extensions and prompts from the host
-                        (sessions, settings, auth, packages persist).
-                        Warning: can hide host-installed integrations like
-                        Herdr `herdr-agent-state.ts`.
+  --dev               Mask ~/.pi/agent/extensions and prompts from the host
+                      (sessions, settings, auth, packages persist).
+                      Warning: can hide host-installed integrations like
+                      Herdr `herdr-agent-state.ts`.
   -h, --help          Show this help text.
 
 Environment:
@@ -38,7 +38,7 @@ Environment:
                         Defaults to "@mariozechner/pi-coding-agent".
   Pi state persistence  Persists ~/.pi across runs for settings,
                         auth, packages, and sessions.
-                        Use --no-home-pi-extensions to isolate extensions and prompts.
+                        Use --dev to isolate extensions and prompts.
   Clipboard forwarding  Forwards terminal (TERM/TMUX/etc) and Wayland/X11
                         settings when available for clipboard integration.
   Herdr forwarding      Forwards `HERDR_*` runtime vars when present and
@@ -100,7 +100,7 @@ while [[ $# -gt 0 ]]; do
       USE_TTY=0
       shift
       ;;
-    --no-home-pi-extensions)
+    --dev)
       HIDE_HOME_PI_EXTENSIONS=1
       shift
       ;;
