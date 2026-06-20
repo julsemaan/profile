@@ -11,10 +11,19 @@ REBUILD=0
 USE_TTY=1
 HIDE_HOME_PI_EXTENSIONS=0
 
-# Extra npm packages to install and register as pi extensions.
+# Extra npm packages to install into image.
 # `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
-# so install it explicitly to keep the extension loadable.
-EXTRA_PI_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui" "pi-mcp-adapter")
+# so install it explicitly to keep extension loadable.
+PI_NPM_INSTALL_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui" "pi-mcp-adapter")
+
+# Pi runtime package sources to register in settings.json.
+PI_RUNTIME_PACKAGE_SOURCES=(
+  "npm:pi-web-access"
+  "npm:pi-caveman"
+  "npm:@earendil-works/pi-tui"
+  "npm:pi-mcp-adapter"
+  "git:github.com/DietrichGebert/ponytail@v4.7.0"
+)
 
 usage() {
   cat <<'USAGE'
@@ -160,10 +169,15 @@ ensure_host_dir() {
 HOST_PI_HOME="$RESOLVED_HOME/.pi"
 CONTAINER_HOME="$RESOLVED_HOME"
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
-PI_UNLEASHED_EXTRA_PACKAGES_JSON="[]"
-if [[ ${#EXTRA_PI_PACKAGES[@]} -gt 0 ]]; then
-  PI_UNLEASHED_EXTRA_PACKAGES_JSON="[$(printf '"npm:%s",' "${EXTRA_PI_PACKAGES[@]}") ]"
-  PI_UNLEASHED_EXTRA_PACKAGES_JSON="${PI_UNLEASHED_EXTRA_PACKAGES_JSON/, ]/]}"
+PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON="[]"
+if [[ ${#PI_NPM_INSTALL_PACKAGES[@]} -gt 0 ]]; then
+  PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON="[$(printf '"%s",' "${PI_NPM_INSTALL_PACKAGES[@]}") ]"
+  PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON="${PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON/, ]/]}"
+fi
+PI_UNLEASHED_RUNTIME_PI_PACKAGES_JSON="[]"
+if [[ ${#PI_RUNTIME_PACKAGE_SOURCES[@]} -gt 0 ]]; then
+  PI_UNLEASHED_RUNTIME_PI_PACKAGES_JSON="[$(printf '"%s",' "${PI_RUNTIME_PACKAGE_SOURCES[@]}") ]"
+  PI_UNLEASHED_RUNTIME_PI_PACKAGES_JSON="${PI_UNLEASHED_RUNTIME_PI_PACKAGES_JSON/, ]/]}"
 fi
 
 ensure_host_dir "$HOST_PI_HOME"
@@ -214,16 +228,21 @@ else
 fi
 
 docker pull julsemaan/code-sandbox-img:latest
-docker build $REBUILD_DOCKER_ARG -t "$IMAGE" --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" --build-arg PI_EXTRA_PACKAGES_JSON="$PI_UNLEASHED_EXTRA_PACKAGES_JSON" -f- "$SCRIPT_DIR" <<'EOF'
+docker build $REBUILD_DOCKER_ARG -t "$IMAGE" \
+  --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" \
+  --build-arg PI_NPM_INSTALL_PACKAGES_JSON="$PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON" \
+  --build-arg PI_RUNTIME_PI_PACKAGES_JSON="$PI_UNLEASHED_RUNTIME_PI_PACKAGES_JSON" \
+  -f- "$SCRIPT_DIR" <<'EOF'
 FROM julsemaan/code-sandbox-img:latest
 
 ARG PI_NPM_PACKAGE
-ARG PI_EXTRA_PACKAGES_JSON
+ARG PI_NPM_INSTALL_PACKAGES_JSON
+ARG PI_RUNTIME_PI_PACKAGES_JSON
 RUN npm i -g "$PI_NPM_PACKAGE"
 
-RUN node -e 'const pkgs = JSON.parse(process.env.PI_EXTRA_PACKAGES_JSON || "[]"); if (pkgs.length) require("child_process").execFileSync("npm", ["i", "-g", ...pkgs.map(pkg => pkg.replace(/^npm:/, ""))], { stdio: "inherit" });'
+RUN node -e 'const pkgs = JSON.parse(process.env.PI_NPM_INSTALL_PACKAGES_JSON || "[]"); if (pkgs.length) require("child_process").execFileSync("npm", ["i", "-g", ...pkgs], { stdio: "inherit" });'
 
-ENV PI_UNLEASHED_EXTRA_PACKAGES_JSON "$PI_EXTRA_PACKAGES_JSON"
+ENV PI_UNLEASHED_RUNTIME_PI_PACKAGES_JSON "$PI_RUNTIME_PI_PACKAGES_JSON"
 
 
 RUN printf '%s\n' \
@@ -240,8 +259,11 @@ RUN printf '%s\n' \
   'fs.mkdirSync(dir, { recursive: true });' \
   'let settings = {};' \
   'try { settings = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}' \
-  'const managedPackages = JSON.parse(process.env.PI_UNLEASHED_EXTRA_PACKAGES_JSON || "[]");' \
-  'const normalizeStringPackageEntry = entry => entry.split(/\\s+/).filter(Boolean).map(pkg => pkg.startsWith("npm:") ? pkg : "npm:" + pkg);' \
+  'const managedPackages = JSON.parse(process.env.PI_UNLEASHED_RUNTIME_PI_PACKAGES_JSON || "[]");' \
+  'const normalizeStringPackageEntry = entry => entry.split(/\\s+/).filter(Boolean).map(pkg => {' \
+  '  if (/^(npm:|git:|https:\/\/|ssh:\/\/|\.{1,2}\/|\/|~\/)/.test(pkg)) return pkg;' \
+  '  return "npm:" + pkg;' \
+  '});' \
   'const normalizedPackages = [];' \
   'const seen = new Set();' \
   'const addPackage = entry => {' \
@@ -256,11 +278,11 @@ RUN printf '%s\n' \
   '    normalizeStringPackageEntry(entry.trim()).forEach(addPackage);' \
   '    continue;' \
   '  }' \
-  '  if (entry && typeof entry === "object" && typeof entry.source === "string") {' \
-  '    addPackage({ ...entry, source: entry.source.trim() });' \
+  '  if (entry && typeof entry === "object") {' \
+  '    addPackage(entry);' \
   '  }' \
   '}' \
-  'managedPackages.forEach(addPackage);' \
+  'managedPackages.flatMap(entry => typeof entry === "string" ? normalizeStringPackageEntry(entry.trim()) : [entry]).forEach(addPackage);' \
   'settings.packages = normalizedPackages;' \
   'fs.writeFileSync(file, JSON.stringify(settings, null, 2));' \
   'NODE' \
