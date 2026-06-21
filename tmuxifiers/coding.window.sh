@@ -10,4 +10,4 @@ run_cmd "devbox shell"
 split_h 50
 run_cmd "devbox shell"
 select_pane 1
-split_h 30
+split_h 50

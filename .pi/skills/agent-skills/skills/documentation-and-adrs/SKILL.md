@@ -9,6 +9,8 @@ description: Records decisions and documentation. Use when making architectural 
 
 Document decisions, not just code. The most valuable documentation captures the *why* — the context, constraints, and trade-offs that led to a decision. Code shows *what* was built; documentation explains *why it was built this way* and *what alternatives were considered*. This context is essential for future humans and agents working in the codebase.
 
+When drafting human-facing documentation for file output, use normal professional English even if caveman mode is active elsewhere. This applies to README files, changelogs, ADRs, `docs/**`, Markdown/MDX files being written, and inline documentation sections intended to live in source files. Keep non-documentation chat terse if caveman mode is active.
+
 ## When to Use
 
 - Making a significant architectural decision
