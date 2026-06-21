@@ -167,7 +167,9 @@ ensure_host_dir() {
 }
 
 HOST_PI_HOME="$RESOLVED_HOME/.pi"
+HOST_AGENT_STATUS="$RESOLVED_HOME/.local/state/agent-status"
 CONTAINER_HOME="$RESOLVED_HOME"
+CONTAINER_AGENT_STATUS="$CONTAINER_HOME/.local/state/agent-status"
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
 PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON="[]"
 if [[ ${#PI_NPM_INSTALL_PACKAGES[@]} -gt 0 ]]; then
@@ -181,6 +183,7 @@ if [[ ${#PI_RUNTIME_PACKAGE_SOURCES[@]} -gt 0 ]]; then
 fi
 
 ensure_host_dir "$HOST_PI_HOME"
+ensure_host_dir "$HOST_AGENT_STATUS"
 
 # Ownership preflight: detect and repair existing root-owned state
 # in host ~/.pi before container starts.
@@ -429,6 +432,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e HOME="$CONTAINER_HOME" \
   -u "$RESOLVED_UID:$RESOLVED_GID" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
+  -v "$HOST_AGENT_STATUS:$CONTAINER_AGENT_STATUS" \
   "${GO_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
   -v "$MNT:$MNT" -w "$WORKDIR" \
