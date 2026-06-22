@@ -22,8 +22,8 @@ PI_RUNTIME_PACKAGE_SOURCES=(
   "npm:pi-caveman"
   "npm:@earendil-works/pi-tui"
   "npm:pi-mcp-adapter"
-  "git:github.com/DietrichGebert/ponytail@v4.7.0"
-  "git:github.com/julsemaan/astatus@main"
+  "https://github.com/DietrichGebert/ponytail@v4.7.0"
+  "https://github.com/julsemaan/astatus@main"
 )
 
 usage() {
