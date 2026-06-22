@@ -129,7 +129,7 @@ export default function todoExtension(pi: ExtensionAPI) {
 		}
 
 		const hasActiveTodos = todos.some((todo) => !todo.done);
-		if (hasActiveTodos || todoUpdatedThisTurn || TODO_READ_ONLY_TOOLS.has(event.toolName)) {
+		if (hasActiveTodos || todoUpdatedThisTurn || TODO_READ_ONLY_TOOLS.has(event.toolName) || event.toolName === "question") {
 			return;
 		}
 

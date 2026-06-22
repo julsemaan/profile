@@ -24,6 +24,12 @@ type ModelProfileConfig = {
 };
 
 const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
+	pubFree: {
+		modelMap: {
+			"custom/large": { model: "opencode/big-pickle", thinkingLevel: "high" },
+			"custom/medium": { model: "opencode/big-pickle", thinkingLevel: "high" },
+		},
+	},
 	pub: {
 		modelMap: {
 			"custom/large": { model: "openai-codex/gpt-5.4", thinkingLevel: "high" },
