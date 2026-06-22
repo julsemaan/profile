@@ -1,6 +1,7 @@
 ---
 description: Evaluate and act on PR review feedback — decide which comments to address, draft responses, analyze validity
 argument-hint: "<PR-review-text>"
+mode: build
 ---
 Handle the following PR review feedback: $ARGUMENTS
 

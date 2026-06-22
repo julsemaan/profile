@@ -1,5 +1,6 @@
 ---
 description: Find and fix all merge conflict markers in the codebase
+mode: build
 ---
 Find all files with unresolved merge conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) and resolve them automatically. Follow this loop:
 

@@ -1,6 +1,7 @@
 ---
 description: Process feedback items from a file — review, triage, and take action
 argument-hint: "<feedback-file-path>"
+mode: build
 ---
 
 # Feedback Handler Workflow

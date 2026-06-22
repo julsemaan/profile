@@ -1,5 +1,6 @@
 ---
 description: Run make lint and fix all lint errors automatically
+mode: build
 ---
 Run `make lint` and fix all lint errors found. Follow this loop:
 
