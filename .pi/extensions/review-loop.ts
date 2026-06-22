@@ -47,10 +47,34 @@ interface ReviewLoopDetails {
 	error?: string;
 }
 
+type ReviewLoopToolArgs = Record<string, unknown>;
+type AssistantToolCallBlock = {
+	type: "toolCall";
+	id: string;
+	name: string;
+	arguments: Record<string, unknown>;
+	thoughtSignature?: string;
+};
+
+type AssistantMessageLike = {
+	role: "assistant";
+	content: Array<AssistantToolCallBlock | Record<string, unknown>>;
+	[key: string]: unknown;
+};
+
+type AgentStartSnapshot = {
+	status: LoopStatus;
+	cycle: number;
+	lastAiReviewRequestAt: string;
+};
+
 const STATE_TYPE = "review-loop-state";
 const STATUS_KEY = "review-loop";
 const DEFAULT_POLL_INTERVAL_MS = 120000;
 const REVIEW_LOOP_TRIGGER = (prUrl: string) => `/handle-review ${prUrl}`;
+const STORED_CYCLE_SUMMARY_MAX_CHARS = 240;
+const STORED_ITEM_KEYS_MAX = 20;
+const COMPACT_THRESHOLD_TOKENS = 100000;
 
 const ReviewLoopParams = Type.Object({
 	action: StringEnum([
@@ -67,11 +91,11 @@ const ReviewLoopParams = Type.Object({
 	repo: Type.Optional(Type.String({ description: "Repository name" })),
 	pullNumber: Type.Optional(Type.Number({ description: "Pull request number" })),
 	pollIntervalMs: Type.Optional(Type.Number({ description: "Poll interval in milliseconds" })),
-	feedbackMarkdown: Type.Optional(Type.String({ description: "Structured feedback snapshot markdown" })),
+	feedbackMarkdown: Type.Optional(Type.String({ description: "Debug-only feedback snapshot markdown; avoid on normal cycles" })),
 	lastSeenCommentAt: Type.Optional(Type.String({ description: "Newest comment timestamp seen this cycle" })),
 	lastSeenReviewAt: Type.Optional(Type.String({ description: "Newest review timestamp seen this cycle" })),
 	lastHandledItemKeys: Type.Optional(Type.Array(Type.String(), { description: "Handled item fingerprints" })),
-	cycleSummary: Type.Optional(Type.String({ description: "Human-readable cycle result summary" })),
+	cycleSummary: Type.Optional(Type.String({ description: "Short machine summary for resume/state; not reviewer-facing narrative" })),
 	cycleNumber: Type.Optional(Type.Number({ description: "Cycle number" })),
 	latestReviewerSummaryId: Type.Optional(Type.String({ description: "Latest reviewer summary identifier" })),
 	latestReviewerSummaryAt: Type.Optional(Type.String({ description: "Latest reviewer summary timestamp" })),
@@ -211,6 +235,173 @@ function writeCycleSummary(state: ReviewLoopState, summary: string) {
 	fs.writeFileSync(path.join(state.stateDir, `cycle-${cycleNumber}.md`), summary, "utf8");
 }
 
+function trimString(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed ? trimmed : undefined;
+}
+
+function truncateCycleSummary(value: unknown): string | undefined {
+	const summary = trimString(value);
+	if (!summary) return undefined;
+	if (summary.length <= STORED_CYCLE_SUMMARY_MAX_CHARS) return summary;
+	return `${summary.slice(0, STORED_CYCLE_SUMMARY_MAX_CHARS - 1)}…`;
+}
+
+function summarizeHandledItemKeys(value: unknown): {
+	lastHandledItemKeys?: string[];
+	lastHandledItemKeysTotal?: number;
+	lastHandledItemKeysTruncated?: boolean;
+} {
+	if (!Array.isArray(value)) return {};
+	const keys = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+	if (keys.length === 0) return {};
+	return {
+		lastHandledItemKeys: keys.slice(0, STORED_ITEM_KEYS_MAX),
+		...(keys.length > STORED_ITEM_KEYS_MAX
+			? {
+					lastHandledItemKeysTotal: keys.length,
+					lastHandledItemKeysTruncated: true,
+				}
+			: {}),
+	};
+}
+
+function sanitizeReviewLoopToolArgs(args: ReviewLoopToolArgs): ReviewLoopToolArgs {
+	const action = trimString(args.action);
+	const sanitized: ReviewLoopToolArgs = action ? { action } : {};
+	const addTrimmed = (key: string) => {
+		const value = trimString(args[key]);
+		if (value) sanitized[key] = value;
+	};
+	const addFiniteNumber = (key: string) => {
+		const value = args[key];
+		if (typeof value === "number" && Number.isFinite(value)) sanitized[key] = value;
+	};
+	const addHandledKeys = () => Object.assign(sanitized, summarizeHandledItemKeys(args.lastHandledItemKeys));
+
+	switch (action) {
+		case "start":
+			addTrimmed("prUrl");
+			addTrimmed("forge");
+			addTrimmed("owner");
+			addTrimmed("repo");
+			addFiniteNumber("pullNumber");
+			addFiniteNumber("pollIntervalMs");
+			addTrimmed("status");
+			break;
+
+		case "status":
+			addTrimmed("prUrl");
+			break;
+
+		case "record_feedback_snapshot":
+			addTrimmed("lastSeenCommentAt");
+			addTrimmed("lastSeenReviewAt");
+			addHandledKeys();
+			addTrimmed("status");
+			addTrimmed("error");
+			break;
+
+		case "record_cycle_result":
+			addFiniteNumber("cycleNumber");
+			{
+				const cycleSummary = truncateCycleSummary(args.cycleSummary);
+				if (cycleSummary) sanitized.cycleSummary = cycleSummary;
+			}
+			addTrimmed("latestReviewerSummaryId");
+			addTrimmed("latestReviewerSummaryAt");
+			addTrimmed("latestReviewerSummaryStatus");
+			addHandledKeys();
+			addTrimmed("status");
+			addTrimmed("error");
+			break;
+
+		case "record_ai_review_request":
+			addTrimmed("lastAiReviewRequestSha");
+			addTrimmed("lastAiReviewRequestAt");
+			addTrimmed("lastAiReviewRequestHeadSha");
+			break;
+
+		case "stop":
+			addTrimmed("status");
+			addTrimmed("error");
+			break;
+
+		default:
+			addTrimmed("prUrl");
+			addTrimmed("status");
+			addTrimmed("error");
+			addHandledKeys();
+			{
+				const cycleSummary = truncateCycleSummary(args.cycleSummary);
+				if (cycleSummary) sanitized.cycleSummary = cycleSummary;
+			}
+			break;
+	}
+
+	return sanitized;
+}
+
+function sanitizeStoredAssistantMessage(message: unknown): AssistantMessageLike | undefined {
+	if (!message || typeof message !== "object") return undefined;
+	const assistantMessage = message as AssistantMessageLike;
+	if (assistantMessage.role !== "assistant" || !Array.isArray(assistantMessage.content)) return undefined;
+
+	let changed = false;
+	const content = assistantMessage.content.map((block) => {
+		if (!block || typeof block !== "object" || block.type !== "toolCall" || block.name !== "review_loop") {
+			return block;
+		}
+		changed = true;
+		return {
+			...block,
+			arguments: sanitizeReviewLoopToolArgs((block as AssistantToolCallBlock).arguments || {}),
+		};
+	});
+
+	return changed ? { ...assistantMessage, content } : undefined;
+}
+
+function buildHandledItemIdentitySummary(keys: string[]): string {
+	if (keys.length === 0) return "none";
+	if (keys.length <= STORED_ITEM_KEYS_MAX) return keys.join(", ");
+	return `${keys.slice(0, STORED_ITEM_KEYS_MAX).join(", ")} (+${keys.length - STORED_ITEM_KEYS_MAX} more)`;
+}
+
+function buildCompactionInstructions(state: ReviewLoopState): string {
+	return [
+		"Review-loop compaction. Preserve minimal facts needed for next poll cycle.",
+		`PR URL: ${state.prUrl || "none"}`,
+		`Forge: ${state.forge || "none"}`,
+		`Owner: ${state.owner || "none"}`,
+		`Repo: ${state.repo || "none"}`,
+		`PR number: ${state.pullNumber || 0}`,
+		`Loop status: ${state.status}`,
+		`Cycle number: ${state.cycle}`,
+		`State dir: ${state.stateDir || "none"}`,
+		`Watermark lastAiReviewRequestAt: ${state.lastAiReviewRequestAt || "none"}`,
+		`Watermark lastAiReviewRequestSha: ${state.lastAiReviewRequestSha || "none"}`,
+		`Watermark lastAiReviewRequestHeadSha: ${state.lastAiReviewRequestHeadSha || "none"}`,
+		`Latest reviewer summary id: ${state.latestReviewerSummaryId || "none"}`,
+		`Latest reviewer summary at: ${state.latestReviewerSummaryAt || "none"}`,
+		`Latest reviewer summary status: ${state.latestReviewerSummaryStatus || "none"}`,
+		`Handled item identity summary: ${buildHandledItemIdentitySummary(state.lastHandledItemKeys)}`,
+		"Keep unresolved item identity summary if present.",
+		"Drop raw MCP payloads, full comment bodies, old tool outputs, prior expanded /handle-review prompt text, and verbose cycle summaries.",
+	].join("\n");
+}
+
+function shouldCompactAfterAgentEnd(state: ReviewLoopState, snapshot?: AgentStartSnapshot): boolean {
+	if (!state.active || state.status !== "waiting-for-review" || !state.prUrl) return false;
+	if (!snapshot) return true;
+	return (
+		snapshot.status !== "waiting-for-review" ||
+		snapshot.cycle !== state.cycle ||
+		snapshot.lastAiReviewRequestAt !== state.lastAiReviewRequestAt
+	);
+}
+
 function buildStatusText(ctx: ExtensionContext, state: ReviewLoopState): string | undefined {
 	if (!state.active) {
 		if (state.status === "done") return ctx.ui.theme.fg("success", "🔁 review-loop · done");
@@ -244,6 +435,8 @@ function summarizeState(state: ReviewLoopState): string {
 export default function reviewLoop(pi: ExtensionAPI) {
 	let state = createEmptyState();
 	let pollTimer: ReturnType<typeof setTimeout> | undefined;
+	let agentStartSnapshot: AgentStartSnapshot | undefined;
+	let lastCompactionRequestKey = "";
 
 	const clearPollTimer = () => {
 		if (pollTimer) clearTimeout(pollTimer);
@@ -285,6 +478,21 @@ export default function reviewLoop(pi: ExtensionAPI) {
 		schedulePoll(ctx);
 	};
 
+	const maybeCompactWaitingLoop = (ctx: ExtensionContext) => {
+		if (!shouldCompactAfterAgentEnd(state, agentStartSnapshot)) return;
+		const usage = ctx.getContextUsage();
+		if (!usage || usage.tokens <= COMPACT_THRESHOLD_TOKENS) return;
+		const compactionKey = [state.prUrl, state.status, state.cycle, state.lastAiReviewRequestAt, state.latestReviewerSummaryAt].join("|");
+		if (compactionKey === lastCompactionRequestKey) return;
+		lastCompactionRequestKey = compactionKey;
+		ctx.compact({
+			customInstructions: buildCompactionInstructions(state),
+			onError: () => {
+				if (lastCompactionRequestKey === compactionKey) lastCompactionRequestKey = "";
+			},
+		});
+	};
+
 	function schedulePoll(ctx: ExtensionContext) {
 		clearPollTimer();
 		if (!state.active || state.status !== "waiting-for-review") return;
@@ -305,8 +513,22 @@ export default function reviewLoop(pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => syncState(ctx));
 	pi.on("session_tree", async (_event, ctx) => syncState(ctx));
+	pi.on("before_agent_start", async () => {
+		agentStartSnapshot = {
+			status: state.status,
+			cycle: state.cycle,
+			lastAiReviewRequestAt: state.lastAiReviewRequestAt,
+		};
+	});
+	(pi as any).on("message_end", async (event: any) => {
+		const sanitizedMessage = sanitizeStoredAssistantMessage(event?.message);
+		if (!sanitizedMessage) return;
+		return { message: sanitizedMessage };
+	});
 	pi.on("agent_end", async (_event, ctx) => {
+		maybeCompactWaitingLoop(ctx);
 		schedulePoll(ctx);
+		agentStartSnapshot = undefined;
 	});
 	pi.on("session_shutdown", async () => clearPollTimer());
 
@@ -314,7 +536,7 @@ export default function reviewLoop(pi: ExtensionAPI) {
 		name: "review_loop",
 		label: "Review loop",
 		description: "Persistent PR review loop state. Actions: start, status, record_feedback_snapshot, record_cycle_result, record_ai_review_request, stop.",
-		promptSnippet: "Use review_loop to persist PR loop state, feedback snapshots, cycle results, and [ai-review] watermark data.",
+		promptSnippet: "Use review_loop to persist PR loop state, compact snapshots, cycle results, and [ai-review] watermark data.",
 		parameters: ReviewLoopParams,
 		executionMode: "sequential" as ToolExecutionMode,
 
@@ -334,21 +556,46 @@ export default function reviewLoop(pi: ExtensionAPI) {
 						persistState(ctx);
 						return makeResult("start", parsed.error);
 					}
+					const pollIntervalMs =
+						typeof params.pollIntervalMs === "number" && params.pollIntervalMs > 0
+							? Math.floor(params.pollIntervalMs)
+							: DEFAULT_POLL_INTERVAL_MS;
+					const pullNumber = params.pullNumber || parsed.pullNumber;
+					const owner = params.owner?.trim() || parsed.owner;
+					const repo = params.repo?.trim() || parsed.repo;
+					const isSameActivePr =
+						state.active &&
+						state.forge === parsed.forge &&
+						state.owner === owner &&
+						state.repo === repo &&
+						state.pullNumber === pullNumber;
+					if (isSameActivePr) {
+						state = {
+							...state,
+							prUrl,
+							owner,
+							repo,
+							pollIntervalMs,
+							stateDir: state.stateDir || buildStateDir(ctx.cwd, parsed.forge, parsed.repo, pullNumber),
+							status: params.status || "working",
+							error: "",
+						};
+						persistState(ctx);
+						schedulePoll(ctx);
+						return makeResult("start");
+					}
 					state = {
 						...createEmptyState(),
 						active: true,
 						prUrl,
 						forge: parsed.forge,
-						owner: params.owner?.trim() || parsed.owner,
-						repo: params.repo?.trim() || parsed.repo,
-						pullNumber: params.pullNumber || parsed.pullNumber,
-						pollIntervalMs:
-							typeof params.pollIntervalMs === "number" && params.pollIntervalMs > 0
-								? Math.floor(params.pollIntervalMs)
-								: DEFAULT_POLL_INTERVAL_MS,
-						stateDir: buildStateDir(ctx.cwd, parsed.forge, parsed.repo, params.pullNumber || parsed.pullNumber),
+						owner,
+						repo,
+						pullNumber,
+						pollIntervalMs,
+						stateDir: buildStateDir(ctx.cwd, parsed.forge, parsed.repo, pullNumber),
 						status: params.status || "working",
-						nextPollAt: Date.now() + (params.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS),
+						nextPollAt: Date.now() + pollIntervalMs,
 					};
 					persistState(ctx);
 					schedulePoll(ctx);
@@ -377,10 +624,11 @@ export default function reviewLoop(pi: ExtensionAPI) {
 				}
 
 				case "record_cycle_result": {
+					const cycleSummary = truncateCycleSummary(params.cycleSummary);
 					state = {
 						...state,
 						cycle: typeof params.cycleNumber === "number" && params.cycleNumber > 0 ? Math.floor(params.cycleNumber) : state.cycle,
-						lastCycleSummary: params.cycleSummary?.trim() || state.lastCycleSummary,
+						lastCycleSummary: cycleSummary || state.lastCycleSummary,
 						latestReviewerSummaryId: params.latestReviewerSummaryId?.trim() || state.latestReviewerSummaryId,
 						latestReviewerSummaryAt: params.latestReviewerSummaryAt?.trim() || state.latestReviewerSummaryAt,
 						latestReviewerSummaryStatus: params.latestReviewerSummaryStatus?.trim() || state.latestReviewerSummaryStatus,

@@ -5,52 +5,54 @@ argument-hint: "<PR-URL>"
 
 Run `/handle-review $ARGUMENTS` as single autonomous PR review loop.
 
-## Scope
+## Rules
 - This workflow owns full loop.
 - Do not call deleted legacy prompts.
 - Do not ask user between items.
-- Do not trust stale reviewer summaries from before latest `[ai-review]` request marker.
+- Use MCP only for forge access. No scraping.
+- Do not trust reviewer summaries from before latest `[ai-review]` marker.
 - Do not keep loop state only in memory.
 
 ## Required first step
 1. Validate `$ARGUMENTS` is one PR URL.
-2. Call `review_loop` with `action: "start"` and `prUrl: "$ARGUMENTS"`.
-3. If `review_loop start` returns parse or config error, stop immediately and report it.
+2. Call `review_loop` with `action: "status"`.
+3. If loop already active for `$ARGUMENTS`, resume it.
+4. Otherwise call `review_loop` with `action: "start"` and `prUrl: "$ARGUMENTS"`.
+5. If `review_loop start` returns parse or config error, stop immediately and report it.
 
 ## Forge capability gate
-Support both forges through MCP only.
+Support GitHub and Bitbucket through MCP only.
 
-### GitHub required MCP surface
-- read PR details/comments/reviews
-- reply to PR comments
-- post PR-level summary comment or review
-
-Use tools:
+### GitHub
+Required tools:
 - `github_pull_request_read`
 - `github_add_reply_to_pull_request_comment`
 - `github_add_issue_comment`
 - `github_pull_request_review_write` when needed
 
-### Bitbucket required MCP surface
-- read PR metadata
-- list PR comments
-- add PR comment replies
-- add PR-level summary comment
-- optional PR task operations if useful
+Use `github_pull_request_read` for at least:
+- `method: "get"`
+- `method: "get_review_comments"`
+- `method: "get_reviews"`
+- `method: "get_comments"`
 
-Use tool:
+### Bitbucket
+Required tool:
 - `bitbucket_bitbucketPullRequest`
-  - `action: "get"`
-  - `action: "comments"`
-  - `action: "comment"`
-  - optional `action: "listTasks"|"createTask"|"setTaskState"`
 
-If required MCP tool call fails for either forge, fail immediately. No scraping, no workaround.
+Use at least:
+- `action: "get"`
+- `action: "comments"`
+- `action: "comment"`
+- optional `action: "diff"`
+- optional `action: "listTasks"|"createTask"|"setTaskState"`
+
+If required MCP call fails, fail immediately.
 
 ## State contract
 Use `review_loop` as state owner.
 
-Important fields:
+State fields that matter:
 - `lastAiReviewRequestAt`
 - `lastAiReviewRequestSha`
 - `lastAiReviewRequestHeadSha`
@@ -61,36 +63,16 @@ Important fields:
 - `status`
 
 State files live in:
-- `julsemaan-tmp/review-loop/<forge>-<repo>-<pr>/feedback.md`
 - `julsemaan-tmp/review-loop/<forge>-<repo>-<pr>/state.json`
+- `julsemaan-tmp/review-loop/<forge>-<repo>-<pr>/feedback.md`
 - optional `cycle-<n>.md`
 
-## Forge data collection
-Use MCP only.
-
-### GitHub
-Fetch at minimum:
-1. PR metadata via `github_pull_request_read` with `method: "get"`
-2. review threads/comments via `method: "get_review_comments"`
-3. reviews via `method: "get_reviews"`
-4. PR comments via `method: "get_comments"`
-5. optional changed files / commits if needed for context
-
-Paginate until complete when needed.
-
-### Bitbucket
-Fetch at minimum:
-1. PR metadata via `bitbucket_bitbucketPullRequest` with `action: "get"`
-2. PR comments via `action: "comments"`
-3. optional diff via `action: "diff"`
-4. optional tasks via `action: "listTasks"`
-
-Paginate comment/task lists until complete when needed.
+Detailed disk artifacts are optional/debug-only. Do not send bulky snapshots through tool args in normal path.
 
 ## Feedback snapshot
-Build structured feedback snapshot and persist it.
+Build structured feedback snapshot from fetched artifacts.
 
-Write `feedback.md` with enough detail for each item:
+When useful, write `feedback.md` locally with enough detail per item:
 - `itemKey`
 - forge/repo/pull number
 - thread ID or parent comment ID
@@ -108,54 +90,58 @@ Stable item fingerprint rule:
 - changed comment revision must produce new fingerprint
 - unchanged handled fingerprint should be skipped
 
-Then call `review_loop record_feedback_snapshot` with:
-- full markdown snapshot
-- newest seen comment/review timestamps
-- handled item keys carried forward
+Call `review_loop record_feedback_snapshot` with only compact state:
+- `lastSeenCommentAt`
+- `lastSeenReviewAt`
+- `lastHandledItemKeys`
+- optional tiny status/error fields when useful
+
+Do not pass full `feedbackMarkdown` unless debugging specific persistence issues.
 
 ## Watermark rule
-Latest `[ai-review]` push starts review window.
+Latest `[ai-review]` push starts active review window.
 
 Completion decisions must use only reviewer artifacts with timestamp strictly greater than `lastAiReviewRequestAt`.
 
-Interpretation rules:
-- reviewer artifacts at or before watermark: historical only
-- reviewer artifacts after watermark: active window
-- if no post-watermark reviewer summary exists: do not stop
+Interpretation:
+- `timestamp <= lastAiReviewRequestAt` => historical only
+- `timestamp > lastAiReviewRequestAt` => active window
+- if no post-watermark reviewer summary exists, do not stop
 - old approvals/comments/summaries must never stop loop
 
 ## Cycle logic
 For each run:
-1. Start or resume loop state with `review_loop status` after `start` if needed.
-2. Fetch forge PR metadata/comments/reviews/tasks as supported.
-3. Split artifacts into:
-   - historical context: `timestamp <= lastAiReviewRequestAt`
-   - active review window: `timestamp > lastAiReviewRequestAt`
+1. Resume same PR loop when active. Only call `review_loop start` when needed.
+2. Fetch PR metadata plus comments/reviews/tasks as supported.
+3. Split artifacts into historical vs active window using watermark rule.
 4. Extract actionable items:
    - new items
    - updated items
    - unresolved items needing another pass
-5. Skip unchanged items already present in `lastHandledItemKeys`.
+5. Skip unchanged items already in `lastHandledItemKeys`.
 6. For each actionable item:
    - run `feedback-reviewer`
    - then run `feedback-worker`
 7. Collect machine-usable worker outputs.
 8. Post one AI cycle summary comment on PR.
-9. If repository diff exists after item work, ensure commits are already created by worker as needed.
+9. If repository diff exists after item work, ensure worker already committed as needed.
 10. Create empty commit with exact message `[ai-review]`.
 11. Push.
 12. Call `review_loop record_ai_review_request` with:
    - empty commit SHA
    - current timestamp
    - current head SHA
-13. Call `review_loop record_cycle_result` with:
-   - cycle summary
+13. Call `review_loop record_cycle_result` with compact machine fields only:
+   - short `cycleSummary` for machine resume, not reviewer-facing narrative
    - current handled item keys
+   - latest reviewer summary metadata when known
    - `status: "waiting-for-review"`
 14. End turn. Extension handles polling follow-up.
 
+Keep `cycleSummary` short and machine-usable. If detailed narrative is useful, put it in PR comment or optional disk artifact, not tool args.
+
 ## Item handling contract
-Each item must drive two agents.
+Each actionable item must drive two agents.
 
 ### Reviewer input
 Pass one structured item containing:
@@ -164,7 +150,7 @@ Pass one structured item containing:
 - location
 - timestamps
 - prior AI actions if known
-- whether item is in historical or active window
+- whether item is historical or active
 
 ### Worker input
 Pass:
@@ -176,37 +162,23 @@ Pass:
 
 ## Reviewer summary stop condition
 Stop only when latest reviewer summary chosen for decision:
-- is authored by reviewer, not AI
-- is newer than `lastAiReviewRequestAt`
+- authored by reviewer, not AI
+- newer than `lastAiReviewRequestAt`
 - clearly says all items are addressed or accepted
 
-When true:
+Then:
 - call `review_loop stop` with `status: "done"`
 - report completion
 
 ## Continue condition
-Continue waiting when any of these hold:
+Keep waiting when any hold:
 - no post-watermark reviewer summary yet
 - post-watermark summary still lists open items
 - new actionable feedback exists after watermark
 
-In those cases:
-- call `review_loop record_cycle_result` with `status: "waiting-for-review"`
-- finish without asking user
+Then call `review_loop record_cycle_result` with `status: "waiting-for-review"` and finish without asking user.
 
-## AI cycle summary comment
-Post one reviewer-facing summary comment per run.
-
-Include:
-- request marker / head SHA
-- each tracked item
-- status per item: `addressed|accepted|needs-author-action|blocked`
-- short note per item
-- reply IDs or links if useful
-
-This AI summary is not stop signal. Only reviewer summary after watermark can stop loop.
-
-## Forge reply routing
+## Reply routing
 ### GitHub
 - thread reply: `github_add_reply_to_pull_request_comment`
 - PR-level summary: `github_add_issue_comment`
@@ -216,15 +188,13 @@ This AI summary is not stop signal. Only reviewer summary after watermark can st
 - inline reply/comment: same tool with `inlinePath` and line anchors when needed
 - PR-level summary: same tool with `action: "comment"` and no `parentCommentId`
 
-## Worker commit rule
-- Commit only when actual diff exists for that item.
+## Commit and failure rules
+- Commit only when actual diff exists for item.
 - No empty item commits.
 - `[ai-review]` empty commit happens once per cycle, after summary comment.
-
-## Failure rules
 - Missing MCP capability: fail immediately.
 - Missing push permission or git failure: mark loop blocked with `review_loop stop`.
-- Ambiguous reviewer feedback: reviewer may choose `clarify`; worker should post clarification reply and keep loop alive.
+- Ambiguous reviewer feedback: reviewer may choose `clarify`; worker should reply and keep loop alive.
 
 ## Final response format
 Keep assistant response short. Include:
