@@ -6,6 +6,7 @@
     "deepseek/deepseek-v4-flash",
     "openai-codex/gpt-5.4",
     "openai-codex/gpt-5.5",
+    "opencode/*-free",
     "opencode/big-pickle",
     "github-copilot/gpt-5.4",
     "github-copilot/gpt-5.5"
