@@ -23,6 +23,8 @@ PI_RUNTIME_PACKAGE_SOURCES=(
   "npm:@earendil-works/pi-tui"
   "npm:pi-mcp-adapter"
   "git:github.com/DietrichGebert/ponytail@v4.7.0"
+  # ponytail: pin astatus ref after commit. Currently 8180335, update after push.
+  "git:github.com/julsemaan/astatus@8180335d74ed315c82002f6013fe0a3aff0f9fb2"
 )
 
 usage() {

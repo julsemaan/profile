@@ -2,6 +2,8 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.4",
   "enabledModels": [
+    "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
     "openai-codex/gpt-5.4",
     "openai-codex/gpt-5.5",
     "opencode/big-pickle",
