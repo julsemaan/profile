@@ -244,6 +244,46 @@ function getDefaultModeForSession(
 		: DEFAULT_EXISTING_SESSION_MODE;
 }
 
+interface CommandEntry {
+	name: string;
+	description?: string;
+	source: "extension" | "prompt" | "skill";
+	sourceInfo: {
+		path: string;
+		source: string;
+		scope: "user" | "project" | "temporary";
+		origin: "package" | "top-level";
+		baseDir?: string;
+	};
+}
+
+function parseFrontmatter(content: string): Record<string, string> | null {
+	const match = content.match(/^---\n([\s\S]*?)\n---/);
+	if (!match) return null;
+	const frontmatter: Record<string, string> = {};
+	for (const line of match[1].split("\n")) {
+		const colonIdx = line.indexOf(":");
+		if (colonIdx > 0) {
+			frontmatter[line.slice(0, colonIdx).trim()] = line.slice(colonIdx + 1).trim();
+		}
+	}
+	return frontmatter;
+}
+
+function detectSlashCommand(text: string): string | undefined {
+	const trimmed = text.trim();
+	if (!trimmed.startsWith("/")) return undefined;
+	return trimmed.slice(1).split(/\s+/)[0].toLowerCase();
+}
+
+function findPromptCommand(commands: CommandEntry[], name: string): CommandEntry | undefined {
+	return commands.find((cmd) => {
+		if (cmd.source !== "prompt") return false;
+		const baseName = cmd.name.split(":")[0];
+		return baseName === name;
+	});
+}
+
 export default function buildPlanMode(pi: ExtensionAPI) {
 	let mode: string = DEFAULT_EXISTING_SESSION_MODE;
 	let modeRegistry: ModeRegistry = {
@@ -878,5 +918,39 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		};
 	});
 
+	pi.on("input", async (event, ctx) => {
+		if (event.source !== "interactive") return { action: "continue" };
+
+		const slashCmd = detectSlashCommand(event.text);
+		if (!slashCmd) return { action: "continue" };
+
+		const commands = pi.getCommands() as CommandEntry[];
+		const matched = findPromptCommand(commands, slashCmd);
+		if (!matched) return { action: "continue" };
+
+		let content: string;
+		try {
+			content = fs.readFileSync(matched.sourceInfo.path, "utf-8");
+		} catch {
+			return { action: "continue" };
+		}
+
+		const frontmatter = parseFrontmatter(content);
+		const requestedMode = frontmatter?.mode?.trim().toLowerCase();
+		if (!requestedMode) return { action: "continue" };
+
+		if (!modeRegistry.byName.has(requestedMode)) {
+			ctx.ui.notify(
+				`Prompt "${slashCmd}" requests unknown mode "${requestedMode}", ignoring.`,
+				"warning",
+			);
+			return { action: "continue" };
+		}
+
+		if (requestedMode === mode) return { action: "continue" };
+
+		await applyMode(requestedMode, ctx, true);
+		return { action: "continue" };
+	});
 
 }

@@ -1,6 +1,7 @@
 ---
 description: Run autonomous pull-request review loop from a PR URL
 argument-hint: "<PR-URL>"
+mode: build
 ---
 
 Run `/handle-review $ARGUMENTS` as single autonomous PR review loop.
