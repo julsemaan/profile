@@ -8,7 +8,6 @@
  *   question blocked → input-required
  *   active subagent  → working
  *   active goal      → working
- *   open todo, idle  → submitted
  *   else             → no bridge task (writer falls back to prompt-derived)
  */
 
@@ -32,7 +31,6 @@ interface BridgeMeta {
 		access?: string;
 		profile?: string;
 		ponytail: string;
-		todo: { open: number; done: number; current?: string };
 		goal: { active: boolean; status: string; text: string };
 		subagent: { active: boolean; mode?: string; agents?: string[] };
 	};
@@ -41,23 +39,6 @@ interface BridgeMeta {
 interface BridgeEvent {
 	task?: BridgeTask;
 	x_meta: BridgeMeta;
-}
-
-function reconstructTodoState(ctx: ExtensionContext): { open: number; done: number; current?: string } {
-	const branch = ctx.sessionManager.getBranch();
-	let todos: Array<{ id: number; text: string; done: boolean }> = [];
-	for (const entry of branch) {
-		if (entry.type !== "message") continue;
-		const msg = (entry as any).message;
-		if (msg?.role !== "toolResult" || msg?.toolName !== "todo") continue;
-		const details = msg.details;
-		if (!details?.todos) continue;
-		todos = details.todos;
-	}
-	const open = todos.filter((t) => !t.done).length;
-	const done = todos.filter((t) => t.done).length;
-	const current = todos.find((t) => !t.done)?.text;
-	return { open, done, current };
 }
 
 function reconstructGoalState(ctx: ExtensionContext): { active: boolean; status: string; text: string } {
@@ -111,7 +92,6 @@ function buildBridgeEvent(
 	isAgentActive: boolean,
 	ctx: ExtensionContext,
 ): BridgeEvent {
-	const todo = reconstructTodoState(ctx);
 	const goal = reconstructGoalState(ctx);
 	const mode = reconstructModeState(ctx);
 	const ponytail = reconstructPonytailMode(ctx);
@@ -127,11 +107,6 @@ function buildBridgeEvent(
 		};
 	} else if (goal.active) {
 		task = { state: "working", summary: goal.text };
-	} else if (todo.open > 0 && !isAgentActive) {
-		task = {
-			state: "submitted",
-			summary: `${todo.open} open todo${todo.open > 1 ? "s" : ""} pending`,
-		};
 	}
 
 	return {
@@ -142,7 +117,6 @@ function buildBridgeEvent(
 				access: mode.access,
 				profile: mode.profile,
 				ponytail,
-				todo,
 				goal,
 				subagent: {
 					active: subagent !== null,
