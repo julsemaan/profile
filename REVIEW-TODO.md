@@ -1,0 +1,3 @@
+- [x] Either watch the pipeline run or wait for the summary to be posted if the loop starts mid-review — handled in skill via mid-review detection + CI pipeline check
+- [x] Convert to a skill — done: `.pi/skills/review-loop/SKILL.md`
+- [x] Ensure subagents are used effectively, some feedback got fixed via the main session, not via subagent — skill enforces subagent-only item handling; main session orchestrates only
