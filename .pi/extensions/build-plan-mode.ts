@@ -26,14 +26,14 @@ type ModelProfileConfig = {
 const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
 	pubFree: {
 		modelMap: {
-			"custom/large": { model: "opencode/big-pickle", thinkingLevel: "high" },
-			"custom/medium": { model: "opencode/big-pickle", thinkingLevel: "high" },
+			"custom/large": { model: "nemotron-3-ultra-free", thinkingLevel: "high" },
+			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
 		},
 	},
 	pub: {
 		modelMap: {
 			"custom/large": { model: "openai-codex/gpt-5.4", thinkingLevel: "high" },
-			"custom/medium": { model: "opencode/big-pickle", thinkingLevel: "high" },
+			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
 		},
 	},
 	pubDeep: {
