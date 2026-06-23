@@ -158,6 +158,10 @@ When `state.json` already exists:
 
 Old approvals/comments with timestamp <= `lastAiReviewRequestAt` must never trigger loop stop.
 
+These rules are evaluated after snapshot returns. The loop body's idle check
+implements #3 (no summary + no items → sleep). The summary-all-done check
+implements #2 (summary says done → exit).
+
 ## Loop Body
 
 ```
@@ -168,22 +172,42 @@ while true:
   run subagent: review-loop-fetcher       # Step 1
   run subagent: review-loop-snapshot      # Step 2
 
-  if CI pipeline running:
-    log, sleep 300, continue
+  # — IDLE CYCLE: nothing to do —
+  if actionableItems is empty AND no post-watermark reviewer summary:
+    print "[cycle N] forge#PR · status=waiting · items=0"
+    if context > 80K: compact with loop-survival instructions
+    bash "sleep 300"
+    continue
 
+  # — CI GATE —
+  if CI pipeline running:
+    print "[cycle N] forge#PR · status=waiting · CI running"
+    bash "sleep 300"
+    continue
+
+  # — WORKING CYCLE —
   for each actionable item:
     run subagent: feedback-reviewer       # Step 3a
     run subagent: feedback-worker         # Step 3b
     collect result
 
-  run subagent: review-loop-closer        # Step 4
-  update state.json
+  # Compute whether loop continues after this cycle
+  continueLoop = true
+  if reviewer summary > watermark says all addressed:
+    continueLoop = false
 
-  if reviewer summary says all addressed:
+  run subagent: review-loop-closer        # Step 4 (with continueLoop)
+  update state.json (cycle++, status="waiting-for-review")
+
+  if not continueLoop:
     status = "done", write state.json, exit
 
-  if context tokens > 100K:
-    compact context: keep only PR URL, forge, repo, pull number, cycle, timestamps, handled item summary
+  if context > 80K:
+    compact: keep PR URL, forge, repo, pull number, cycle, timestamps,
+      handledItemKeys, AND this survival snippet:
+      "while true: fetch→snapshot. If no items AND no summary: sleep, continue.
+       If items: process via subagents, close cycle, push commit.
+       If summary all-done: exit. Sleep 5min. Repeat."
 
   bash "sleep 300"
 ```

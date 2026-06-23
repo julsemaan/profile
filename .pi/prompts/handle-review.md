@@ -4,4 +4,5 @@ argument-hint: "<PR-URL>"
 mode: build
 ---
 
-Use the review-loop skill. $ARGUMENTS is the PR URL.
+Load the review-loop skill from .pi/skills/review-loop/SKILL.md and follow
+its complete loop workflow. PR URL: $ARGUMENTS.
