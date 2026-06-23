@@ -26,7 +26,11 @@ Use `bitbucket_bitbucketPullRequest` with actions:
 - `comments` — all comments
 - `diff` — diff if needed
 
-Also check pipeline status if available.
+For CI/pipeline status, use `bitbucketPipeline`:
+- `list` action — filter by `targetCommit` (PR's head commit SHA from `get`) or `targetRefName` (PR source branch)
+- Available filters: `targetCommit`, `targetRefName`, `status`
+- If `bitbucketPipeline` unavailable, fallback: `analyzePullRequestCommitStatusFailures` with PR commit refs
+- Do NOT use `getTeamworkGraphContext` or any Jira/Confluence graph tools — broader scopes, wrong data
 
 ## Output
 Return structured JSON with:
