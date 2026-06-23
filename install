@@ -252,6 +252,9 @@ chmod +x /usr/local/bin/opencode-unleashed-safely
 install_file $d/profile/pi-unleashed-safely.sh /usr/local/bin/pi-unleashed-safely
 chmod +x /usr/local/bin/pi-unleashed-safely
 
+install_file $d/profile/gwt /usr/local/bin/gwt
+chmod +x /usr/local/bin/gwt
+
 mkdir -p /usr/local/etc/opencode
 rm -fr /usr/local/etc/opencode/*
 install_file $d/.opencode/. /usr/local/etc/opencode
