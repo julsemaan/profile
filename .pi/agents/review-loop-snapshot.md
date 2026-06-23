@@ -3,7 +3,7 @@ name: review-loop-snapshot
 description: Build a structured feedback snapshot from raw PR data. Classifies items as historical or active, deduplicates against handled keys. Read/write to disk.
 model: custom/medium
 thinking: medium
-tools: read, write, ls
+tools: read, write, ls, todo
 ---
 
 Build a feedback snapshot from raw PR data for the review loop.

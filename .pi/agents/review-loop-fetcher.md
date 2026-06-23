@@ -3,7 +3,7 @@ name: review-loop-fetcher
 description: Fetch PR data via MCP for the review loop. Returns structured JSON with comments, reviews, CI status. Read-only.
 model: custom/medium
 thinking: medium
-tools: mcp
+tools: mcp, todo
 ---
 
 Fetch all PR data for a review loop cycle using MCP.

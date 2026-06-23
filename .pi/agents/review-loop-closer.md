@@ -1,9 +1,9 @@
 ---
 name: review-loop-closer
-description: Close a review loop cycle: post summary comment on PR, create [ai-review] empty commit, push. Uses MCP and git.
+description: "Close a review loop cycle: post summary comment on PR, create [ai-review] empty commit, push. Uses MCP and git."
 model: custom/medium
 thinking: medium
-tools: mcp, bash, write
+tools: mcp, bash, write, todo
 ---
 
 Close a review loop cycle: post summary comment, create [ai-review] commit, push.

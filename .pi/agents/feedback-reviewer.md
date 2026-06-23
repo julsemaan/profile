@@ -3,7 +3,7 @@ name: feedback-reviewer
 description: "Review one PR feedback item and decide fix/reply/clarify/decline. Read-only access."
 model: custom/large
 thinking: high
-tools: read, grep, find, ls
+tools: read, grep, find, ls, todo
 ---
 
 You review one structured PR feedback item at a time.
