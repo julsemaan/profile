@@ -279,17 +279,6 @@ genCommitMsg() {
   return $exit_status
 }
 
-function gacp {
-  git add .
-  git diff --cached --stat
-  echo
-  read -p "Commit and push staged changes? [y/N] " -n 1 -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    gcoto && gpush
-  fi
-}
-
 add_alias gcoto 'git commit -m "$(genCommitMsg openai-codex/gpt-5.4-mini)"'
 add_alias gcoto-deepseek 'git commit -m "$(genCommitMsg deepseek/deepseek-v4-flash)"'
 add_alias gcoto-free 'git commit -m "$(genCommitMsg opencode/mimo-v2.5-free)"'
@@ -303,6 +292,17 @@ alias codex-unleashed-safely-src='codex-unleashed-safely -m ~/src/'
 
 alias opencode-unleashed-safely-src='opencode-unleashed-safely -m ~/src/'
 alias pi-unleashed-safely-src='pi-unleashed-safely -m ~/src/'
+
+function gacp {
+  git add .
+  git diff --cached --stat
+  echo
+  read -p "Commit and push staged changes? [y/N] " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    gcoto-deepseek && gpush
+  fi
+}
 
 fix-tmux-ssh() {
   eval $(tmux show-env -s |grep '^SSH_')
