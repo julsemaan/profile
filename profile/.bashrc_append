@@ -271,6 +271,7 @@ genCommitMsg() {
     -- \
     --no-extensions \
     --print \
+    --model "$model" \
     --thinking off \
     "@$tmp" \
     "Write a one-line commit message for the currently staged changes following the Conventional Commits standard. Output only the commit message." 2>/dev/null | tail -n 1 || exit_status=$?
