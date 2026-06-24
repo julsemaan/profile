@@ -1,1 +1,0 @@
-- Agent status table stopped taking all the width of the terminal
