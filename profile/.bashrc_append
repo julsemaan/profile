@@ -224,6 +224,27 @@ gtagpush() {
   git tag "$tag" && git push origin "$tag"
 }
 
+gom() {
+  local base
+
+  git fetch origin || return 1
+
+  base="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)"
+  if [ -z "$base" ]; then
+    # ponytail: origin/HEAD often missing on self-hosted git; fallback to common defaults
+    if git show-ref --verify --quiet refs/remotes/origin/main; then
+      base=origin/main
+    elif git show-ref --verify --quiet refs/remotes/origin/master; then
+      base=origin/master
+    else
+      echo "gom: could not detect origin default branch; run: git remote set-head origin -a" >&2
+      return 1
+    fi
+  fi
+
+  git merge "$base"
+}
+
 add_alias sbrc 'source ~/.bashrc'
 
 # add_alias gen_commit_msg 'echo "Write a one-line commit message for the currently staged changes (git diff --staged) following the Conventional Commits standard. Add COMMIT_MSG_START on the line before" | codex-unleashed-safely --no-tty -- e  2>&1 | awk '\''
