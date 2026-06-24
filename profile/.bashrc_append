@@ -288,9 +288,23 @@ genCommitMsg() {
   return 0
 }
 
-add_alias gcoto 'git commit -m "$(genCommitMsg openai-codex/gpt-5.4-mini)"'
+add_alias gcoto-openai 'git commit -m "$(genCommitMsg openai-codex/gpt-5.4-mini)"'
 add_alias gcoto-deepseek 'git commit -m "$(genCommitMsg deepseek/deepseek-v4-flash)"'
 add_alias gcoto-free 'git commit -m "$(genCommitMsg opencode/mimo-v2.5-free)"'
+
+# gcoto: ai commit with provider controlled by GCOTO_PROVIDER env var (openai|deepseek|free; default: openai)
+function gcoto {
+  local model
+  case "${GCOTO_PROVIDER:-openai}" in
+    openai)   model="openai-codex/gpt-5.4-mini" ;;
+    deepseek) model="deepseek/deepseek-v4-flash" ;;
+    free)     model="opencode/mimo-v2.5-free" ;;
+    *)        echo "gcoto: unknown provider '$GCOTO_PROVIDER'" >&2; return 1 ;;
+  esac
+  git commit -m "$(genCommitMsg "$model")"
+}
+complete -F _complete_alias gcoto
+
 add_alias gaireview 'git commit -m "[ai-review]" --allow-empty && gpush'
 
 # At some point, should remove those
