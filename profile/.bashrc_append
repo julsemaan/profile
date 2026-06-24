@@ -265,7 +265,8 @@ genCommitMsg() {
   fi
 
   local exit_status=0
-  $pi_run \
+  local output
+  output=$($pi_run \
     --mount "$repo_root" \
     --workdir "$PWD" \
     -- \
@@ -274,10 +275,17 @@ genCommitMsg() {
     --model "$model" \
     --thinking off \
     "@$tmp" \
-    "Write a one-line commit message for the currently staged changes following the Conventional Commits standard. Output only the commit message." 2>/dev/null | tail -n 1 || exit_status=$?
+    "Write a one-line commit message for the currently staged changes following the Conventional Commits standard. Output only the commit message." 2>/dev/null) || exit_status=$?
 
   rm -f "$tmp"
-  return $exit_status
+
+  if [ $exit_status -ne 0 ]; then
+    echo "genCommitMsg: failed to generate commit message (exit code $exit_status)" >&2
+    return $exit_status
+  fi
+
+  echo "$output" | tail -n 1
+  return 0
 }
 
 add_alias gcoto 'git commit -m "$(genCommitMsg openai-codex/gpt-5.4-mini)"'
