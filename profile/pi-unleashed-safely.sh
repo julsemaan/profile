@@ -37,7 +37,7 @@ Arguments:
                       Defaults to the current working directory.
   -r, --rebuild       Rebuild the Docker image before running.
   --no-tty            Disable TTY allocation (useful to avoid carriage returns).
-  --dev               Mask ~/.pi/agent/extensions and prompts from the host
+  --dev               Mask ~/.pi/agent/extensions, prompts, and skills from the host
                       (sessions, settings, auth, packages persist).
                       Warning: can hide host-installed integrations like
                       Herdr `herdr-agent-state.ts`.
@@ -48,7 +48,7 @@ Environment:
                         Defaults to "@mariozechner/pi-coding-agent".
   Pi state persistence  Persists ~/.pi across runs for settings,
                         auth, packages, and sessions.
-                        Use --dev to isolate extensions and prompts.
+                        Use --dev to isolate extensions, prompts, and skills.
   Clipboard forwarding  Forwards terminal (TERM/TMUX/etc) and Wayland/X11
                         settings when available for clipboard integration.
   Herdr forwarding      Forwards `HERDR_*` runtime vars when present and
@@ -358,8 +358,10 @@ PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
 if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 ]]; then
   mkdir -p "$HOST_PI_HOME/agent/extensions"
   mkdir -p "$HOST_PI_HOME/agent/prompts"
+  mkdir -p "$HOST_PI_HOME/agent/skills"
   PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/extensions:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
   PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/prompts:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
+  PI_HOME_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.pi/agent/skills:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
 fi
 
 if [[ -n "${TMUX:-}" ]]; then
