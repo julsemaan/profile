@@ -248,6 +248,7 @@ gom() {
 add_alias sbrc 'source ~/.bashrc'
 
 genCommitMsg() {
+  local model="$1"
   local repo_root
   repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     echo "Not a git repository" >&2
@@ -268,16 +269,18 @@ genCommitMsg() {
     --mount "$repo_root" \
     --workdir "$PWD" \
     -- \
+    --no-extensions \
     --print \
     --thinking off \
     "@$tmp" \
-    "Write a one-line commit message for the currently staged changes following the Conventional Commits standard. Output only the commit message." || exit_status=$?
+    "Write a one-line commit message for the currently staged changes following the Conventional Commits standard. Output only the commit message." 2>/dev/null | tail -n 1 || exit_status=$?
 
   rm -f "$tmp"
   return $exit_status
 }
-add_alias gcoto 'git commit -m "$(genCommitMsg)"'
-add_alias gcotoe 'git commit -m "$(genCommitMsg)" -e'
+add_alias gcoto 'git commit -m "$(genCommitMsg openai-codex/gpt-5.4-mini)"'
+add_alias gcoto-deepseek 'git commit -m "$(genCommitMsg deepseek/deepseek-v4-flash)"'
+add_alias gcoto-free 'git commit -m "$(genCommitMsg opencode/mimo-v2.5-free)"'
 add_alias gaireview 'git commit -m "[ai-review]" --allow-empty && gpush'
 
 # At some point, should remove those
