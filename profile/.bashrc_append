@@ -281,6 +281,7 @@ genCommitMsg() {
 add_alias gcoto 'git commit -m "$(genCommitMsg openai-codex/gpt-5.4-mini)"'
 add_alias gcoto-deepseek 'git commit -m "$(genCommitMsg deepseek/deepseek-v4-flash)"'
 add_alias gcoto-free 'git commit -m "$(genCommitMsg opencode/mimo-v2.5-free)"'
+add_alias gacp 'git add . && gcoto && gpush'
 add_alias gaireview 'git commit -m "[ai-review]" --allow-empty && gpush'
 
 # At some point, should remove those
