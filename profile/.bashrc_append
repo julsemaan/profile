@@ -278,10 +278,21 @@ genCommitMsg() {
   rm -f "$tmp"
   return $exit_status
 }
+
+function gacp {
+  git add .
+  git diff --cached --stat
+  echo
+  read -p "Commit and push staged changes? [y/N] " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    gcoto && gpush
+  fi
+}
+
 add_alias gcoto 'git commit -m "$(genCommitMsg openai-codex/gpt-5.4-mini)"'
 add_alias gcoto-deepseek 'git commit -m "$(genCommitMsg deepseek/deepseek-v4-flash)"'
 add_alias gcoto-free 'git commit -m "$(genCommitMsg opencode/mimo-v2.5-free)"'
-add_alias gacp 'git add . && gcoto && gpush'
 add_alias gaireview 'git commit -m "[ai-review]" --allow-empty && gpush'
 
 # At some point, should remove those
