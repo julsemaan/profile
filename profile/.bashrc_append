@@ -275,7 +275,7 @@ genCommitMsg() {
     --model "$model" \
     --thinking off \
     "@$tmp" \
-    "Write a one-line commit message for the currently staged changes following the Conventional Commits standard. Output only the commit message." 2>/dev/null) || exit_status=$?
+    "Write a one-line commit message for the currently staged changes following the Conventional Commits standard. Output only the commit message, no backticks, no formatting, just the text." 2>/dev/null) || exit_status=$?
 
   rm -f "$tmp"
 
@@ -323,7 +323,7 @@ function gacp {
   read -p "Commit and push staged changes? [y/N] " -n 1 -r
   echo
   if [[ $REPLY =~ ^[Yy]$ ]]; then
-    gcoto-deepseek && gpush
+    gcoto && gpush
   fi
 }
 
