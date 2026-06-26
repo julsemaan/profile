@@ -237,6 +237,11 @@ fi
 install_complete_alias
 
 install_file $d/profile/.bashrc_append /usr/local/etc/.bashrc_append
+
+# Deploy bashrc fragments
+rm -fr /usr/local/etc/bashrc.d
+install_file $d/profile/bashrc.d/ /usr/local/etc/bashrc.d
+
 install_file $d/profile/.inputrc /usr/local/etc/.inputrc
 install_file $d/profile/.tmux.conf /usr/local/etc/.tmux.conf
 install_file $d/profile/.vimrc /usr/local/etc/.vimrc
