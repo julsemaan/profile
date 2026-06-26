@@ -1,4 +1,4 @@
-# 40-kube-and-ux.bash — Kubernetes helpers, kubectl completion
+# 40-kube-and-ux.bash - Kubernetes helpers, kubectl completion
 #
 # This file is sourced by the jprofile loader (profile/.bashrc_append).
 # Edit in the repo; install copies to /usr/local/etc/bashrc.d/.
@@ -42,6 +42,7 @@ klogs_deploy() {
   fi
 
   local selector
+  # shellcheck disable=SC2016
   selector="$(k get deploy "$deploy" -n "$ns" -o go-template='{{range $k, $v := .spec.selector.matchLabels}}{{printf "%s=%s," $k $v}}{{end}}')"
   selector="${selector%,}"
 

@@ -1,4 +1,4 @@
-# 10-tmux.bash — Tmux helpers, tmuxifier integration
+# 10-tmux.bash - Tmux helpers, tmuxifier integration
 #
 # This file is sourced by the jprofile loader (profile/.bashrc_append).
 # Edit in the repo; install copies to /usr/local/etc/bashrc.d/.
@@ -9,11 +9,13 @@ joined-tmux() {
 
 alias jointmux=joined-tmux
 
-command="jointmux `basename $PWD`"
+command="jointmux $(basename "$PWD")"
+# shellcheck disable=SC2139
 alias pwdtmux="$command"
 
 CLEAN_HOSTNAME="${HOSTNAME//\./-}"
 command="jointmux $CLEAN_HOSTNAME"
+# shellcheck disable=SC2139
 alias htmux="$command"
 
 function jointmuxifier {
@@ -42,12 +44,15 @@ tmux-new-coding() {
 tmux-new-coding-wt() {
   local path
   path="$(gwt create)" || return 1
-  [ -d "$path" ] || { echo "tmux-new-coding-wt: invalid worktree path" >&2; return 1; }
+  [ -d "$path" ] || {
+    echo "tmux-new-coding-wt: invalid worktree path" >&2
+    return 1
+  }
   tmux-new-coding "$path"
 }
 
 fix-tmux-ssh() {
-  eval $(tmux show-env -s |grep '^SSH_')
+  eval "$(tmux show-env -s | grep '^SSH_')"
 }
 alias fts=fix-tmux-ssh
 
@@ -61,7 +66,7 @@ if [ -d /usr/local/etc/.tmuxifier ]; then
 fi
 
 # --- new-session hack (sets terminal title) ---
-new-session () {
-  nothing > /dev/null 2>&1
+new-session() {
+  nothing >/dev/null 2>&1
 }
 new-session

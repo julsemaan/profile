@@ -1,19 +1,20 @@
-# 20-git.bash — Git aliases and helpers
+# 20-git.bash - Git aliases and helpers
 #
 # This file is sourced by the jprofile loader (profile/.bashrc_append).
 # Edit in the repo; install copies to /usr/local/etc/bashrc.d/.
 
 # --- Git prompt helpers (used by PS1 in 00-core.bash) ---
 function parse_git_dirty {
-  git diff --no-ext-diff --quiet --exit-code &> /dev/null || echo "*"
+  git diff --no-ext-diff --quiet --exit-code &>/dev/null || echo "*"
 }
 
 function parse_git_branch {
-  git branch --no-color 2> /dev/null | sed -e '/^[^*]/d' -e "s/* \(.*\)/(\1$(parse_git_dirty))/"
+  git branch --no-color 2>/dev/null | sed -e '/^[^*]/d' -e "s/* \(.*\)/(\1$(parse_git_dirty))/"
 }
 
 # --- Basic git aliases ---
-if `which fortune > /dev/null 2>&1`; then
+if which fortune >/dev/null 2>&1; then
+  # shellcheck disable=SC2016
   add_alias gco 'git commit -a -m"$(fortune -n 50 -s)"'
 else
   add_alias gco 'git commit -a'
@@ -59,8 +60,11 @@ gchjira() {
 
   while getopts "b" opt; do
     case "$opt" in
-      b) create_new=true ;;
-      *) echo "Usage: gchjira [-b] <jira-url>"; return 1 ;;
+    b) create_new=true ;;
+    *)
+      echo "Usage: gchjira [-b] <jira-url>"
+      return 1
+      ;;
     esac
   done
 
@@ -127,5 +131,3 @@ add_alias gaireview 'git commit -m "[ai-review]" --allow-empty && gpush'
 # --- Legacy aliases ---
 alias qco=gco
 alias qpush=gpush
-
-

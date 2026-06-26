@@ -1,4 +1,5 @@
-# .bashrc_append — Thin loader for jprofile bashrc fragments
+# shellcheck shell=bash
+# .bashrc_append - Thin loader for jprofile bashrc fragments
 #
 # This file is sourced from ~/.bashrc. It loads fragments from bashrc.d/
 # in deterministic order. Edit fragments in profile/bashrc.d/, not here.
@@ -11,7 +12,10 @@ __JPROFILE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source fragments in order
 for __jprofile_f in "$__JPROFILE_DIR"/bashrc.d/*.bash; do
-  [ -f "$__jprofile_f" ] && source "$__jprofile_f"
+  if [ -f "$__jprofile_f" ]; then
+    # shellcheck disable=SC1090
+    source "$__jprofile_f"
+  fi
 done
 unset __jprofile_f
 unset __JPROFILE_DIR

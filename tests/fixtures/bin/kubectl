@@ -1,0 +1,11 @@
+#!/bin/bash
+# Minimal kubectl stub for smoke tests
+case "$*" in
+  *"completion bash"*)
+    echo '__start_kubectl() { return 0; }; complete -o default -F __start_kubectl kubectl'
+    ;;
+  *)
+    echo "kubectl stub: $*"
+    exit 0
+    ;;
+esac

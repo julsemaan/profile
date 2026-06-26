@@ -1,4 +1,4 @@
-# 00-core.bash — Shell foundation, prompt, reload, ble.sh, fzf
+# 00-core.bash - Shell foundation, prompt, reload, ble.sh, fzf
 #
 # This file is sourced by the jprofile loader (profile/.bashrc_append).
 # Edit in the repo; install copies to /usr/local/etc/bashrc.d/.
@@ -20,6 +20,7 @@ jprofile_prompt_hook() {
       __JPROFILE_LAST_BASHRC_TRIGGER="$current_trigger"
       if [ -z "$__JPROFILE_RELOADING_BASHRC" ]; then
         __JPROFILE_RELOADING_BASHRC=1
+        # shellcheck disable=SC1090
         source ~/.bashrc
         unset __JPROFILE_RELOADING_BASHRC
       fi
@@ -28,7 +29,7 @@ jprofile_prompt_hook() {
 }
 
 trigger-bashrc-reload() {
-  echo "$(date +%s):$$:$RANDOM" > "$__JPROFILE_BASHRC_TRIGGER_FILE"
+  echo "$(date +%s):$$:$RANDOM" >"$__JPROFILE_BASHRC_TRIGGER_FILE"
 }
 
 alias rbrc-all='trigger-bashrc-reload'
@@ -37,9 +38,11 @@ alias rbrc-all='trigger-bashrc-reload'
 export EDITOR=vim
 
 # --- Completions ---
+# shellcheck source=/dev/null
 if [ -f /etc/bash_completion ]; then
   source /etc/bash_completion
 fi
+# shellcheck source=/dev/null
 if [ -f /etc/bash_completion.d/complete_alias ]; then
   source /etc/bash_completion.d/complete_alias
 fi
@@ -54,8 +57,9 @@ alias cd..='cd ..'
 alias ll='ls -al --color=auto'
 
 function add_alias {
-  alias $1="$2"
-  complete -F _complete_alias $1
+  # shellcheck disable=SC2139
+  alias "$1"="$2"
+  complete -F _complete_alias "$1"
 }
 
 # --- Prompt ---
@@ -83,6 +87,7 @@ if [ -z "${BLE_ENABLE+x}" ]; then
   fi
 fi
 if [ -z "$__JPROFILE_RELOADING_BASHRC" ] && [ "$BLE_ENABLE" = "yes" ] && [ -f /usr/local/etc/ble.sh/out/ble.sh ]; then
+  # shellcheck source=/dev/null
   source /usr/local/etc/ble.sh/out/ble.sh
   bind '"\e\C-?": backward-kill-word'
 fi
@@ -91,6 +96,7 @@ fi
 if [ -f /usr/local/etc/.fzf.bash ]; then
   export PATH="/usr/local/etc/fzf/bin/:$PATH"
   if [ -z "$__JPROFILE_RELOADING_BASHRC" ]; then
+    # shellcheck source=/dev/null
     source /usr/local/etc/.fzf.bash
     _ble_contrib_fzf_base=/usr/local/etc/fzf
   fi
@@ -99,10 +105,10 @@ if [ -f /usr/local/etc/.fzf.bash ]; then
     local command=$1
     shift
     case "$command" in
-      cd)              fzf --preview 'ls -l {} | head -200'   "$@" ;;
-      export|unset|echo) fzf --preview "eval 'echo \$'{}"         "$@" ;;
-      ssh)             fzf --preview 'comm -13 <(ssh -T -G non-existing-host | sort) <(ssh -T -G {} | sort)' "$@" ;;
-      *)               fzf --preview 'bat -n --color=always {}' "$@" ;;
+    cd) fzf --preview 'ls -l {} | head -200' "$@" ;;
+    export | unset | echo) fzf --preview "eval 'echo \$'{}" "$@" ;;
+    ssh) fzf --preview 'comm -13 <(ssh -T -G non-existing-host | sort) <(ssh -T -G {} | sort)' "$@" ;;
+    *) fzf --preview 'bat -n --color=always {}' "$@" ;;
     esac
   }
   complete -o default -o nospace -v -F _fzf_var_completion echo
