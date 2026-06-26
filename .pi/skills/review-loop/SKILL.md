@@ -1,15 +1,15 @@
 ---
 name: review-loop
-description: Autonomous PR review loop. Fetches feedback, reviews each item, implements fixes, posts replies, pushes [ai-review] markers. Self-loops until reviewer approves. Use when you need to handle PR review feedback autonomously in a continuous loop.
+description: Autonomous PR review loop. Fetches feedback, reviews each item, implements fixes, posts replies, pushes [ai-review] markers. Runs in bounded resumable batches until reviewer approves.
 ---
 
 # Review Loop
 
-Autonomous pull-request review loop. Fetches reviewer feedback, evaluates each item via subagents, implements fixes, posts replies, and self-loops until the reviewer approves.
+Autonomous pull-request review loop. Fetches reviewer feedback, evaluates each item via subagents, implements fixes, posts replies, and exits intentionally after a bounded batch of cycles. Every invocation must be resumable from disk.
 
 ## Architecture
 
-Single long-lived session. The main session orchestrates only. All work that touches external data runs in subagents — each with a dedicated agent definition:
+Bounded resumable run. Never keep a single long-lived session alive waiting for future review activity.
 
 | Agent | Purpose |
 |-------|---------|
@@ -17,27 +17,51 @@ Single long-lived session. The main session orchestrates only. All work that tou
 | `review-loop-snapshot` | Build structured feedback snapshot |
 | `feedback-reviewer` | Review one feedback item |
 | `feedback-worker` | Implement fix + post reply |
-| `review-loop-closer` | Post summary, create [ai-review], push |
+| `review-loop-closer` | Post summary, create `[ai-review]`, push |
 
 ```
 Main session (orchestration only)
   │
+  ├─→ read/write state.json
   ├─→ subagent: review-loop-fetcher
   ├─→ subagent: review-loop-snapshot
   ├─→ subagent: feedback-reviewer (per item)
   ├─→ subagent: feedback-worker (per item)
   ├─→ subagent: review-loop-closer
-  │
-  └─→ bash "sleep 300" → loop
+  └─→ print exit reason, persist state, exit
 ```
 
-## Subagent Maximization Rule
+Default run guard:
 
-Every unit of work that touches external data (PR, git, MCP) or produces output (code, replies, commits) MUST run in a subagent. Main session only reads/writes `state.json`, tracks progress with `todo`, invokes subagents, and runs `sleep`.
+```json
+{
+  "maxIterationsPerRun": 3,
+  "maxStagnantCycles": 2
+}
+```
 
-Main session NEVER: calls MCP directly, reads/writes code files, runs git, posts PR comments, or reviews feedback items.
+No `while true`. No in-session sleeping. No `bash "sleep 300"`.
 
-If a subagent fails, report the failure and continue to next item. Never fall back to direct implementation.
+## Main-Session Rule
+
+Main session orchestrates only. All work that touches external data (PR, git, MCP) or produces output (code, replies, commits) must run in subagents.
+
+Main session may:
+- read and write `state.json`
+- track progress with `todo`
+- invoke subagents
+- decide exit status
+- print per-cycle status and final exit reason
+
+Main session must never:
+- call MCP directly
+- read or write repo code files
+- run git
+- post PR comments directly
+- improvise missing subagent work
+- sleep and wait for future work inside same session
+
+If a subagent fails, record failure in state and apply failure rules below. Never fall back to direct implementation.
 
 ## State
 
@@ -45,12 +69,12 @@ State lives on disk:
 
 ```
 julsemaan-tmp/review-loop/<forge>-<repo>-<pr>/
-  state.json    — loop state
-  feedback.md   — current feedback snapshot
-  cycle-<n>.md  — per-cycle summary
+  state.json    — resumable loop state
+  feedback.md   — latest feedback snapshot
+  cycle-<n>.md  — optional per-cycle summary
 ```
 
-`state.json` format:
+`state.json` holds only core resume data:
 
 ```json
 {
@@ -59,8 +83,8 @@ julsemaan-tmp/review-loop/<forge>-<repo>-<pr>/
   "owner": "...",
   "repo": "...",
   "pullNumber": 123,
-  "status": "working|waiting-for-review|done|blocked",
   "cycle": 0,
+  "status": "working|waiting-for-review|waiting-for-ci|done|blocked|max-iterations|no-progress",
   "lastAiReviewRequestAt": "",
   "lastAiReviewRequestSha": "",
   "lastAiReviewRequestHeadSha": "",
@@ -69,13 +93,52 @@ julsemaan-tmp/review-loop/<forge>-<repo>-<pr>/
   "lastHandledItemKeys": [],
   "latestReviewerSummaryId": "",
   "latestReviewerSummaryAt": "",
-  "latestReviewerSummaryStatus": ""
+  "latestReviewerSummaryStatus": "",
+  "lastExitReason": "",
+  "lastActionableKeys": [],
+  "stagnantCycles": 0
 }
 ```
 
-Read `state.json` at start of every cycle. Write it after every state change. Create the directory and file if they don't exist.
+Field intent:
+- PR identity: `prUrl`, `forge`, `owner`, `repo`, `pullNumber`
+- cycle/status: `cycle`, `status`
+- watermark fields: `lastAiReviewRequestAt`, `lastAiReviewRequestSha`, `lastAiReviewRequestHeadSha`
+- reviewer-watermark fields: `lastSeenCommentAt`, `lastSeenReviewAt`, `latestReviewerSummaryId`, `latestReviewerSummaryAt`, `latestReviewerSummaryStatus`
+- handled item keys: `lastHandledItemKeys`
+- anti-stall markers: `lastExitReason`, `lastActionableKeys`, `stagnantCycles`
 
-## Subagent Task Templates
+Read `state.json` at start of every cycle. Write it after every meaningful state change. Create directory and initial file if missing.
+
+## Run Outcomes
+
+Every invocation must end with exactly one of these outcomes and print it before exit:
+- `done`
+- `waiting-for-review`
+- `waiting-for-ci`
+- `blocked`
+- `max-iterations`
+- `no-progress`
+
+Print format:
+
+```
+[exit] reason=<outcome> cycle=<N> detail=<short text>
+```
+
+Persist same outcome to `state.json.status` and `state.json.lastExitReason`.
+
+## Progress Definition
+
+A cycle counts as progress if any of these happen:
+- new actionable item processed
+- reply posted
+- code diff committed
+- new reviewer summary seen
+
+If none happen, cycle made no progress.
+
+## Subagent Contracts
 
 ### Step 1: Fetch PR Data
 
@@ -83,17 +146,28 @@ Read `state.json` at start of every cycle. Write it after every state change. Cr
 subagent({ agent: "review-loop-fetcher", task: "Fetch all PR data. Forge: {forge}, owner: {owner}, repo: {repo}, pull number: {pullNumber}." })
 ```
 
+Fetcher must return PR metadata, comments, reviews, CI status, and any reviewer summary. No retry.
+
 ### Step 2: Build Feedback Snapshot
 
 ```
-subagent({ agent: "review-loop-snapshot", task: "Build feedback snapshot from the fetched PR data. Watermark timestamp: {lastAiReviewRequestAt}. Already handled keys: {lastHandledItemKeys}. State dir: julsemaan-tmp/review-loop/{forge}-{repo}-{pr}/." })
+subagent({ agent: "review-loop-snapshot", task: "Build feedback snapshot from fetched PR data. Watermark timestamp: {lastAiReviewRequestAt}. Already handled keys: {lastHandledItemKeys}. State dir: julsemaan-tmp/review-loop/{forge}-{repo}-{pr}/." })
 ```
+
+Snapshot must write `feedback.md` and return compact JSON with at least:
+- `actionableItems`
+- `actionableKeys`
+- `ciStatus`
+- `reviewerSummaryStatus`
+- `reviewerSummaryAt`
+
+Optional extra fields fine. Main session should treat missing required fields as blocking failure.
 
 ### Step 3: Per-Item Review
 
-For EACH actionable item, run TWO subagents in sequence. These use named agents that already exist:
+For each actionable item, run two subagents in sequence.
 
-**First: feedback-reviewer**
+**First: `feedback-reviewer`**
 
 ```
 subagent({ agent: "feedback-reviewer", task: "Review this PR feedback item:
@@ -110,10 +184,10 @@ subagent({ agent: "feedback-reviewer", task: "Review this PR feedback item:
 Decide fix|reply|clarify|decline and disposition." })
 ```
 
-**Second: feedback-worker**
+**Second: `feedback-worker`**
 
 ```
-subagent({ agent: "feedback-worker", task: "Execute the reviewer decision for this PR feedback item.
+subagent({ agent: "feedback-worker", task: "Execute reviewer decision for this PR feedback item.
   Original item: {itemSummary}
   Reviewer decision: {reviewerOutput}
   Forge: {forge}
@@ -125,147 +199,164 @@ subagent({ agent: "feedback-worker", task: "Execute the reviewer decision for th
   File path: {filePath}
   Line: {line}
 
-Implement the fix (if fix), post the reply via MCP, and commit if there's a diff." })
+Implement fix if needed, post reply via MCP, and commit if there is a diff." })
 ```
 
-Collect each worker's output: decision, disposition, commit SHA, reply text.
+Collect each worker result: decision, disposition, commit SHA, reply status, item key, failure if any.
 
 ### Step 4: Close Cycle
 
+Use closer only for:
+- summary comment
+- `[ai-review]` empty commit
+- push
+
 ```
-subagent({ agent: "review-loop-closer", task: "Close review cycle {cycle} for {forge}/{owner}/{repo}#{pullNumber}. PR URL: {prUrl}. Per-item results: {perItemResults}. Loop should continue: {continueBoolean}." })
+subagent({ agent: "review-loop-closer", task: "Close review cycle {cycle} for {forge}/{owner}/{repo}#{pullNumber}. PR URL: {prUrl}. Per-item results: {perItemResults}." })
 ```
 
-After this subagent returns, update `state.json`:
+After closer succeeds, update:
 - `lastAiReviewRequestAt` = current ISO timestamp
 - `lastAiReviewRequestSha` = empty commit SHA
 - `lastAiReviewRequestHeadSha` = head SHA
 - `cycle` += 1
-- Add all handled item fingerprints to `lastHandledItemKeys`
-- `status` = `"waiting-for-review"`
+- merge handled item fingerprints into `lastHandledItemKeys`
 
-## Mid-Review Handling
+## Cycle Contract
 
-When `state.json` already exists:
+One cycle is always:
+1. read `state.json`
+2. fetch PR data
+3. build snapshot
+4. check reviewer-summary completion
+5. check CI status
+6. process actionable items
+7. close cycle if work happened
+8. update state
+9. decide exit
 
-1. **CI pipeline running?** → Log "CI running, waiting." Sleep 300s and re-check. Don't process items until CI completes.
+Exit immediately after cycle batch finishes. Never wait inside same session for future review or CI changes.
 
-2. **Reviewer summary exists with timestamp > lastAiReviewRequestAt?**
-   - Summary says all items addressed → stop loop (`status: "done"`, exit)
-   - Summary has open items → process normally
+## Decision Rules Per Cycle
 
-3. **No post-watermark reviewer summary?** → Process active-window items. Do NOT stop.
+Apply in this order after snapshot returns:
 
-Old approvals/comments with timestamp <= `lastAiReviewRequestAt` must never trigger loop stop.
+1. **Reviewer summary says all addressed**
+   - If `reviewerSummaryAt > lastAiReviewRequestAt` and summary status says all addressed:
+   - set `status = "done"`
+   - set `lastExitReason = "done"`
+   - print exit reason and exit
 
-These rules are evaluated after snapshot returns. The loop body's idle check
-implements #3 (no summary + no items → sleep). The summary-all-done check
-implements #2 (summary says done → exit).
+2. **CI still running**
+   - If `ciStatus == "running"`:
+   - set `status = "waiting-for-ci"`
+   - set `lastExitReason = "waiting-for-ci"`
+   - persist snapshot watermarks
+   - print exit reason and exit
 
-## Loop Body
+3. **Nothing actionable and no new post-watermark reviewer summary**
+   - If `actionableItems` empty and no newer reviewer summary:
+   - set `status = "waiting-for-review"`
+   - set `lastExitReason = "waiting-for-review"`
+   - print exit reason and exit
 
-```
-while true:
-  read state.json
-  if status == "done" or status == "blocked": exit
+4. **Actionable work exists**
+   - Process items via `feedback-reviewer` then `feedback-worker`
+   - Continue item-by-item even if one item fails, when safe
+   - If closer succeeds, update watermark fields and cycle count
+   - Recompute progress and anti-stall fields
+   - Either continue next bounded iteration or exit by guard below
 
-  run subagent: review-loop-fetcher       # Step 1
-  run subagent: review-loop-snapshot      # Step 2
+## Anti-Stall Rules
 
-  # — IDLE CYCLE: nothing to do —
-  if actionableItems is empty AND no post-watermark reviewer summary:
-    print "[cycle N] forge#PR · status=waiting · items=0"
-    if context > 80K: compact with loop-survival instructions
-    bash "sleep 300"
-    continue
+### Actionable-set stagnation
 
-  # — CI GATE —
-  if CI pipeline running:
-    print "[cycle N] forge#PR · status=waiting · CI running"
-    bash "sleep 300"
-    continue
+Compare current `actionableKeys` to `lastActionableKeys`.
 
-  # — WORKING CYCLE —
-  for each actionable item:
-    run subagent: feedback-reviewer       # Step 3a
-    run subagent: feedback-worker         # Step 3b
-    collect result
+- Same actionable set and no progress this cycle → increment `stagnantCycles`
+- Different actionable set or any progress → reset `stagnantCycles = 0`
 
-  # Compute whether loop continues after this cycle
-  continueLoop = true
-  if reviewer summary > watermark says all addressed:
-    continueLoop = false
+If `stagnantCycles >= maxStagnantCycles`:
+- set `status = "no-progress"`
+- set `lastExitReason = "no-progress"`
+- print exit reason and exit
 
-  run subagent: review-loop-closer        # Step 4 (with continueLoop)
-  update state.json (cycle++, status="waiting-for-review")
+### Blocking failures
 
-  if not continueLoop:
-    status = "done", write state.json, exit
+If fetcher, snapshot, or closer fails in a blocking way:
+- set `status = "blocked"`
+- set `lastExitReason = "blocked"`
+- persist exact failure summary in cycle notes if possible
+- print exit reason and exit
 
-  if context > 80K:
-    compact: keep PR URL, forge, repo, pull number, cycle, timestamps,
-      handledItemKeys, AND this survival snippet:
-      "while true: fetch→snapshot. If no items AND no summary: sleep, continue.
-       If items: process via subagents, close cycle, push commit.
-       If summary all-done: exit. Sleep 5min. Repeat."
+### Per-item failures
 
-  bash "sleep 300"
-```
+If one item fails but rest remain processable:
+- record item failure
+- continue remaining items
+- do not mark whole run blocked unless closer/fetch/state contract becomes impossible
 
-## Reply Routing (for reference — workers handle this)
+### Iteration guard
 
-- GitHub thread reply: `github_add_reply_to_pull_request_comment`
-- GitHub PR-level: `github_add_issue_comment`
-- Bitbucket thread reply: `bitbucket_bitbucketPullRequest` action `comment` with `parentCommentId`
-- Bitbucket inline: same tool with `inlinePath` and line anchors
-- Bitbucket PR-level: same tool action `comment`, no `parentCommentId`
+Each invocation may run at most `maxIterationsPerRun` cycles. Default `3`.
+
+If guard trips before another deterministic terminal state:
+- set `status = "max-iterations"`
+- set `lastExitReason = "max-iterations"`
+- print exit reason and exit
+
+## Resume Rules
+
+When `state.json` exists:
+- resume from disk, do not reinitialize
+- preserve `cycle`, watermark fields, handled keys, last exit reason
+- use `lastHandledItemKeys` and watermark fields to avoid reprocessing already-addressed items
+- keep resume deterministic: same snapshot + same state should produce same next action
 
 ## Watermark Rule
 
-`[ai-review]` empty commit is the watermark. Only reviewer artifacts with timestamp > `lastAiReviewRequestAt` are in the active window.
-
-## Stop Conditions
-
-- Reviewer-authored summary > `lastAiReviewRequestAt` says all items addressed → `status: "done"`
-- Required MCP tools unavailable → `status: "blocked"`
-- Git push fails → `status: "blocked"`
-- User interrupts the session
-
-## Continue Condition
-
-- No post-watermark reviewer summary yet
-- Summary has open items
-- New actionable feedback in active window
-- CI running (sleep, don't process)
-
-## Start Sequence
-
-1. Parse PR URL → forge, owner, repo, pullNumber
-2. Check if `state.json` exists:
-   - Exists → resume (mid-review handling)
-   - Doesn't exist → create dir, write initial `state.json` with `status: "working"`, `cycle: 0`
-3. Enter the loop body
+`[ai-review]` empty commit is watermark. Only reviewer artifacts with timestamp greater than `lastAiReviewRequestAt` belong to active window.
 
 ## Failure Handling
 
-- **MCP call fails** → mark loop blocked, post PR comment if possible
-- **Subagent fails** → log, mark item blocked, continue to next item. Never fall back to direct implementation.
-- **Git push fails** → mark loop blocked, post PR comment
-- **Ambiguous feedback** → reviewer chooses `clarify`, worker posts question, loop continues
-- **>5 cycles with no progress** → post PR comment asking for guidance, continue looping
+- **Fetcher failure** → `blocked`
+- **Snapshot failure or missing required schema** → `blocked`
+- **Closer push failure** → `blocked`
+- **Ambiguous feedback** → reviewer may choose `clarify`; worker posts question; cycle still counts as progress if reply posted
+- **Repeated same actionable set with no progress for 2 cycles** → `no-progress`
 
 ## Commit Rules
 
-- Item commits: only when diff exists. No empty item commits.
-- `[ai-review]` empty commit: once per cycle, after summary comment.
+- Item commits only when diff exists. No empty item commits.
+- `[ai-review]` empty commit once per successful closing cycle, after summary comment.
 - Push after `[ai-review]`. If push fails, block.
 
 ## Output Convention
 
-Each cycle, print:
+Per cycle, print:
 
 ```
-[cycle N] forge#PR · status=<status> · items_handled=<N> · summary=<id|none>
+[cycle N] forge#PR · status=<status> · actionable=<N> · summary=<status|none>
 ```
 
-Verbose narrative goes in PR summary comment, not main session.
+At end of invocation, always print:
+
+```
+[exit] reason=<outcome> cycle=<N> detail=<short text>
+```
+
+Verbose narrative belongs in PR summary comment, not main session.
+
+## Start Sequence
+
+1. Parse PR URL → forge, owner, repo, pullNumber
+2. Resolve state dir `julsemaan-tmp/review-loop/<forge>-<repo>-<pr>/`
+3. If `state.json` missing, create it with:
+   - `cycle: 0`
+   - `status: "working"`
+   - empty watermark and tracking fields
+   - `lastExitReason: ""`
+   - `lastActionableKeys: []`
+   - `stagnantCycles: 0`
+4. Run up to `maxIterationsPerRun` cycles
+5. Persist final state and print exit reason
