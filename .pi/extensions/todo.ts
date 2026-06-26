@@ -37,7 +37,7 @@ const TodoParams = Type.Object({
 	metadata: Type.Optional(TodoMetadataSchema),
 });
 
-const TODO_ENFORCEMENT_INSTRUCTIONS = `
+const TODO_PROMPT_INSTRUCTIONS = `
 IMPORTANT: You must use the todo tool to track every task.
 - Start each task by creating or updating a todo item.
 - Keep todos current as the task progresses.
@@ -55,8 +55,6 @@ When no todos exist yet:
 - After creating the todo list, continue immediately with the first concrete step in the same turn.
 - Do not stop after todo creation unless the request is ambiguous and requires asking clarifying questions via question.
 `;
-
-const TODO_READ_ONLY_TOOLS = new Set(["ls", "find", "grep", "read"]);
 
 function cloneTodos(todos: Todo[]): Todo[] {
 	return todos.map((todo) => ({ ...todo }));
@@ -97,8 +95,6 @@ function reconstructState(ctx: ExtensionContext): { todos: Todo[]; nextId: numbe
 export default function todoExtension(pi: ExtensionAPI) {
 	let todos: Todo[] = [];
 	let nextId = 1;
-	let todoUpdatedThisTurn = false;
-
 	const syncState = (ctx: ExtensionContext) => {
 		const state = reconstructState(ctx);
 		todos = state.todos;
@@ -107,43 +103,18 @@ export default function todoExtension(pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => syncState(ctx));
 	pi.on("session_tree", async (_event, ctx) => syncState(ctx));
-	pi.on("turn_start", async () => {
-		todoUpdatedThisTurn = false;
-	});
 
 	pi.on("before_agent_start", async (event) => {
-		const hasActiveTodos = todos.some((todo) => !todo.done);
-
-		// When no active todos, guidance is embedded in system prompt (see TODO_ENFORCEMENT_INSTRUCTIONS).
-		// No hidden message injection — model gets explicit continuation instructions in system prompt.
-
 		return {
-			systemPrompt: event.systemPrompt + `\n\n${TODO_ENFORCEMENT_INSTRUCTIONS}`,
-		};
-	});
-
-	pi.on("tool_call", async (event) => {
-		if (event.toolName === "todo") {
-			todoUpdatedThisTurn = true;
-			return;
-		}
-
-		const hasActiveTodos = todos.some((todo) => !todo.done);
-		if (hasActiveTodos || todoUpdatedThisTurn || TODO_READ_ONLY_TOOLS.has(event.toolName) || event.toolName === "question") {
-			return;
-		}
-
-		return {
-			block: true,
-			reason: "Create or update a todo before continuing this task.",
+			systemPrompt: event.systemPrompt + `\n\n${TODO_PROMPT_INSTRUCTIONS}`,
 		};
 	});
 
 	pi.registerTool({
 		name: "todo",
 		label: "Todo",
-		description: "Required task-tracking tool for agents. Actions: list, add, set_done, remove, clear.",
-		promptSnippet: "Required task-tracking tool. Start tasks with a relevant todo and keep it updated.",
+		description: "Task tracking tool for agents. Actions: list, add, set_done, remove, clear.",
+		promptSnippet: "Track tasks with a relevant todo and keep it updated.",
 		promptGuidelines: [
 			"You must use todo to track every task.",
 			"Start each task by creating or updating a todo item.",
