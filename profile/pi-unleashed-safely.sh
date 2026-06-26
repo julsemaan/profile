@@ -46,6 +46,13 @@ Arguments:
 Environment:
   PI_NPM_PACKAGE        NPM package name to install for the CLI.
                         Defaults to "@mariozechner/pi-coding-agent".
+  PI_SSH_KEY_PATH       Opt-in host SSH private key path mounted read-only
+                        into container. No SSH key mounted unless set.
+  SSH forwarding        File-only. No SSH agent/socket forwarding.
+                        When PI_SSH_KEY_PATH points under host ~/.ssh, key
+                        keeps same relative path inside container ~/.ssh to
+                        match IdentityFile entries. Host ~/.ssh/known_hosts
+                        and ~/.ssh/config mount read-only when present.
   Pi state persistence  Persists ~/.pi across runs for settings,
                         auth, packages, and sessions.
                         Use --dev to isolate extensions, prompts, and skills.
@@ -171,6 +178,10 @@ HOST_PI_HOME="$RESOLVED_HOME/.pi"
 HOST_AGENT_STATUS="$RESOLVED_HOME/.local/state/agent-status"
 CONTAINER_HOME="$RESOLVED_HOME"
 CONTAINER_AGENT_STATUS="$CONTAINER_HOME/.local/state/agent-status"
+HOST_SSH_DIR="$RESOLVED_HOME/.ssh"
+HOST_SSH_KEY="${PI_SSH_KEY_PATH:-}"
+HOST_KNOWN_HOSTS="$HOST_SSH_DIR/known_hosts"
+HOST_SSH_CONFIG="$HOST_SSH_DIR/config"
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
 PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON="[]"
 if [[ ${#PI_NPM_INSTALL_PACKAGES[@]} -gt 0 ]]; then
@@ -224,6 +235,40 @@ fi
 
 # GOFLAGS: default to -mod=readonly unless host overrides
 GOFLAGS_VALUE="${GOFLAGS:--mod=readonly}"
+
+SSH_DOCKER_FLAGS=()
+if [[ -n "$HOST_SSH_KEY" && -f "$HOST_SSH_KEY" ]]; then
+  SSH_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.ssh:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
+
+  SSH_KEY_CONTAINER_PATH="$CONTAINER_HOME/.ssh/id_rsa"
+
+  case "$HOST_SSH_KEY" in
+    "$HOST_SSH_DIR"/*)
+      SSH_KEY_RELATIVE_PATH="${HOST_SSH_KEY#$HOST_SSH_DIR/}"
+      SSH_KEY_CONTAINER_PATH="$CONTAINER_HOME/.ssh/$SSH_KEY_RELATIVE_PATH"
+      SSH_KEY_CONTAINER_RELATIVE_DIR="$(dirname "$SSH_KEY_RELATIVE_PATH")"
+
+      if [[ "$SSH_KEY_CONTAINER_RELATIVE_DIR" != "." ]]; then
+        SSH_KEY_PARENT="$CONTAINER_HOME/.ssh"
+        IFS='/' read -r -a SSH_KEY_DIR_PARTS <<< "$SSH_KEY_CONTAINER_RELATIVE_DIR"
+        for ssh_dir_part in "${SSH_KEY_DIR_PARTS[@]}"; do
+          SSH_KEY_PARENT="$SSH_KEY_PARENT/$ssh_dir_part"
+          SSH_DOCKER_FLAGS+=(--tmpfs "$SSH_KEY_PARENT:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
+        done
+      fi
+      ;;
+  esac
+
+  SSH_DOCKER_FLAGS+=(-v "$HOST_SSH_KEY:$SSH_KEY_CONTAINER_PATH:ro")
+
+  if [[ -f "$HOST_KNOWN_HOSTS" ]]; then
+    SSH_DOCKER_FLAGS+=(-v "$HOST_KNOWN_HOSTS:$CONTAINER_HOME/.ssh/known_hosts:ro")
+  fi
+
+  if [[ -f "$HOST_SSH_CONFIG" ]]; then
+    SSH_DOCKER_FLAGS+=(-v "$HOST_SSH_CONFIG:$CONTAINER_HOME/.ssh/config:ro")
+  fi
+fi
 
 if [[ $REBUILD -eq 1 ]]; then
   REBUILD_DOCKER_ARG="--no-cache"
@@ -437,6 +482,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
   -v "$HOST_AGENT_STATUS:$CONTAINER_AGENT_STATUS" \
   "${GO_DOCKER_FLAGS[@]}" \
+  "${SSH_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
   -v "$MNT:$MNT" -w "$WORKDIR" \
   "$IMAGE" "${PI_ARGS[@]}"

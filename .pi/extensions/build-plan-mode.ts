@@ -856,6 +856,10 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		// Saved mode wins. No saved mode: startup/new sessions default to plan;
 		// legacy resumed/reloaded/forked sessions default to build.
 		mode = getDefaultModeForSession(event.reason, modeRegistry, lastState);
+		// Subagent processes always run in build mode
+		if (process.env.PI_SUBAGENT === "1" && modeRegistry.byName.has("build")) {
+			mode = "build";
+		}
 
 		// Resolve modelMap with precedence: session entries > temp file > file override > default
 		const defaultMap = structuredClone(DEFAULT_MODEL_MAP);
