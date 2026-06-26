@@ -345,13 +345,29 @@ alias opencode-unleashed-safely-src='opencode-unleashed-safely -m ~/src/'
 alias pi-unleashed-safely-src='pi-unleashed-safely -m ~/src/'
 
 function gacp {
+  local ai_review=0
+  if [[ "${1:-}" == "--ai-review" ]]; then
+    ai_review=1
+  elif [[ -n "${1:-}" ]]; then
+    echo "Usage: gacp [--ai-review]"
+    return 1
+  fi
+
   git add .
   git diff --cached --stat
   echo
-  read -p "Commit and push staged changes? [y/N] " -n 1 -r
+  if [[ $ai_review -eq 1 ]]; then
+    read -p "Commit and request AI review? [y/N] " -n 1 -r
+  else
+    read -p "Commit and push staged changes? [y/N] " -n 1 -r
+  fi
   echo
   if [[ $REPLY =~ ^[Yy]$ ]]; then
-    gcoto && gpush
+    if [[ $ai_review -eq 1 ]]; then
+      gcoto && gaireview
+    else
+      gcoto && gpush
+    fi
   fi
 }
 
