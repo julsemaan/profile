@@ -37,8 +37,12 @@ alias rbrc-all='trigger-bashrc-reload'
 export EDITOR=vim
 
 # --- Completions ---
-source /etc/bash_completion
-source /etc/bash_completion.d/complete_alias
+if [ -f /etc/bash_completion ]; then
+  source /etc/bash_completion
+fi
+if [ -f /etc/bash_completion.d/complete_alias ]; then
+  source /etc/bash_completion.d/complete_alias
+fi
 
 if command -v direnv >/dev/null 2>&1; then
   eval "$(direnv hook bash)"

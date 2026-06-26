@@ -12,8 +12,6 @@ function parse_git_branch {
   git branch --no-color 2> /dev/null | sed -e '/^[^*]/d' -e "s/* \(.*\)/(\1$(parse_git_dirty))/"
 }
 
-git config --global credential.helper cache
-
 # --- Basic git aliases ---
 if `which fortune > /dev/null 2>&1`; then
   add_alias gco 'git commit -a -m"$(fortune -n 50 -s)"'
