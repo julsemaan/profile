@@ -88,6 +88,22 @@ __primary_branch() {
   return 1
 }
 
+__link_shared_path() {
+  local src="$1" dst="$2"
+  [ -e "$src" ] || return 0
+  if [ -e "$dst" ] || [ -L "$dst" ]; then
+    echo "  skip $dst (already exists)" >&2
+    return 0
+  fi
+  ln -s "$src" "$dst" || __die "failed to symlink $dst -> $src"
+}
+
+__link_shared_paths() {
+  local repo_root="$1" wt_path="$2"
+  __link_shared_path "$repo_root/.envrc"          "$wt_path/.envrc"
+  __link_shared_path "$repo_root/julsemaan-tmp"   "$wt_path/julsemaan-tmp"
+}
+
 cmd_create() {
   local repo_root
   repo_root="$(__repo_root)" || __die "not inside git repo"
@@ -215,6 +231,8 @@ cmd_create() {
       fi
       ;;
   esac
+
+  __link_shared_paths "$repo_root" "$wt_path"
 
   echo "$wt_path"
 }
