@@ -294,7 +294,7 @@ add_alias gcoto-free 'git commit -m "$(genCommitMsg opencode/mimo-v2.5-free)"'
 
 # gcoto-model: model selection helper (cached per session via _GCOTO_MODEL)
 # Usage: gcoto-model [openai|deepseek|free|current|unset]
-gcoto-model() {
+function gcoto-model {
   case "${1:-}" in
     "")
       if [ ! -t 0 ]; then
@@ -322,7 +322,7 @@ gcoto-model() {
 }
 
 # gcoto: generate commit message using selected model
-gcoto() {
+function gcoto {
   if [ -z "${_GCOTO_MODEL:-}" ]; then
     gcoto-model || return 1
   fi
