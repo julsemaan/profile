@@ -184,6 +184,24 @@ To extend the profile:
 3. For immediate testing, run `sudo ./install` locally.
 4. For pi agent changes, edit `.pi/` files (never modify `~/.pi/` on a live system directly).
 5. For sandbox changes, modify the relevant `*-unleashed-safely.sh` wrapper or `code-sandbox/Dockerfile`.
+6. For bashrc changes, edit fragments in `profile/bashrc.d/` (never edit `~/.bashrc` or `~/.bashrc_append` on a live system directly).
+
+## Bashrc Modular Architecture
+
+`.bashrc_append` is a thin loader that sources fragments from `bashrc.d/` via `BASH_SOURCE[0]`.
+Fragments are deployed to `/usr/local/etc/bashrc.d/` by `install`.
+
+| Fragment | Scope |
+|----------|-------|
+| `00-core.bash` | Prompt, completions, ble.sh, fzf, base aliases, PATH, bashrc reload |
+| `10-tmux.bash` | `joined-tmux`, `jointmuxifier`, `tmux-new-coding`, `fix-tmux-ssh` |
+| `20-git.bash` | Git aliases, `gch`, `gchjira`, `gtagpush`, `gom`, `gacp` |
+| `30-ai.bash` | `genCommitMsg`, `gcoto`, agent sandbox aliases |
+| `40-kube-and-ux.bash` | kubectl completion, `k`, `klogs_deploy` |
+
+**Constraints**: Never edit fragments on a live system — edit `profile/bashrc.d/`, let install deploy.
+PROMPT_COMMAND must stay idempotent. Guard optional tools with `command -v`/file checks.
+Run `bash tests/bashrc-smoke.sh` to validate.
 
 ---
 

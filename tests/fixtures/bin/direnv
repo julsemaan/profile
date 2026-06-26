@@ -1,0 +1,11 @@
+#!/bin/bash
+# Minimal direnv stub for smoke tests
+case "$*" in
+  *"hook bash"*)
+    echo 'direnv() { echo "direnv stub"; }; export -f direnv'
+    ;;
+  *)
+    echo "direnv stub: $*"
+    exit 0
+    ;;
+esac

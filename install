@@ -219,6 +219,9 @@ check_cmd git
 check_cmd make
 check_cmd gawk
 
+# One-time git config (moved from shell startup)
+git config --global credential.helper cache
+
 LOCAL_INSTALL=${LOCAL_INSTALL:-}
 if [ -z "$LOCAL_INSTALL" ]; then
   d=$(mktemp -d)
@@ -237,6 +240,11 @@ fi
 install_complete_alias
 
 install_file $d/profile/.bashrc_append /usr/local/etc/.bashrc_append
+
+# Deploy bashrc fragments
+rm -fr /usr/local/etc/bashrc.d
+install_file $d/profile/bashrc.d/ /usr/local/etc/bashrc.d
+
 install_file $d/profile/.inputrc /usr/local/etc/.inputrc
 install_file $d/profile/.tmux.conf /usr/local/etc/.tmux.conf
 install_file $d/profile/.vimrc /usr/local/etc/.vimrc

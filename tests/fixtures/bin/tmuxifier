@@ -1,0 +1,11 @@
+#!/bin/bash
+# Minimal tmuxifier stub for smoke tests
+case "$*" in
+  *"init -"*)
+    echo 'tmuxifier() { echo "tmuxifier stub"; }; export -f tmuxifier'
+    ;;
+  *)
+    echo "tmuxifier stub: $*"
+    exit 0
+    ;;
+esac

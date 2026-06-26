@@ -1,0 +1,103 @@
+name: Shell scripts
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "install"
+      - "setup"
+      - "profile/.bashrc_append"
+      - "profile/bashrc.d/**"
+      - "profile/*.sh"
+      - "utils/*.sh"
+      - "tmuxifiers/*.sh"
+      - "tests/**"
+      - ".github/workflows/scripts.yml"
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - "install"
+      - "setup"
+      - "profile/.bashrc_append"
+      - "profile/bashrc.d/**"
+      - "profile/*.sh"
+      - "utils/*.sh"
+      - "tmuxifiers/*.sh"
+      - "tests/**"
+      - ".github/workflows/scripts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: Bash syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n
+        run: |
+          files=(
+            install
+            setup
+            profile/.bashrc_append
+            profile/bashrc.d/*.bash
+            profile/*.sh
+            utils/*.sh
+            tmuxifiers/*.sh
+            tests/bashrc-smoke.sh
+            tests/lib/assert.sh
+          )
+          bash -n "${files[@]}"
+
+  smoke:
+    name: Smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke tests
+        run: bash tests/bashrc-smoke.sh
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Lint shell files
+        run: |
+          # Refactored files only; expand scope as install/setup/utils are cleaned up
+          files=(
+            profile/.bashrc_append
+            profile/bashrc.d/*.bash
+            tests/bashrc-smoke.sh
+            tests/lib/assert.sh
+          )
+          shellcheck -x "${files[@]}"
+
+  shfmt:
+    name: shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shfmt
+        run: |
+          SHFMT_VERSION="v3.10.0"
+          curl -sS -L "https://github.com/mvdan/sh/releases/download/${SHFMT_VERSION}/shfmt_${SHFMT_VERSION}_linux_amd64" -o /usr/local/bin/shfmt
+          chmod +x /usr/local/bin/shfmt
+      - name: Check formatting
+        run: |
+          # Refactored files only; expand scope as install/setup/utils are cleaned up
+          files=(
+            profile/.bashrc_append
+            profile/bashrc.d/*.bash
+            tests/bashrc-smoke.sh
+            tests/lib/assert.sh
+          )
+          shfmt -i 2 -d "${files[@]}"
