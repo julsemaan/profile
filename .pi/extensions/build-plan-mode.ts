@@ -789,6 +789,27 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("newbuild", {
+		description: "Start new session in build mode",
+		handler: async (_args, ctx) => {
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("Wait for the current turn to finish.", "warning");
+				return;
+			}
+			const result = await ctx.newSession({
+				setup: async (sessionManager) => {
+					sessionManager.appendCustomEntry(STATE_TYPE, { mode: "build" });
+				},
+				withSession: async (replacementCtx) => {
+					replacementCtx.ui.notify("Started new build session.", "info");
+				},
+			});
+			if (result.cancelled) {
+				ctx.ui.notify("New session cancelled.", "info");
+			}
+		},
+	});
+
 	pi.registerShortcut("ctrl+shift+p", {
 		description: "Toggle between first two modes",
 		handler: async (ctx) => {
