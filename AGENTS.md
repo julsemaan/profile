@@ -125,7 +125,7 @@ Located at the repository root, the `.pi/` directory configures the pi coding ag
   build-plan mode, question asking, subagent delegation, modes switcher).
 - **`agents/`** — Custom agent definitions (feedback-reviewer, feedback-worker,
   model-test-orchestrator, model-test-worker).
-- **`prompts/`** — Prompt templates (extract-feedback, feedback-handler, fix-lint, handle-review,
+- **`prompts/`** — Prompt templates (extract-feedback, feedback-handler, fix-lint, review-loop,
   model-test).
 - **`modes/`** — Custom modes (brainstorm).
 - **`TODO.md`** — Known issues (e.g., multiline copy/paste in pi).

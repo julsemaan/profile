@@ -951,7 +951,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.on("input", async (event, ctx) => {
-		if (event.source !== "interactive") return { action: "continue" };
+		if (event.source !== "interactive" && event.source !== "extension") return { action: "continue" };
 
 		const slashCmd = detectSlashCommand(event.text);
 		if (!slashCmd) return { action: "continue" };

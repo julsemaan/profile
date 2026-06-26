@@ -1,10 +1,8 @@
 ---
-description: Deprecated alias for /review-loop
+description: Run autonomous pull-request review loop from a PR URL
 argument-hint: "<PR-URL>"
 mode: build
 ---
-
-`/handle-review` deprecated. Use `/review-loop`.
 
 Load and follow `.pi/skills/review-loop/SKILL.md`.
 

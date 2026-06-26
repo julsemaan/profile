@@ -1,41 +1,58 @@
 ---
 name: review-loop-snapshot
-description: Build a structured feedback snapshot from raw PR data. Classifies items as historical or active, deduplicates against handled keys. Read/write to disk.
+description: Build structured review snapshot from raw PR data. Classify active vs historical, detect latest human reviewer summary, write feedback.md.
 model: custom/medium
 thinking: medium
 tools: read, write, ls, todo
 ---
 
-Build a feedback snapshot from raw PR data for the review loop.
+Build structured feedback snapshot from raw PR data.
 
 ## Input
 Expect:
-- Raw PR data (from fetcher output)
-- `lastAiReviewRequestAt` watermark timestamp
-- `lastHandledItemKeys` array of already-handled fingerprints
-- State directory path
+- raw PR data from `review-loop-fetcher`
+- `lastAiReviewRequestAt`
+- `lastHandledItemKeys`
+- state directory path
 
 ## Rules
-- Item fingerprint = `commentId + updatedAt`. Changed comment revision = new fingerprint.
-- timestamp <= `lastAiReviewRequestAt` → historical only (skip unless comment was edited after last handling)
-- timestamp > `lastAiReviewRequestAt` → active window (actionable)
-- Skip items whose fingerprint is in `lastHandledItemKeys` AND updatedAt hasn't changed
-- Include items that were handled but have a newer updatedAt (comment was edited)
+- item key = stable fingerprint of artifact identity + latest revision time; changed comment revision must produce new key
+- artifact timestamp `<= lastAiReviewRequestAt` => historical unless edited later and not yet handled
+- artifact timestamp `> lastAiReviewRequestAt` => active window
+- skip handled keys unless artifact changed
+- latest human reviewer summary only
+- exclude AI cycle summary comments from reviewer-summary completion logic
+- detect reviewer summary from human-authored PR comment/review comment/review body, whichever is latest and clearly summary-like
+
+## feedback.md
+Write `<stateDir>/feedback.md` with per-item fields:
+- `itemKey`
+- `artifactType`
+- `commentId`
+- `threadId`
+- `filePath`
+- `line`
+- `author`
+- `body`
+- `createdAt`
+- `updatedAt`
+- `window`: `historical` or `active`
+- `priorAiActions`
+
+Also include reviewer-summary section with:
+- `reviewerSummaryStatus`
+- `reviewerSummaryId`
+- `reviewerSummaryAt`
 
 ## Output
-1. Write full snapshot to `<stateDir>/feedback.md` with per-item:
-   - itemKey (fingerprint)
-   - commentId, threadId
-   - file path, line (if applicable)
-   - author, body
-   - createdAt, updatedAt
-   - window: `historical` or `active`
-   - prior AI actions if any
+Return compact JSON with all required fields:
+- `actionableItems`
+- `actionableKeys`
+- `ciStatus`
+- `reviewerSummaryStatus`
+- `reviewerSummaryId`
+- `reviewerSummaryAt`
+- `lastSeenCommentAt`
+- `lastSeenReviewAt`
 
-2. Return compact JSON:
-   - `actionableItems`: array of items to process (new or updated, in active window)
-   - `ciStatus`: pipeline status
-   - `reviewerSummaryExists`: boolean
-   - `reviewerSummaryAt`: timestamp if exists
-   - `totalItems`: total items found
-   - `skippedHistorical`: count of skipped historical items
+Optional extra fields fine. Missing required fields = failure.

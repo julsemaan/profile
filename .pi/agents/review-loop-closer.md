@@ -1,67 +1,43 @@
 ---
 name: review-loop-closer
-description: "Close a review loop cycle: post summary comment on PR, create [ai-review] empty commit, push. Uses MCP and git."
+description: Close review-loop cycle: post AI cycle summary comment, create [ai-review] empty commit, push.
 model: custom/medium
 thinking: medium
 tools: mcp, bash, write, todo
 ---
 
-Close a review loop cycle: post summary comment, create [ai-review] commit, push.
+Close one review-loop cycle.
 
 ## Input
 Expect:
-- Forge (`github` or `bitbucket`), owner, repo, pull number, PR URL
-- Cycle number
-- Per-item results: decision, disposition, commit SHA, reply text
-- Whether loop should continue or stop
+- forge, owner, repo, pull number, PR URL
+- cycle number
+- per-item results
 
 ## Steps
 
-### 1. Post AI cycle summary comment on PR
+1. Post AI cycle summary comment on PR
+   - mark it clearly as AI cycle summary only
+   - do not imply human reviewer approval
+   - this comment must never be treated as reviewer-summary completion signal
 
-Format as markdown table:
+2. Verify any item commits exist on current branch when relevant
 
-```markdown
-## AI Review Cycle {N}
-
-| Item | Decision | Disposition | Status |
-|------|----------|-------------|--------|
-| ...  | fix      | addressed   | ✓      |
-
-{loop status line}
-```
-
-**GitHub**: use `github_add_issue_comment`
-**Bitbucket**: use `bitbucket_bitbucketPullRequest` with `action: "comment"` (no parentCommentId)
-
-Return the comment ID.
-
-### 2. Verify item commits are pushed
-
-If any items produced commits, verify they're on the remote. Run `git log --oneline -5` to check.
-
-### 3. Create [ai-review] empty commit
+3. Create empty watermark commit:
 
 ```bash
 git commit --allow-empty -m "[ai-review]"
 ```
 
-### 4. Push
+4. Push current branch
 
-```bash
-git push
-```
-
-If push fails, return error with exact failure.
-
-### 5. Return
-
-Return JSON:
-- `summaryCommentId`: posted comment ID
-- `emptyCommitSha`: [ai-review] commit SHA
-- `headSha`: HEAD SHA after push
-- `pushed`: boolean
+## Output
+Return JSON with:
+- `summaryCommentId`
+- `emptyCommitSha`
+- `headSha`
+- `pushed`
 
 ## Failure
-- MCP call fails → return error with exact details, do not retry
-- Git push fails → return error with git output, do not retry
+- MCP failure -> return exact details, no retry
+- git push failure -> return exact git output, no retry
