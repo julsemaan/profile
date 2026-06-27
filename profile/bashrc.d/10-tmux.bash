@@ -58,7 +58,7 @@ alias fts=fix-tmux-ssh
 
 # --- Tmuxifier init ---
 if [ -d /usr/local/etc/.tmuxifier ]; then
-  export PATH="/usr/local/etc/.tmuxifier/bin:$PATH"
+  jprofile_path_prepend /usr/local/etc/.tmuxifier/bin
   export TMUXIFIER_LAYOUT_PATH=/usr/local/etc/tmuxifiers/
   if [ -z "$__JPROFILE_RELOADING_BASHRC" ]; then
     eval "$(tmuxifier init -)"

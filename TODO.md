@@ -1,1 +1,0 @@
-- When genCommitMsg fails because of a rate limit, it should bail out instead of using the error as the commit message
