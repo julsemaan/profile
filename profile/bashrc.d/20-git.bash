@@ -30,10 +30,21 @@ add_alias sbrc 'source ~/.bashrc'
 unalias gch 2>/dev/null
 gch() {
   if [ $# -eq 0 ]; then
+    if ! command -v fzf >/dev/null 2>&1; then
+      echo "gch: fzf is required when no branch argument is provided" >&2
+      echo "usage: gch <branch-or-commit>" >&2
+      return 1
+    fi
+
     local local_branches remote_branches selected
     local_branches=$(git branch --format='%(refname:short)' 2>/dev/null)
     remote_branches=$(git branch --remote --format='%(refname:short)' 2>/dev/null | grep -v '/HEAD$')
     selected=$(printf '%s\n%s\n' "$local_branches" "$remote_branches" | awk '!seen[$0]++' | fzf --height=40% --reverse --prompt="Checkout branch> ")
+    local fzf_status=$?
+    if [ $fzf_status -ne 0 ]; then
+      [ $fzf_status -eq 130 ] && return 0
+      return $fzf_status
+    fi
     [ -z "$selected" ] && return 0
     if [[ "$selected" == */* ]]; then
       local branch_name="${selected#*/}"

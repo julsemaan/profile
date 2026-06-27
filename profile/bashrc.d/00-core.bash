@@ -57,9 +57,29 @@ alias cd..='cd ..'
 alias ll='ls -al --color=auto'
 
 function add_alias {
+  if [ $# -ne 2 ]; then
+    echo "usage: add_alias <name> <command>" >&2
+    return 1
+  fi
+
   # shellcheck disable=SC2139
   alias "$1"="$2"
-  complete -F _complete_alias "$1"
+  if declare -F _complete_alias >/dev/null 2>&1; then
+    complete -F _complete_alias "$1"
+  fi
+}
+
+jprofile_path_prepend() {
+  if [ $# -ne 1 ] || [ -z "$1" ]; then
+    echo "usage: jprofile_path_prepend <dir>" >&2
+    return 1
+  fi
+  [ -d "$1" ] || return 0
+
+  case ":$PATH:" in
+  *":$1:"*) ;;
+  *) export PATH="$1:$PATH" ;;
+  esac
 }
 
 # --- Prompt ---
@@ -94,7 +114,7 @@ fi
 
 # --- fzf ---
 if [ -f /usr/local/etc/.fzf.bash ]; then
-  export PATH="/usr/local/etc/fzf/bin/:$PATH"
+  jprofile_path_prepend /usr/local/etc/fzf/bin
   if [ -z "$__JPROFILE_RELOADING_BASHRC" ]; then
     # shellcheck source=/dev/null
     source /usr/local/etc/.fzf.bash
@@ -115,4 +135,4 @@ if [ -f /usr/local/etc/.fzf.bash ]; then
 fi
 
 # --- PATH ---
-export PATH="/opt/nvim-linux64/bin:$PATH"
+jprofile_path_prepend /opt/nvim-linux64/bin
