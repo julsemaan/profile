@@ -102,7 +102,12 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   declare -F gcoto >/dev/null && echo "__FN_gcoto__"
   declare -F gcoto-model >/dev/null && echo "__FN_gcoto_model__"
   declare -F gacp >/dev/null && echo "__FN_gacp__"
+  declare -F gcoto-commit-with-model >/dev/null && echo "__FN_gcoto_commit_with_model__"
+  declare -F gcoto-openai >/dev/null && echo "__FN_gcoto_openai__"
+  declare -F gcoto-deepseek >/dev/null && echo "__FN_gcoto_deepseek__"
+  declare -F gcoto-free >/dev/null && echo "__FN_gcoto_free__"
   declare -F add_alias >/dev/null && echo "__FN_add_alias__"
+  declare -F jprofile_path_prepend >/dev/null && echo "__FN_jprofile_path_prepend__"
 
   # Check key aliases
   alias gpush >/dev/null 2>&1 && echo "__AL_gpush__"
@@ -130,7 +135,12 @@ assert_match "gtagpush exists" "__FN_gtagpush__" "$_result"
 assert_match "gcoto exists" "__FN_gcoto__" "$_result"
 assert_match "gcoto-model exists" "__FN_gcoto_model__" "$_result"
 assert_match "gacp exists" "__FN_gacp__" "$_result"
+assert_match "gcoto-commit-with-model exists" "__FN_gcoto_commit_with_model__" "$_result"
+assert_match "gcoto-openai exists" "__FN_gcoto_openai__" "$_result"
+assert_match "gcoto-deepseek exists" "__FN_gcoto_deepseek__" "$_result"
+assert_match "gcoto-free exists" "__FN_gcoto_free__" "$_result"
 assert_match "add_alias exists" "__FN_add_alias__" "$_result"
+assert_match "jprofile_path_prepend exists" "__FN_jprofile_path_prepend__" "$_result"
 
 assert_match "gpush alias" "__AL_gpush__" "$_result"
 assert_match "gs alias" "__AL_gs__" "$_result"
@@ -159,9 +169,16 @@ _result=$(_run_interactive "" '
 
   count=$(printf "%s" "$PROMPT_COMMAND" | grep -o "jprofile_prompt_hook" | wc -l)
   echo "HOOK_COUNT=$count"
+
+  mkdir -p "$HOME/bin"
+  jprofile_path_prepend "$HOME/bin"
+  jprofile_path_prepend "$HOME/bin"
+  path_count=$(printf "%s" "$PATH" | tr : "\n" | grep -c "^$HOME/bin$")
+  echo "PATH_COUNT=$path_count"
 ')
 
 assert_match "single hook after re-source" "HOOK_COUNT=1" "$_result"
+assert_match "path prepend is idempotent" "PATH_COUNT=1" "$_result"
 
 # ---------------------------------------------------------------------------
 # Scenario 4 - Helper command sanity
@@ -219,6 +236,33 @@ _result=$(_run_interactive "" '
   fi
 ')
 assert_match "gom outside git repo returns error" "GOM_NO_GIT_OK" "$_result"
+
+# Test gch picker propagates fzf failures in non-interactive contexts
+_result=$(_run_interactive "" '
+  echo "source '"$LOADER"'" > "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+  if gch 2>&1; then
+    echo "GCH_PICKER_FAIL"
+  else
+    echo "GCH_PICKER_OK"
+  fi
+')
+assert_match "gch picker failure returns error" "GCH_PICKER_OK" "$_result"
+
+# Test genCommitMsg refuses to run without staged changes before invoking an agent
+_result=$(_run_interactive "" '
+  echo "source '"$LOADER"'" > "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+  mkdir "$HOME/repo"
+  cd "$HOME/repo" || exit 1
+  git init >/dev/null 2>&1
+  if genCommitMsg openai-codex/gpt-5.4-mini 2>&1; then
+    echo "GEN_NO_STAGED_FAIL"
+  else
+    echo "GEN_NO_STAGED_OK"
+  fi
+')
+assert_match "genCommitMsg without staged changes returns error" "GEN_NO_STAGED_OK" "$_result"
 
 # Test klogs_deploy usage
 _result=$(_run_interactive "$FIXTURES_DIR" '

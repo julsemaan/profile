@@ -86,6 +86,6 @@ Request Marker Updated: no
 
 ## Notes
 - `Suggested Reply` must be exact text posted.
-- `Request Marker Updated` is always `no`; only main `/handle-review` flow creates `[ai-review]` marker.
+- `Request Marker Updated` is always `no`; only main `/review-loop` flow creates `[ai-review]` marker.
 - If validation cannot run, say why.
 - If MCP post fails, return blocked result with exact failure in `Action Taken`.
