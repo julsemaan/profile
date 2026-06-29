@@ -62,9 +62,17 @@ function gcoto-model {
       return 1
     fi
     echo "Select AI model for commit messages:"
-    PS3="Model (1-3): "
-    # shellcheck disable=SC2034
-    select opt in "openai (gpt-5.4-mini)" "deepseek (v4-flash)" "free (mimo-v2.5)"; do
+    echo "  1) openai (gpt-5.4-mini)"
+    echo "  2) deepseek (v4-flash)"
+    echo "  3) free (mimo-v2.5)"
+    echo "  q) cancel"
+    while true; do
+      printf "Model (1-3): "
+      if ! IFS= read -r -n 1; then
+        echo
+        return 1
+      fi
+      echo
       case $REPLY in
       1)
         _GCOTO_MODEL="openai-codex/gpt-5.4-mini"
@@ -77,6 +85,9 @@ function gcoto-model {
       3)
         _GCOTO_MODEL="opencode/mimo-v2.5-free"
         break
+        ;;
+      q|Q)
+        return 1
         ;;
       *) echo "Invalid choice" >&2 ;;
       esac

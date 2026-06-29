@@ -49,6 +49,25 @@ _run_interactive() {
   return $rc
 }
 
+# Run gcoto-model with tty-backed single-key input.
+# Usage: _run_gcoto_model_tty <input_bytes>
+_run_gcoto_model_tty() {
+  local input_bytes="$1"
+  local _tmp_home
+  _tmp_home="$(mktemp -d)"
+  printf 'source %q\n' "$LOADER" >"$_tmp_home/.bashrc"
+
+  local output
+  output=$(printf '%s' "$input_bytes" | script -qfec \
+    "env HOME=$_tmp_home bash -i -c 'gcoto-model; rc=\$?; printf \"__RC=%s__\\n\" \"\$rc\"; printf \"__MODEL=%s__\\n\" \"\${_GCOTO_MODEL:-<unset>}\"'" \
+    /dev/null 2>/dev/null)
+  local rc=$?
+
+  rm -rf "$_tmp_home"
+  printf '%s' "$output"
+  return $rc
+}
+
 # ---------------------------------------------------------------------------
 # Scenario 1 - Minimal environment (no optional tools)
 # ---------------------------------------------------------------------------
@@ -212,6 +231,21 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   fi
 ')
 assert_match "klogs_deploy no-args returns error" "KDEPLOY_NO_ARGS_OK" "$_result"
+
+# ---------------------------------------------------------------------------
+# Scenario 5 - gcoto-model interactive tty selection
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 5: gcoto-model tty single-key selection ==="
+
+_result=$(_run_gcoto_model_tty '1')
+assert_match "gcoto-model selects openai on single keypress" "__MODEL=openai-codex/gpt-5.4-mini__" "$_result"
+assert_match "gcoto-model interactive success exits zero" "__RC=0__" "$_result"
+
+_result=$(_run_gcoto_model_tty 'x2')
+assert_match "gcoto-model invalid key reports error" "Invalid choice" "$_result"
+assert_match "gcoto-model retries until valid key" "__MODEL=deepseek/deepseek-v4-flash__" "$_result"
+assert_match "gcoto-model invalid then valid exits zero" "__RC=0__" "$_result"
 
 # ---------------------------------------------------------------------------
 # Summary
