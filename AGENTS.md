@@ -203,6 +203,11 @@ Fragments are deployed to `/usr/local/etc/bashrc.d/` by `install`.
 PROMPT_COMMAND must stay idempotent. Guard optional tools with `command -v`/file checks.
 Run `bash tests/bashrc-smoke.sh` to validate.
 
+**CI checks** (`.github/workflows/scripts.yml`): `bash -n` → function-syntax → smoke → shellcheck → shfmt.
+Run `bash tests/run-ci-checks.sh` before pushing bash changes.
+When adding a new function, register it in Scenario 2 of `tests/bashrc-smoke.sh`.
+Guard optional tools with `command -v`/file checks — smoke test must pass with no tools on PATH.
+
 **Function syntax**: All bash functions must use the `function name {` keyword form, never the `name() {` POSIX form. Example: `function my_func { ... }` not `my_func() { ... }`.
 
 ---
