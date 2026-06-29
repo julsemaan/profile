@@ -94,7 +94,7 @@ iter_display="$cur_iter / ${max_iter}"
 target_display="$target ($direction)"
 
 # Truncate long strings to keep box tidy (max ~44 chars for value column)
-_trunc() {
+function _trunc {
     local s="$1" max="${2:-44}"
     if [[ ${#s} -gt $max ]]; then
         printf '%s…' "${s:0:$((max-1))}"
@@ -117,12 +117,12 @@ last_val=$(_trunc "$last_desc" $val_w)
 # ── Box drawing ───────────────────────────────────────────────────────────────
 
 # Compute box inner width from widest row
-_row_len() { printf '%s' "  ${1}${2}" | wc -c | tr -d ' '; }
+function _row_len { printf '%s' "  ${1}${2}" | wc -c | tr -d ' '; }
 
 inner_w=54  # fixed inner width for clean alignment
 border=$(printf '─%.0s' $(seq 1 $inner_w))
 
-_pad_row() {
+function _pad_row {
     local label="$1" value="$2"
     local content="  ${label}${value}"
     local pad=$(( inner_w - ${#content} ))

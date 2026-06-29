@@ -33,7 +33,7 @@ source "$SCRIPT_DIR/lib/assert.sh"
 # <path_prefix> is prepended to PATH (optional, pass "" for no prefix).
 # <code> is the bash code to run.
 # Prints stdout; returns exit code.
-_run_interactive() {
+function _run_interactive {
   local path_prefix="$1"
   shift
   local code="$*"
@@ -51,7 +51,7 @@ _run_interactive() {
 
 # Run gcoto-model with tty-backed single-key input.
 # Usage: _run_gcoto_model_tty <input_bytes>
-_run_gcoto_model_tty() {
+function _run_gcoto_model_tty {
   local input_bytes="$1"
   local _tmp_home
   _tmp_home="$(mktemp -d)"

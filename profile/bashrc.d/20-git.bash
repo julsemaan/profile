@@ -28,7 +28,7 @@ add_alias sbrc 'source ~/.bashrc'
 
 # gch: git checkout with fzf branch picker when no args given
 unalias gch 2>/dev/null
-gch() {
+function gch {
   if [ $# -eq 0 ]; then
     if ! command -v fzf >/dev/null 2>&1; then
       echo "gch: fzf is required when no branch argument is provided" >&2
@@ -65,7 +65,7 @@ if type __git_complete >/dev/null 2>&1; then
 fi
 
 # --- gchjira ---
-gchjira() {
+function gchjira {
   local opt jira_url branch create_new=false
   local OPTIND=1
 
@@ -103,7 +103,7 @@ gchjira() {
 }
 
 # --- gtagpush ---
-gtagpush() {
+function gtagpush {
   local tag="$1"
   if [ -z "$tag" ]; then
     echo "usage: gtagpush <tag>"
@@ -114,7 +114,7 @@ gtagpush() {
 }
 
 # --- gom ---
-gom() {
+function gom {
   local base
 
   git fetch origin || return 1

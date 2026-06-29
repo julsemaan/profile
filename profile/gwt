@@ -4,26 +4,26 @@
 
 set -o nounset -o pipefail
 
-__die() {
+function __die {
   echo "gwt: $*" >&2
   exit 1
 }
 
-__slugify() {
+function __slugify {
   printf '%s' "$1" | tr '/[:space:]' '--' | tr -cd '[:alnum:]._-'
 }
 
-__repo_root() {
+function __repo_root {
   git rev-parse --show-toplevel 2>/dev/null
 }
 
-__main_worktree_path() {
+function __main_worktree_path {
   local common_dir
   common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || return 1
   (cd "$common_dir/.." && pwd -P)
 }
 
-__each() {
+function __each {
   git worktree list --porcelain | awk '
     /^worktree / {
       if (path != "") {
@@ -48,7 +48,7 @@ __each() {
   '
 }
 
-__compute_wt_path() {
+function __compute_wt_path {
   local repo_root="$1"
   local name="$2"
   local repo_name
@@ -56,7 +56,7 @@ __compute_wt_path() {
   echo "$(cd "$repo_root/.." && pwd -P)/${repo_name}-$(__slugify "$name")"
 }
 
-__default_wt_name() {
+function __default_wt_name {
   local selected="${1:-}"
   case "$selected" in
     local/*) printf '%s' "${selected#local/}" ;;
@@ -70,7 +70,7 @@ __default_wt_name() {
   esac
 }
 
-__primary_branch() {
+function __primary_branch {
   local name
   if name="$(git rev-parse --abbrev-ref refs/remotes/origin/HEAD 2>/dev/null)"; then
     name="${name#origin/}"
@@ -88,7 +88,7 @@ __primary_branch() {
   return 1
 }
 
-__link_shared_path() {
+function __link_shared_path {
   local src="$1" dst="$2"
   [ -e "$src" ] || return 0
   if [ -e "$dst" ] || [ -L "$dst" ]; then
@@ -98,13 +98,13 @@ __link_shared_path() {
   ln -s "$src" "$dst" || __die "failed to symlink $dst -> $src"
 }
 
-__link_shared_paths() {
+function __link_shared_paths {
   local repo_root="$1" wt_path="$2"
   __link_shared_path "$repo_root/.envrc"          "$wt_path/.envrc"
   __link_shared_path "$repo_root/julsemaan-tmp"   "$wt_path/julsemaan-tmp"
 }
 
-cmd_create() {
+function cmd_create {
   local repo_root
   repo_root="$(__repo_root)" || __die "not inside git repo"
 
@@ -237,7 +237,7 @@ cmd_create() {
   echo "$wt_path"
 }
 
-cmd_list() {
+function cmd_list {
   local current_path
   current_path="$(__repo_root)" || __die "not inside git repo"
 
@@ -256,7 +256,7 @@ cmd_list() {
   done
 }
 
-cmd_rm() {
+function cmd_rm {
   local target="${1:-}"
   local repo_root main_path current_path path
 
@@ -306,7 +306,7 @@ cmd_rm() {
   git worktree remove "$path"
 }
 
-cmd_prune() {
+function cmd_prune {
   local repo_root
   repo_root="$(__repo_root)" || __die "not inside git repo"
   git worktree prune "$@"

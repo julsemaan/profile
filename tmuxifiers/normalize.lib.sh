@@ -1,7 +1,7 @@
 NORMALIZE_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/normalize.sh"
 NORMALIZE_WINDOWS=""
 
-normalize_track_window() {
+function normalize_track_window {
   local window_name="${1:-$window}"
   local layout
 
@@ -17,7 +17,7 @@ normalize_track_window() {
   esac
 }
 
-normalize_enable() {
+function normalize_enable {
   if [ -z "$NORMALIZE_WINDOWS" ]; then
     return
   fi

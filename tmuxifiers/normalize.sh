@@ -13,7 +13,7 @@ if [ -z "$windows" ]; then
   exit 0
 fi
 
-layout_to_ops() {
+function layout_to_ops {
   awk '
     function first_leaf(csv, parts) {
       split(csv, parts, ",")
@@ -137,7 +137,7 @@ layout_to_ops() {
   '
 }
 
-pane_span() {
+function pane_span {
   local window_name="$1"
   local axis="$2"
   local csv="$3"
@@ -181,7 +181,7 @@ pane_span() {
   echo $((max - min))
 }
 
-apply_layout() {
+function apply_layout {
   local window_name="$1"
   local layout="$2"
   local axis numerator denominator left_leaves right_leaves target_leaf all_leaves span size

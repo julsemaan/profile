@@ -12,7 +12,7 @@ if [ -f "$__JPROFILE_BASHRC_TRIGGER_FILE" ]; then
   __JPROFILE_LAST_BASHRC_TRIGGER="$(cat "$__JPROFILE_BASHRC_TRIGGER_FILE" 2>/dev/null)"
 fi
 
-jprofile_prompt_hook() {
+function jprofile_prompt_hook {
   if [ -f "$__JPROFILE_BASHRC_TRIGGER_FILE" ]; then
     local current_trigger
     current_trigger="$(cat "$__JPROFILE_BASHRC_TRIGGER_FILE" 2>/dev/null)"
@@ -28,7 +28,7 @@ jprofile_prompt_hook() {
   fi
 }
 
-trigger-bashrc-reload() {
+function trigger-bashrc-reload {
   echo "$(date +%s):$$:$RANDOM" >"$__JPROFILE_BASHRC_TRIGGER_FILE"
 }
 
@@ -69,7 +69,7 @@ function add_alias {
   fi
 }
 
-jprofile_path_prepend() {
+function jprofile_path_prepend {
   if [ $# -ne 1 ] || [ -z "$1" ]; then
     echo "usage: jprofile_path_prepend <dir>" >&2
     return 1
@@ -121,7 +121,7 @@ if [ -f /usr/local/etc/.fzf.bash ]; then
     _ble_contrib_fzf_base=/usr/local/etc/fzf
   fi
 
-  _fzf_comprun() {
+  function _fzf_comprun {
     local command=$1
     shift
     case "$command" in

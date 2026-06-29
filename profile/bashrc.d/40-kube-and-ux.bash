@@ -17,7 +17,7 @@ fi
 
 # --- klogs_deploy ---
 # Usage: klogs_deploy <deployment-name> [k logs args...]
-klogs_deploy() {
+function klogs_deploy {
   local deploy="$1"
   shift || true
 

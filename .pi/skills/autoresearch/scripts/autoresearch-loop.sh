@@ -37,17 +37,17 @@ research_dir=""
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-usage() {
+function usage {
     sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# \{0,2\}//'
     exit 0
 }
 
-log() {
+function log {
     # Timestamped log line to stdout
     printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
 
-die() {
+function die {
     printf 'ERROR: %s\n' "$*" >&2
     exit 1
 }
@@ -104,7 +104,7 @@ research_dir="$(cd "$research_dir" && pwd)"
 
 # ─── CLI detection ────────────────────────────────────────────────────────────
 
-detect_cli() {
+function detect_cli {
     for candidate in claude codex opencode gemini; do
         if command -v "$candidate" &>/dev/null; then
             printf '%s' "$candidate"
@@ -125,7 +125,7 @@ fi
 
 pid_file="${research_dir}/${PID_FILE_NAME}"
 
-cleanup() {
+function cleanup {
     rm -f "$pid_file"
 }
 trap cleanup EXIT INT TERM
@@ -136,7 +136,7 @@ printf '%d\n' "$$" > "$pid_file"
 
 # Returns the full command as an array in the global variable CMD_ARRAY.
 # Callers must eval or use "${CMD_ARRAY[@]}".
-build_cmd() {
+function build_cmd {
     CMD_ARRAY=()
     case "$cli" in
         claude)
@@ -164,7 +164,7 @@ build_cmd() {
 # ─── Completion detection ─────────────────────────────────────────────────────
 
 # Returns 0 (true) if research is complete, 1 (false) otherwise.
-is_complete() {
+function is_complete {
     local dir="$1"
 
     # 1. final_report.md exists → done
@@ -209,7 +209,7 @@ is_complete() {
 
 # ─── Header ───────────────────────────────────────────────────────────────────
 
-print_header() {
+function print_header {
     printf '\n'
     printf '═══════════════════════════════════════════════════\n'
     printf '  autoresearch-loop — Universal overnight runner\n'

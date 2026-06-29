@@ -203,6 +203,8 @@ Fragments are deployed to `/usr/local/etc/bashrc.d/` by `install`.
 PROMPT_COMMAND must stay idempotent. Guard optional tools with `command -v`/file checks.
 Run `bash tests/bashrc-smoke.sh` to validate.
 
+**Function syntax**: All bash functions must use the `function name {` keyword form, never the `name() {` POSIX form. Example: `function my_func { ... }` not `my_func() { ... }`.
+
 ---
 
 **You will always be running in a sandboxed environment, do not assume that the filesystem is the same as the local machine.**

@@ -3,7 +3,7 @@
 # This file is sourced by the jprofile loader (profile/.bashrc_append).
 # Edit in the repo; install copies to /usr/local/etc/bashrc.d/.
 
-genCommitMsg() {
+function genCommitMsg {
   local model="$1"
   if [ -z "$model" ]; then
     echo "genCommitMsg: missing model" >&2
@@ -67,7 +67,7 @@ genCommitMsg() {
   return 0
 }
 
-gcoto-commit-with-model() {
+function gcoto-commit-with-model {
   local model="$1"
   if [ -z "$model" ]; then
     echo "usage: gcoto-commit-with-model <model>" >&2
@@ -79,15 +79,15 @@ gcoto-commit-with-model() {
   git commit -m "$msg"
 }
 
-gcoto-openai() {
+function gcoto-openai {
   gcoto-commit-with-model openai-codex/gpt-5.4-mini
 }
 
-gcoto-deepseek() {
+function gcoto-deepseek {
   gcoto-commit-with-model deepseek/deepseek-v4-flash
 }
 
-gcoto-free() {
+function gcoto-free {
   gcoto-commit-with-model opencode/mimo-v2.5-free
 }
 

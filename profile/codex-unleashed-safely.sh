@@ -10,7 +10,7 @@ WORKDIR="$PWD"
 REBUILD=0
 USE_TTY=1
 
-usage() {
+function usage {
   cat <<'USAGE'
 Usage: codex-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [-- <codex args...>]
 

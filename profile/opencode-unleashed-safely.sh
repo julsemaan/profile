@@ -14,7 +14,7 @@ SYSTEM_OPENCODE_TUI_CONFIG="/usr/local/etc/opencode/tui.json"
 SYSTEM_OPENCODE_AGENT_DIR="/usr/local/etc/opencode/agent"
 SYSTEM_OPENCODE_PLUGIN_DIR="/usr/local/etc/opencode/plugins"
 
-usage() {
+function usage {
   cat <<'USAGE'
 Usage: opencode-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [-- <opencode args...>]
 
@@ -134,7 +134,7 @@ else
 fi
 
 # Safe host-dir creation: mkdir -p + chown if running as root-for-other-user
-ensure_host_dir() {
+function ensure_host_dir {
   local dir="$1"
   mkdir -p "$dir"
   if [[ $EUID -eq 0 && "$RESOLVED_UID" != "0" ]]; then

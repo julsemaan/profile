@@ -7,17 +7,17 @@
 _ASSERT_PASS=0
 _ASSERT_FAIL=0
 
-test_pass() {
+function test_pass {
   printf "  PASS: %s\n" "$1"
   _ASSERT_PASS=$((_ASSERT_PASS + 1))
 }
 
-test_fail() {
+function test_fail {
   printf "  FAIL: %s - %s\n" "$1" "$2"
   _ASSERT_FAIL=$((_ASSERT_FAIL + 1))
 }
 
-assert_success() {
+function assert_success {
   local desc="$1"
   shift
   if "$@" >/dev/null 2>&1; then
@@ -27,7 +27,7 @@ assert_success() {
   fi
 }
 
-assert_fail() {
+function assert_fail {
   local desc="$1"
   shift
   if "$@" >/dev/null 2>&1; then
@@ -37,7 +37,7 @@ assert_fail() {
   fi
 }
 
-assert_eq() {
+function assert_eq {
   local desc="$1" expected="$2" actual="$3"
   if [ "$expected" = "$actual" ]; then
     test_pass "$desc"
@@ -46,7 +46,7 @@ assert_eq() {
   fi
 }
 
-assert_match() {
+function assert_match {
   local desc="$1" pattern="$2" actual="$3"
   if printf '%s' "$actual" | grep -qE "$pattern"; then
     test_pass "$desc"
@@ -55,7 +55,7 @@ assert_match() {
   fi
 }
 
-assert_fn_exists() {
+function assert_fn_exists {
   local desc="$1" fn="$2"
   if declare -F "$fn" >/dev/null 2>&1; then
     test_pass "$desc"
@@ -64,7 +64,7 @@ assert_fn_exists() {
   fi
 }
 
-assert_alias_exists() {
+function assert_alias_exists {
   local desc="$1" name="$2"
   if alias "$name" >/dev/null 2>&1; then
     test_pass "$desc"
@@ -73,7 +73,7 @@ assert_alias_exists() {
   fi
 }
 
-assert_contains() {
+function assert_contains {
   local desc="$1" haystack="$2" needle="$3"
   case "$haystack" in
   *"$needle"*) test_pass "$desc" ;;
@@ -81,7 +81,7 @@ assert_contains() {
   esac
 }
 
-test_summary() {
+function test_summary {
   local total=$((_ASSERT_PASS + _ASSERT_FAIL))
   printf "\n=== Results: %d passed, %d failed, %d total ===\n" \
     "$_ASSERT_PASS" "$_ASSERT_FAIL" "$total"

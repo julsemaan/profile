@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage() {
+function usage {
   cat <<'USAGE'
 Usage: ./port-forward.sh <config.csv>
 
@@ -39,7 +39,7 @@ fi
 supervisor_pids=()
 stop_requested=0
 
-cleanup() {
+function cleanup {
   stop_requested=1
   if (( ${#supervisor_pids[@]} )); then
     echo "Stopping port-forwards..."
