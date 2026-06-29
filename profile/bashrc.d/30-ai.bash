@@ -5,15 +5,26 @@
 
 genCommitMsg() {
   local model="$1"
+  if [ -z "$model" ]; then
+    echo "genCommitMsg: missing model" >&2
+    return 1
+  fi
+
   local repo_root
   repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     echo "Not a git repository" >&2
     return 1
   }
 
+  if git diff --cached --quiet --exit-code; then
+    echo "genCommitMsg: no staged changes" >&2
+    return 1
+  fi
+
   local tmp="$repo_root/.gen_commit_msg.$$.diff"
   git diff --staged >"$tmp"
 
+  local pi_run
   if [ -f "$repo_root/profile/pi-unleashed-safely.sh" ]; then
     pi_run="$repo_root/profile/pi-unleashed-safely.sh --dev"
   else
@@ -31,25 +42,54 @@ genCommitMsg() {
     --model "$model" \
     --thinking off \
     "@$tmp" \
-    "Write a one-line commit message for the currently staged changes following the Conventional Commits standard. Output only the commit message, no backticks, no formatting, just the text." 2>/dev/null) || exit_status=$?
+    "Write a one-line commit message for the currently staged changes following the Conventional Commits standard. Output only the commit message, no backticks, no formatting, just the text." 2>&1) || exit_status=$?
 
   rm -f "$tmp"
 
   if [ $exit_status -ne 0 ]; then
     echo "genCommitMsg: failed to generate commit message (exit code $exit_status)" >&2
+    printf '%s\n' "$output" >&2
     return $exit_status
   fi
 
-  echo "$output" | tail -n 1
+  local msg
+  msg="$(printf '%s\n' "$output" | sed '/^[[:space:]]*$/d' | tail -n 1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  if [ -z "$msg" ]; then
+    echo "genCommitMsg: model returned an empty commit message" >&2
+    return 1
+  fi
+  if printf '%s' "$msg" | grep -Eiq '(^|[^a-z])(error|exception|traceback|rate limit|429|failed|unauthorized|forbidden)([^a-z]|$)'; then
+    echo "genCommitMsg: refusing suspicious generated commit message: $msg" >&2
+    return 1
+  fi
+
+  echo "$msg"
   return 0
 }
 
-# shellcheck disable=SC2016
-add_alias gcoto-openai 'git commit -m "$(genCommitMsg openai-codex/gpt-5.4-mini)"'
-# shellcheck disable=SC2016
-add_alias gcoto-deepseek 'git commit -m "$(genCommitMsg deepseek/deepseek-v4-flash)"'
-# shellcheck disable=SC2016
-add_alias gcoto-free 'git commit -m "$(genCommitMsg opencode/mimo-v2.5-free)"'
+gcoto-commit-with-model() {
+  local model="$1"
+  if [ -z "$model" ]; then
+    echo "usage: gcoto-commit-with-model <model>" >&2
+    return 1
+  fi
+
+  local msg
+  msg="$(genCommitMsg "$model")" || return 1
+  git commit -m "$msg"
+}
+
+gcoto-openai() {
+  gcoto-commit-with-model openai-codex/gpt-5.4-mini
+}
+
+gcoto-deepseek() {
+  gcoto-commit-with-model deepseek/deepseek-v4-flash
+}
+
+gcoto-free() {
+  gcoto-commit-with-model opencode/mimo-v2.5-free
+}
 
 # gcoto-model: model selection helper (cached per session via _GCOTO_MODEL)
 # Usage: gcoto-model [openai|deepseek|free|current|unset]
@@ -104,7 +144,7 @@ function gcoto {
     echo "gcoto: no model selected" >&2
     return 1
   fi
-  git commit -m "$(genCommitMsg "$_GCOTO_MODEL")"
+  gcoto-commit-with-model "$_GCOTO_MODEL"
 }
 
 # --- gacp (add-commit-push, depends on gcoto and gpush/gaireview from 20-git.bash) ---
