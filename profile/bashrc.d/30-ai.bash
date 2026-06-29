@@ -126,7 +126,7 @@ function gcoto-model {
         _GCOTO_MODEL="opencode/mimo-v2.5-free"
         break
         ;;
-      q|Q)
+      q | Q)
         return 1
         ;;
       *) echo "Invalid choice" >&2 ;;
