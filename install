@@ -251,6 +251,9 @@ install_file $d/profile/.vimrc /usr/local/etc/.vimrc
 install_file $d/profile/.gitignore /usr/local/etc/.gitignore
 install_file $d/profile/.blerc /usr/local/etc/.blerc
 
+install_file $d/profile/tmux-equalize-row.sh /usr/local/etc/tmux-equalize-row.sh
+chmod +x /usr/local/etc/tmux-equalize-row.sh
+
 install_file $d/profile/codex-unleashed-safely.sh /usr/local/bin/codex-unleashed-safely
 chmod +x /usr/local/bin/codex-unleashed-safely
 

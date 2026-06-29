@@ -26,7 +26,7 @@ type ModelProfileConfig = {
 const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
 	pubFree: {
 		modelMap: {
-			"custom/large": { model: "opencode/nemotron-3-ultra-free", thinkingLevel: "high" },
+			"custom/large": { model: "opencode/mimo-v2.5-free", thinkingLevel: "high" },
 			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
 		},
 	},
