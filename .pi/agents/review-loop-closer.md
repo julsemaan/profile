@@ -1,6 +1,6 @@
 ---
 name: review-loop-closer
-description: Close review-loop cycle: post AI cycle summary comment, create [ai-review] empty commit, push.
+description: "Close review-loop cycle: post AI cycle summary comment, create [ai-review] empty commit, push."
 model: custom/medium
 thinking: medium
 tools: mcp, bash, write, todo
