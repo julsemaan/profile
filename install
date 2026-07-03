@@ -179,7 +179,7 @@ function install_pi_global_config {
 
   mkdir -p "$agent_dir"
 
-  exact_sync_files="mcp.json models.json TODO.md"
+  exact_sync_files="mcp.json models.json TODO.md web-search.json"
   managed_dirs="extensions prompts agents modes skills"
 
   if [ -f "$pi_src/settings.json" ]; then
