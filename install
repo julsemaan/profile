@@ -57,6 +57,19 @@ function install_complete_alias {
   fi
 }
 
+function is_ubuntu_desktop {
+  if ! [ -f /etc/os-release ]; then
+    return 1
+  fi
+
+  . /etc/os-release
+  if [ "${ID:-}" != "ubuntu" ]; then
+    return 1
+  fi
+
+  [ -f /usr/share/xsessions/ubuntu.desktop ] || [ -f /usr/share/wayland-sessions/ubuntu.desktop ]
+}
+
 function install_file {
   src="$1"
   dst="$2"
@@ -265,6 +278,13 @@ chmod +x /usr/local/bin/pi-unleashed-safely
 
 install_file $d/profile/gwt /usr/local/bin/gwt
 chmod +x /usr/local/bin/gwt
+
+if is_ubuntu_desktop; then
+  install_file $d/utils/90-usb-wakeup.rules /etc/udev/rules.d/90-usb-wakeup.rules
+  chown root:root /etc/udev/rules.d/90-usb-wakeup.rules
+else
+  echo "Skipping USB wakeup udev rule because host is not Ubuntu Desktop"
+fi
 
 mkdir -p /usr/local/etc/opencode
 rm -fr /usr/local/etc/opencode/*

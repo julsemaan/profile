@@ -1,0 +1,1 @@
+ACTION=="add", SUBSYSTEM=="usb", TEST=="/sys$devpath/power/wakeup", ATTR{power/wakeup}="enabled"
