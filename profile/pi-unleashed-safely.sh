@@ -5,8 +5,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 IMAGE="pi-unleashed-safely:latest"
-MNT="$PWD"
+MNT_HOST="$PWD"
+MNT_CONTAINER="$PWD"
 WORKDIR="$PWD"
+WORKDIR_EXPLICIT=0
 REBUILD=0
 USE_TTY=1
 HIDE_HOME_PI_EXTENSIONS=0
@@ -28,13 +30,17 @@ PI_RUNTIME_PACKAGE_SOURCES=(
 
 function usage {
   cat <<'USAGE'
-Usage: pi-unleashed-safely.sh [--mount PATH] [--workdir PATH] [--rebuild] [--no-tty] [--dev] [-- <pi args...>]
+Usage: pi-unleashed-safely.sh [--mount PATH] [--mount2 HOST_DIR CONTAINER_DIR] [--workdir PATH] [--rebuild] [--no-tty] [--dev] [-- <pi args...>]
 
 Arguments:
   -m, --mount PATH    Host path to bind-mount into the container.
+                      Container path matches host path.
                       Defaults to the current working directory.
+  --mount2 HOST DIR   Bind-mount HOST into container as DIR.
+                      Use when host path contains ':' (e.g. gvfs sftp).
   -w, --workdir PATH  Working directory inside the container.
                       Defaults to the current working directory.
+                      With --mount2, defaults to the container mount dir.
   -r, --rebuild       Rebuild the Docker image before running.
   --no-tty            Disable TTY allocation (useful to avoid carriage returns).
   --dev               Mask ~/.pi/agent/extensions, prompts, and skills from the host
@@ -76,6 +82,7 @@ Examples:
   ./pi-unleashed-safely.sh
   ./pi-unleashed-safely.sh --rebuild --mount /home/julien/src
   ./pi-unleashed-safely.sh --mount /home/julien/src --workdir /home/julien/src/profile
+  ./pi-unleashed-safely.sh --mount2 /run/user/1000/gvfs/sftp:host=ubun22-backup-2/root /backup --workdir /backup
   ./pi-unleashed-safely.sh -- --help
 USAGE
 }
@@ -98,8 +105,21 @@ while [[ $# -gt 0 ]]; do
         echo "Error: --mount requires a path argument." >&2
         exit 1
       fi
-      MNT="$2"
+      MNT_HOST="$2"
+      MNT_CONTAINER="$2"
       shift 2
+      ;;
+    --mount2)
+      if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+        echo "Error: --mount2 requires HOST_DIR and CONTAINER_DIR arguments." >&2
+        exit 1
+      fi
+      MNT_HOST="$2"
+      MNT_CONTAINER="$3"
+      if [[ $WORKDIR_EXPLICIT -eq 0 ]]; then
+        WORKDIR="$MNT_CONTAINER"
+      fi
+      shift 3
       ;;
     -w|--workdir)
       if [[ -z "${2:-}" ]]; then
@@ -107,6 +127,7 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       WORKDIR="$2"
+      WORKDIR_EXPLICIT=1
       shift 2
       ;;
     -r|--rebuild)
@@ -133,13 +154,8 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ ! -d "$MNT" ]]; then
-  echo "Error: mount path does not exist: $MNT" >&2
-  exit 1
-fi
-
-if [[ ! -d "$WORKDIR" ]]; then
-  echo "Error: workdir path does not exist: $WORKDIR" >&2
+if [[ ! -d "$MNT_HOST" ]]; then
+  echo "Error: host mount path does not exist: $MNT_HOST" >&2
   exit 1
 fi
 
@@ -484,5 +500,5 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${GO_DOCKER_FLAGS[@]}" \
   "${SSH_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
-  -v "$MNT:$MNT" -w "$WORKDIR" \
+  --mount "type=bind,src=$MNT_HOST,dst=$MNT_CONTAINER" -w "$WORKDIR" \
   "$IMAGE" "${PI_ARGS[@]}"

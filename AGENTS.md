@@ -111,8 +111,9 @@ From `code-sandbox/Dockerfile`:
 | `opencode-unleashed-safely.sh` | `opencode-ai` | `opencode-unleashed-safely:latest` | `opencode` |
 | `codex-unleashed-safely.sh` | `@openai/codex` | `codex-unleashed-safely:latest` | `codex --dangerously-bypass-approvals-and-sandbox` |
 
-Each script accepts `--mount`, `--workdir`, `--rebuild`, `--no-tty` flags and passes remaining
-arguments through to the agent.
+Each script accepts `--mount`, `--mount2`, `--workdir`, `--rebuild`, `--no-tty` flags and passes remaining
+arguments through to the agent. `--mount2 HOST CONTAINER` uses Docker `--mount` (bind) instead
+of `-v`, so host paths containing `:` (e.g. gvfs sftp mounts) work correctly.
 
 ## Pi Coding Agent Configuration (`.pi/`)
 
