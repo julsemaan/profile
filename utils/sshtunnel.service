@@ -1,0 +1,13 @@
+[Unit]
+Description=AutoSSH tunnel service
+After=network.target
+
+[Service]
+User=jsemaan
+Group=jsemaan
+Environment="AUTOSSH_GATETIME=0"
+ExecStart=/usr/bin/autossh -M __MONITOR_PORT__ -o "ExitOnForwardFailure yes" -o "ServerAliveInterval 30" -o "ServerAliveCountMax 3" -N rmecanic.semaan.ca
+
+[Install]
+WantedBy=multi-user.target
+
