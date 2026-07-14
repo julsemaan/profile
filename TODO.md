@@ -1,2 +1,1 @@
-- Code sandbox doesn't know the python command (only python3)
-- Code sandbox is missing shfmt and other tools required to run the tests
+

@@ -100,7 +100,8 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
 
 From `code-sandbox/Dockerfile`:
 - Based on `node:25-bookworm`
-- Includes: Go, kubectl, Helm, ripgrep, vim, tmux, clipboard utilities (xclip, xsel, wl-clipboard)
+- Includes: Go, kubectl, Helm, ripgrep, Python 3 (with `python` alias via `python-is-python3`),
+  `shellcheck`, `shfmt` (pinned), vim, tmux, clipboard utilities (xclip, xsel, wl-clipboard)
 - Published via GitHub Actions on push (see `.github/workflows/docker.yml`)
 
 ### Wrapper Scripts
@@ -143,7 +144,7 @@ Since the AI coding agents run inside Docker containers:
 - The filesystem is **not** the same as the host machine.
 - The agent sees only the mounted working directory and its own ephemeral home.
 - System commands (apt, systemctl, etc.) are either unavailable or run inside the sandbox.
-- Most tools (git, curl, vim, tmux, go, kubectl, helm, rg) are present inside the container.
+- Most tools (git, curl, vim, tmux, go, kubectl, helm, rg, python, shellcheck, shfmt) are present inside the container.
 - Do not assume access to host-specific paths, services, or credentials.
 
 ## Cron & Self-Updating

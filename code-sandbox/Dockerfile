@@ -6,9 +6,11 @@ RUN apt-get update \
     curl \
     clang-format \
     ncurses-term \
+    python-is-python3 \
     python3 \
     python3-pip \
     python3-venv \
+    shellcheck \
     tmux \
     vim \
     wl-clipboard \
@@ -16,6 +18,19 @@ RUN apt-get update \
     xclip \
     xsel \
  && rm -rf /var/lib/apt/lists/*
+
+# ponytail: shfmt not in Debian bookworm, pin to match CI
+RUN /bin/bash -euo pipefail -c '\
+SHFMT_VERSION="v3.10.0"; \
+ARCH="$(dpkg --print-architecture)"; \
+case "$ARCH" in \
+  amd64) SHFMT_ARCH="linux_amd64" ;; \
+  arm64) SHFMT_ARCH="linux_arm64" ;; \
+  *) echo "Unsupported architecture for shfmt: $ARCH" >&2; exit 1 ;; \
+esac; \
+curl -fsSL "https://github.com/mvdan/sh/releases/download/${SHFMT_VERSION}/shfmt_${SHFMT_VERSION}_${SHFMT_ARCH}" -o /usr/local/bin/shfmt; \
+chmod +x /usr/local/bin/shfmt \
+'
 
 RUN /bin/bash -euo pipefail -c '\
 GO_VERSION="$(curl -fsSL https://go.dev/VERSION?m=text | head -n1)"; \
