@@ -57,6 +57,19 @@ function install_complete_alias {
   fi
 }
 
+function is_ubuntu_desktop {
+  if ! [ -f /etc/os-release ]; then
+    return 1
+  fi
+
+  . /etc/os-release
+  if [ "${ID:-}" != "ubuntu" ]; then
+    return 1
+  fi
+
+  [ -f /usr/share/xsessions/ubuntu.desktop ] || [ -f /usr/share/wayland-sessions/ubuntu.desktop ]
+}
+
 function install_file {
   src="$1"
   dst="$2"
@@ -215,6 +228,28 @@ function trigger_bashrc_reload_for_user {
   chown "$user": "$trigger_file"
 }
 
+function ensure_bashrc_loaded_for_login_shell {
+  local home="$1"
+  local user="$2"
+  local startup_file
+
+  if [ -f "$home/.bash_profile" ]; then
+    startup_file="$home/.bash_profile"
+  elif [ -f "$home/.bash_login" ]; then
+    startup_file="$home/.bash_login"
+  elif [ -f "$home/.profile" ]; then
+    startup_file="$home/.profile"
+  else
+    startup_file="$home/.bash_profile"
+  fi
+
+  if ! grep -Eq '^[[:space:]]*(source|\.)[[:space:]]+.*\.bashrc' "$startup_file" 2>/dev/null; then
+    echo "Installing the sourcing of .bashrc in $startup_file"
+    printf '\n# Load interactive Bash configuration for login shells.\nif [ -f "$HOME/.bashrc" ]; then\n  . "$HOME/.bashrc"\nfi\n' >> "$startup_file"
+    chown "$user": "$startup_file"
+  fi
+}
+
 check_cmd git
 check_cmd make
 check_cmd gawk
@@ -265,6 +300,13 @@ chmod +x /usr/local/bin/pi-unleashed-safely
 
 install_file $d/profile/gwt /usr/local/bin/gwt
 chmod +x /usr/local/bin/gwt
+
+if is_ubuntu_desktop; then
+  install_file $d/utils/90-usb-wakeup.rules /etc/udev/rules.d/90-usb-wakeup.rules
+  chown root:root /etc/udev/rules.d/90-usb-wakeup.rules
+else
+  echo "Skipping USB wakeup udev rule because host is not Ubuntu Desktop"
+fi
 
 mkdir -p /usr/local/etc/opencode
 rm -fr /usr/local/etc/opencode/*
@@ -326,6 +368,11 @@ for home in "${homes[@]}"; do
       install_file $d/utils/config.ghostty $home/.config/ghostty/config `basename $home`
       install_file $d/utils/bell.wav $home/.config/ghostty/bell.wav `basename $home`
       install_file $d/utils/kinto.py $home/.config/kinto/kinto.py `basename $home`
+      if [ -f /usr/lib/systemd/user/app-com.mitchellh.ghostty.service ] || [ -f /lib/systemd/user/app-com.mitchellh.ghostty.service ]; then
+        ghostty_override_dir="$home/.config/systemd/user/app-com.mitchellh.ghostty.service.d"
+        mkdir -p "$ghostty_override_dir"
+        install_file $d/utils/ghostty-systemd-override.conf "$ghostty_override_dir/override.conf" `basename $home`
+      fi
       install_file $d/profile/direnv-config.toml $home/.config/direnv/config.toml `basename $home`
       install_file $d/profile/herdr-config.toml $home/.config/herdr/config.toml `basename $home`
     
@@ -335,6 +382,8 @@ for home in "${homes[@]}"; do
         echo 'source /usr/local/etc/.bashrc_append' >> $BASHRC
         echo "" >> $BASHRC
       fi
+
+      ensure_bashrc_loaded_for_login_shell "$home" "$(basename "$home")"
 
       install_tpm $home
       install_nvim_profile $home
