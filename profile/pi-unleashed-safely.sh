@@ -12,6 +12,7 @@ WORKDIR_EXPLICIT=0
 REBUILD=0
 USE_TTY=1
 HIDE_HOME_PI_EXTENSIONS=0
+MODEL_PROFILE=""
 
 # Extra npm packages to install into image.
 # `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
@@ -47,6 +48,9 @@ Arguments:
                       (sessions, settings, auth, packages persist).
                       Warning: can hide host-installed integrations like
                       Herdr `herdr-agent-state.ts`.
+  --model-profile NAME
+                      Start Pi with a specific model profile (e.g. pubDeep, pub, priv).
+                      Overrides julsemaan-tmp/model-profile for this session only.
   -h, --help          Show this help text.
 
 Environment:
@@ -83,6 +87,7 @@ Examples:
   ./pi-unleashed-safely.sh --rebuild --mount /home/julien/src
   ./pi-unleashed-safely.sh --mount /home/julien/src --workdir /home/julien/src/profile
   ./pi-unleashed-safely.sh --mount2 /run/user/1000/gvfs/sftp:host=ubun22-backup-2/root /backup --workdir /backup
+  ./pi-unleashed-safely.sh --model-profile pubDeep
   ./pi-unleashed-safely.sh -- --help
 USAGE
 }
@@ -141,6 +146,14 @@ while [[ $# -gt 0 ]]; do
     --dev)
       HIDE_HOME_PI_EXTENSIONS=1
       shift
+      ;;
+    --model-profile)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --model-profile requires a profile name argument." >&2
+        exit 1
+      fi
+      MODEL_PROFILE="$2"
+      shift 2
       ;;
     *)
       PI_ARGS+=("$1")
@@ -492,6 +505,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e GH_MCP_TOKEN \
   -e BB_MCP_TOKEN \
   -e CONTEXT7_API_KEY \
+  -e PI_BUILD_PLAN_MODEL_PROFILE="$MODEL_PROFILE" \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \
   -u "$RESOLVED_UID:$RESOLVED_GID" \

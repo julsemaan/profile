@@ -16,7 +16,7 @@ import {
 type ModelAlias = "custom/large" | "custom/medium";
 type AliasConfig = { model: string; thinkingLevel: ThinkingLevel };
 type ModelMap = Record<ModelAlias, AliasConfig>;
-type BuiltinProfile = "pub" | "pubDeep" | "priv" | "copilotPriv";
+type BuiltinProfile = "pubFree" | "pub" | "pubDeep" | "priv" | "copilotPriv";
 type ModelProfile = BuiltinProfile | "custom";
 
 type ModelProfileConfig = {
@@ -861,12 +861,33 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			mode = "build";
 		}
 
-		// Resolve modelMap with precedence: session entries > temp file > file override > default
+		// Resolve modelMap with precedence: env override > session entries > temp file > file override > default
 		const defaultMap = structuredClone(DEFAULT_MODEL_MAP);
 		let hasCustomState = false;
 
-		// 1. Session entries (highest override)
-		if (lastState?.data?.modelMap) {
+		// 0. Env override from wrapper (--model-profile / PI_BUILD_PLAN_MODEL_PROFILE)
+		let envProfile: BuiltinProfile | null = null;
+		const envRaw = process.env.PI_BUILD_PLAN_MODEL_PROFILE?.trim();
+		if (envRaw) {
+			const matched = findBuiltinProfile(envRaw);
+			if (matched) {
+				envProfile = matched;
+			} else {
+				ctx.ui.notify(
+					`Invalid PI_BUILD_PLAN_MODEL_PROFILE="${envRaw}" — expected one of: ${BUILTIN_PROFILES_DISPLAY}. Ignoring.`,
+					"warning",
+				);
+			}
+		}
+
+		if (envProfile) {
+			// Highest precedence: env override. Applied but not persisted to session state.
+			const envMap = MODEL_PROFILES[envProfile].modelMap;
+			for (const alias of Object.keys(envMap) as ModelAlias[]) {
+				defaultMap[alias] = { ...defaultMap[alias], ...envMap[alias] };
+			}
+			hasCustomState = true;
+		} else if (lastState?.data?.modelMap) {
 			for (const alias of Object.keys(lastState.data.modelMap) as ModelAlias[]) {
 				const saved = lastState.data.modelMap[alias];
 				if (saved) {
