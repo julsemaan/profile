@@ -2,3 +2,4 @@ build/
 *.swp
 util/upload.conf
 .playwright-mcp/
+__pycache__/
