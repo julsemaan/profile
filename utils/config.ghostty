@@ -4,13 +4,12 @@ font-size = 13
 mouse-scroll-multiplier = precision:0.35,discrete:1.5
 theme = Catppuccin Macchiato
 term = xterm-256color
-# ponytail: Ghostty can miss this Kinto mapping, and actual input here lands as Ctrl+Home/Ctrl+End.
-keybind = super+left=csi:H
-keybind = super+right=csi:F
-keybind = ctrl+left=csi:H
-keybind = ctrl+right=csi:F
+# ponytail: Ghostty sees broken rc-left/right path as Ctrl+Home/Ctrl+End here.
+# ponytail: Ghostty also sees Option-Left/Right word jumps as Alt-Home/Alt-End here.
 keybind = ctrl+home=csi:H
 keybind = ctrl+end=csi:F
+keybind = alt+home=csi:1;5D
+keybind = alt+end=csi:1;5C
 bell-features = title,attention,audio,no-system
 bell-audio-path = ~/.config/ghostty/bell.wav
 bell-audio-volume = 1.0
