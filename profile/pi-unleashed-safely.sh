@@ -428,6 +428,11 @@ done
 
 CLIPBOARD_DOCKER_FLAGS=()
 HOME_DOCKER_FLAGS=(--tmpfs "$CONTAINER_HOME:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
+DEV_DOCKER_FLAGS=()
+if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 && -d "$RESOLVED_HOME/src" ]]; then
+  DEV_DOCKER_FLAGS+=(--mount "type=bind,src=$RESOLVED_HOME/src,dst=$RESOLVED_HOME/src")
+fi
+
 PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
 if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 ]]; then
   mkdir -p "$HOST_PI_HOME/agent/extensions"
@@ -515,4 +520,5 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${SSH_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
   --mount "type=bind,src=$MNT_HOST,dst=$MNT_CONTAINER" -w "$WORKDIR" \
+  "${DEV_DOCKER_FLAGS[@]}" \
   "$IMAGE" "${PI_ARGS[@]}"
