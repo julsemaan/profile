@@ -1,3 +1,0 @@
-- Allow plan mode to write markdown and static HTML files in julsemaan-tmp/
-- .bashrc_append splitting and testing improvements
-- HTML plan skill
