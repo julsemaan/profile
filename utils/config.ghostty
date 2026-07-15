@@ -5,9 +5,12 @@ mouse-scroll-multiplier = precision:0.35,discrete:1.5
 theme = Catppuccin Macchiato
 term = xterm-256color
 # ponytail: Ghostty sees broken rc-left/right path as Ctrl+Home/Ctrl+End here.
-# ponytail: Ghostty also sees Option-Left/Right word jumps as Alt-Home/Alt-End here.
+# ponytail: With kinto, Option-Left/Right can arrive as Ctrl+Alt+Left/Right (`^[[1;7D`/`^[[1;7C`).
+# ponytail: Some paths still arrive as Alt-Home/Alt-End. Normalize both to Ctrl-Left/Right CSI.
 keybind = ctrl+home=csi:H
 keybind = ctrl+end=csi:F
+keybind = ctrl+alt+left=csi:1;5D
+keybind = ctrl+alt+right=csi:1;5C
 keybind = alt+home=csi:1;5D
 keybind = alt+end=csi:1;5C
 bell-features = title,attention,audio,no-system
