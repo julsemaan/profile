@@ -345,6 +345,10 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		if (ctx) persistStateToFile(ctx.cwd);
 	}
 
+	function seedModeState() {
+		pi.appendEntry(STATE_TYPE, { mode });
+	}
+
 	function emitModelConfig() {
 		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
 	}
@@ -954,6 +958,10 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		} else {
 			// Fallback: should not happen since we validated mode is known
 			pi.setActiveTools(pi.getAllTools().map(t => t.name));
+		}
+
+		if (!lastState && (event.reason === "startup" || event.reason === "new")) {
+			seedModeState();
 		}
 
 		updateStatus(ctx);
