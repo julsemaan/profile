@@ -82,19 +82,9 @@
       "description": "Perform a PR review and post the review comments",
       "agent": "build"
     },
-    "review-loop": {
-      "template": "Run autonomous PR review loop for $ARGUMENTS.",
-      "description": "Run bounded resumable PR review loop",
-      "agent": "build"
-    },
-    "handle-review": {
-      "template": "Deprecated alias. Run autonomous PR review loop for $ARGUMENTS.",
-      "description": "Deprecated alias for review-loop",
-      "agent": "build"
-    },
-    "extract-feedback": {
-      "template": "Extract the feedback that is not yet addressed from $ARGUMENTS and put it in julsemaan-tmp/feedback.md",
-      "description": "Extract feedback from pull requests that is not yet addressed.",
+    "pr-feedback": {
+      "template": "Process pull-request feedback for $ARGUMENTS in one pass. Fetch PR state, triage each actionable item, reply in-thread for every actionable item, push once if real commits exist, and print compact operator report.",
+      "description": "Process PR feedback in one pass",
       "agent": "build"
     },
     "plan": {
