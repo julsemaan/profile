@@ -8,6 +8,7 @@ IMAGE="pi-unleashed-safely:latest"
 MNT_HOST="$PWD"
 MNT_CONTAINER="$PWD"
 WORKDIR="$PWD"
+EXTRA_MOUNT_FLAGS=()
 WORKDIR_EXPLICIT=0
 REBUILD=0
 USE_TTY=1
@@ -37,11 +38,11 @@ Arguments:
   -m, --mount PATH    Host path to bind-mount into the container.
                       Container path matches host path.
                       Defaults to the current working directory.
-  --mount2 HOST DIR   Bind-mount HOST into container as DIR.
+  --mount2 HOST DIR   Add extra bind-mount of HOST into container as DIR.
                       Use when host path contains ':' (e.g. gvfs sftp).
+                      Can be repeated for multiple extra mounts.
   -w, --workdir PATH  Working directory inside the container.
                       Defaults to the current working directory.
-                      With --mount2, defaults to the container mount dir.
   -r, --rebuild       Rebuild the Docker image before running.
   --no-tty            Disable TTY allocation (useful to avoid carriage returns).
   --dev               Mask ~/.pi/agent/extensions, prompts, and skills from the host
@@ -87,6 +88,7 @@ Examples:
   ./pi-unleashed-safely.sh --rebuild --mount /home/julien/src
   ./pi-unleashed-safely.sh --mount /home/julien/src --workdir /home/julien/src/profile
   ./pi-unleashed-safely.sh --mount2 /run/user/1000/gvfs/sftp:host=ubun22-backup-2/root /backup --workdir /backup
+  ./pi-unleashed-safely.sh --mount2 "$HOME" /mnt
   ./pi-unleashed-safely.sh --model-profile pubDeep
   ./pi-unleashed-safely.sh -- --help
 USAGE
@@ -119,11 +121,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: --mount2 requires HOST_DIR and CONTAINER_DIR arguments." >&2
         exit 1
       fi
-      MNT_HOST="$2"
-      MNT_CONTAINER="$3"
-      if [[ $WORKDIR_EXPLICIT -eq 0 ]]; then
-        WORKDIR="$MNT_CONTAINER"
-      fi
+      EXTRA_MOUNT_FLAGS+=(--mount "type=bind,src=$2,dst=$3")
       shift 3
       ;;
     -w|--workdir)
@@ -520,5 +518,6 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${SSH_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
   --mount "type=bind,src=$MNT_HOST,dst=$MNT_CONTAINER" -w "$WORKDIR" \
+  "${EXTRA_MOUNT_FLAGS[@]}" \
   "${DEV_DOCKER_FLAGS[@]}" \
   "$IMAGE" "${PI_ARGS[@]}"
