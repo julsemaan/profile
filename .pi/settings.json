@@ -1,15 +1,21 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.4",
+  "defaultModel": "gpt-5.5",
   "enabledModels": [
     "deepseek/deepseek-v4-pro",
     "deepseek/deepseek-v4-flash",
     "openai-codex/gpt-5.4",
     "openai-codex/gpt-5.5",
+    "openai-codex/gpt-5.6-luna",
+    "openai-codex/gpt-5.6-sol",
+    "openai-codex/gpt-5.6-terra",
     "opencode/*-free",
     "opencode/big-pickle",
     "github-copilot/gpt-5.4",
-    "github-copilot/gpt-5.5"
+    "github-copilot/gpt-5.5",
+    "github-copilot/gpt-5.6-luna",
+    "github-copilot/gpt-5.6-sol",
+    "github-copilot/gpt-5.6-terra"
   ],
   "compaction": {
     "enabled": true

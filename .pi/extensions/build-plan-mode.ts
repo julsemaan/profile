@@ -32,7 +32,7 @@ const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
 	},
 	pub: {
 		modelMap: {
-			"custom/large": { model: "openai-codex/gpt-5.4", thinkingLevel: "high" },
+			"custom/large": { model: "openai-codex/gpt-5.5", thinkingLevel: "high" },
 			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
 		},
 	},
@@ -44,14 +44,14 @@ const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
 	},
 	priv: {
 		modelMap: {
-			"custom/large": { model: "openai-codex/gpt-5.4", thinkingLevel: "high" },
-			"custom/medium": { model: "openai-codex/gpt-5.4", thinkingLevel: "medium" },
+			"custom/large": { model: "openai-codex/gpt-5.5", thinkingLevel: "high" },
+			"custom/medium": { model: "openai-codex/gpt-5.5", thinkingLevel: "medium" },
 		},
 	},
 	copilotPriv: {
 		modelMap: {
-			"custom/large": { model: "github-copilot/gpt-5.4", thinkingLevel: "high" },
-			"custom/medium": { model: "github-copilot/gpt-5.4", thinkingLevel: "medium" },
+			"custom/large": { model: "github-copilot/gpt-5.5", thinkingLevel: "high" },
+			"custom/medium": { model: "github-copilot/gpt-5.5", thinkingLevel: "medium" },
 		},
 	},
 };

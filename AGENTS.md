@@ -120,7 +120,7 @@ of `-v`, so host paths containing `:` (e.g. gvfs sftp mounts) work correctly.
 
 Located at the repository root, the `.pi/` directory configures the pi coding agent:
 
-- **`settings.json`** — Default provider/model (`openai-codex/gpt-5.4`), enabled models, compaction.
+- **`settings.json`** — Default provider/model (`openai-codex/gpt-5.5`), enabled models, compaction.
 - **`models.json`** — Provider overrides (e.g., DeepSeek context window).
 - **`mcp.json`** — MCP server definitions (Context7 docs, Playwright, GitHub MCP, Bitbucket MCP).
 - **`extensions/`** — Custom pi extensions (todo tracking,
