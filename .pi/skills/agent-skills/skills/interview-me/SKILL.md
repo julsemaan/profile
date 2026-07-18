@@ -1,6 +1,6 @@
 ---
 name: interview-me
-description: Extracts what the user actually wants instead of what they think they should want. Achieves this through one-question-at-a-time interview until ~95% confidence about the underlying intent. Use when an ask is underspecified ("build me X" without "for whom" or "why now"), when the user explicitly invokes ("interview me", "grill me", "are we sure?", "stress-test my thinking"), or when you catch yourself silently filling in ambiguous requirements before any plan, spec, or code exists.
+description: Extracts what the user actually wants instead of what they think they should want. Uses the `question` tool for all blocking interview questions; batches independent questions when possible, asks one at a time when the answer changes the next branch, until ~95% confidence about the underlying intent. Use when an ask is underspecified ("build me X" without "for whom" or "why now"), when the user explicitly invokes ("interview me", "grill me", "are we sure?", "stress-test my thinking"), or when you catch yourself silently filling in ambiguous requirements before any plan, spec, or code exists.
 ---
 
 # Interview Me
@@ -50,23 +50,29 @@ The number forces honesty. If you wrote down a high number but can't actually pr
 
 When confidence is below ~70%, append a brief reason on the same line — what's still unresolved or missing. This tells the user exactly what the interview needs to surface, and prevents the number from being a vague signal.
 
-### Step 2: Ask one question at a time, each with a guess attached
+### Step 2: Ask blocking questions via `question` tool, each with a guess attached
 
-Format:
+Use the `question` tool for all interview questions. Structure each option with a label, a suggested answer, and an optional custom input path.
+
+**When to batch:**
+
+- Batch independent questions into a single `question` call (e.g., "who is this for?" and "what does success look like?" are unrelated, both block, both can go in one call).
+- If the questions are independent and the user can answer all without backtracking, batch them.
+
+**When to ask one at a time:**
+
+- The next question depends on this answer (branching or probing).
+- The answer reveals a new unknown that reframes the problem.
+- You need the user to react to your hypothesis before moving on.
+
+Format for each question (inside the `question` tool):
 
 ```
 Q: <one focused question>
 GUESS: <your hypothesis for the answer, with the reasoning that produced it>
 ```
 
-Wait for the user to react before asking the next question.
-
-**Why one at a time, not a batch:**
-
-- The user can't react to your hypotheses if you bury them in a list
-- Batches encourage skim-reading and surface answers
-- The third question often depends on the answer to the first; asking them all at once locks in the wrong framing
-- The user's energy for thinking carefully is finite; spend it one question at a time
+Each question in the `question` call should include suggested answers as options, plus `allowOther: true` for custom input.
 
 **Why attach a guess:**
 
@@ -200,7 +206,7 @@ Two questions in, the agent has discovered the actual ask isn't "a dashboard." I
 
 ## Red Flags
 
-- Three or more questions in a single message: that's batching, not interviewing
+- Batching dependent questions (where the next depends on the answer to this one) into a single call: that skips the branching the interview needs
 - A question without your hypothesis attached: that's surveying, not committing
 - Accepting "whatever you think is best" as a terminal answer
 - Producing a spec, plan, or task list before the user has explicitly confirmed your restate
@@ -217,7 +223,9 @@ After applying interview-me:
 
 - [ ] An explicit hypothesis with a confidence number was stated in the first turn
 - [ ] Every confidence number below ~70% was accompanied by a one-line reason (what's still unresolved or missing)
-- [ ] Questions were asked one at a time, each with the agent's guess attached
+- [ ] The `question` tool was used for all blocking interview questions
+- [ ] Multi-question `question` calls were used when questions were independent; single-question calls used when answers changed the next branch
+- [ ] Each question included the agent's guess and suggested answer options
 - [ ] At least one "what would you actually want if you didn't have to justify it?" probe ran when the user gave a sophistication-signaling or convention-signaling answer
 - [ ] A concrete restate (Outcome / User / Why now / Success / Constraint / Out of scope) was written back to the user
 - [ ] The user confirmed the restate with an explicit yes (not "whatever you think," not "sounds good," not silence)
