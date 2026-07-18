@@ -39,7 +39,7 @@ const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
 	pubDeep: {
 		modelMap: {
 			"custom/large": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "high" },
-			"custom/medium": { model: "deepseek/deepseek-v4-flash", thinkingLevel: "medium" },
+			"custom/medium": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "medium" },
 		},
 	},
 	priv: {
