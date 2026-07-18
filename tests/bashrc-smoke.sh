@@ -50,16 +50,22 @@ function _run_interactive {
 }
 
 # Run gcoto-model with tty-backed single-key input.
-# Usage: _run_gcoto_model_tty <input_bytes>
+# Usage: _run_gcoto_model_tty <input_bytes> [initial_model]
 function _run_gcoto_model_tty {
   local input_bytes="$1"
+  local initial_model="${2:-}"
   local _tmp_home
   _tmp_home="$(mktemp -d)"
   printf 'source %q\n' "$LOADER" >"$_tmp_home/.bashrc"
 
+  local model_export=""
+  if [ -n "$initial_model" ]; then
+    model_export="_GCOTO_MODEL=$initial_model;"
+  fi
+
   local output
   output=$(printf '%s' "$input_bytes" | script -qfec \
-    "env HOME=$_tmp_home bash -i -c 'gcoto-model; rc=\$?; printf \"__RC=%s__\\n\" \"\$rc\"; printf \"__MODEL=%s__\\n\" \"\${_GCOTO_MODEL:-<unset>}\"'" \
+    "env HOME=$_tmp_home bash -i -c '${model_export}gcoto-model; rc=\$?; printf \"__RC=%s__\\n\" \"\$rc\"; printf \"__MODEL=%s__\\n\" \"\${_GCOTO_MODEL:-<unset>}\"'" \
     /dev/null 2>/dev/null)
   local rc=$?
 
@@ -290,6 +296,21 @@ _result=$(_run_gcoto_model_tty 'x2')
 assert_match "gcoto-model invalid key reports error" "Invalid choice" "$_result"
 assert_match "gcoto-model retries until valid key" "__MODEL=deepseek/deepseek-v4-flash__" "$_result"
 assert_match "gcoto-model invalid then valid exits zero" "__RC=0__" "$_result"
+
+# ---------------------------------------------------------------------------
+# Scenario 6 - gcoto-model shows current model when pre-set
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 6: gcoto-model shows current model when pre-set ==="
+
+_result=$(_run_gcoto_model_tty '2' 'openai-codex/gpt-5.4-mini')
+assert_match "gcoto-model displays current model line" "Current model: openai-codex/gpt-5.4-mini" "$_result"
+assert_match "gcoto-model selection still updates model" "__MODEL=deepseek/deepseek-v4-flash__" "$_result"
+assert_match "gcoto-model selection exits zero" "__RC=0__" "$_result"
+
+_result=$(_run_gcoto_model_tty '1')
+assert_match "gcoto-model with no initial model selects openai" "__MODEL=openai-codex/gpt-5.4-mini__" "$_result"
+assert_not_match "gcoto-model no initial model omits Current line" "Current model:" "$_result"
 
 # ---------------------------------------------------------------------------
 # Summary

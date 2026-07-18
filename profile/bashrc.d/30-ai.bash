@@ -101,6 +101,9 @@ function gcoto-model {
       echo "gcoto-model: no model set and not interactive - pass a model name" >&2
       return 1
     fi
+    if [ -n "${_GCOTO_MODEL:-}" ]; then
+      echo "Current model: $_GCOTO_MODEL"
+    fi
     echo "Select AI model for commit messages:"
     echo "  1) openai (gpt-5.4-mini)"
     echo "  2) deepseek (v4-flash)"

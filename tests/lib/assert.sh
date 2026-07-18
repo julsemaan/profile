@@ -81,6 +81,15 @@ function assert_contains {
   esac
 }
 
+function assert_not_match {
+  local desc="$1" pattern="$2" actual="$3"
+  if printf '%s' "$actual" | grep -qE "$pattern"; then
+    test_fail "$desc" "pattern '$pattern' unexpectedly found in '$actual'"
+  else
+    test_pass "$desc"
+  fi
+}
+
 function test_summary {
   local total=$((_ASSERT_PASS + _ASSERT_FAIL))
   printf "\n=== Results: %d passed, %d failed, %d total ===\n" \
