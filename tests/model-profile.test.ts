@@ -6,7 +6,10 @@ import * as path from "node:path";
 
 import {
 	BUILTIN_PROFILES,
+	applyProfileData,
 	findBuiltinProfile,
+	getCycleProfiles,
+	getNextProfile,
 	parseProfileContent,
 	serializeBuiltinProfile,
 	serializeCustomProfile,
@@ -224,5 +227,62 @@ describe("julsemaan-tmp/ target discovery", () => {
 		} finally {
 			fs.rmSync(tmpRoot, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("getCycleProfiles", () => {
+	it("returns only builtins when no custom", () => {
+		const list = getCycleProfiles(false);
+		assert.deepEqual(list, [...BUILTIN_PROFILES]);
+	});
+
+	it("includes custom after builtins when custom exists", () => {
+		const list = getCycleProfiles(true);
+		assert.deepEqual(list, [...BUILTIN_PROFILES, "custom"]);
+	});
+});
+
+describe("getNextProfile", () => {
+	const builtins = [...BUILTIN_PROFILES];
+
+	it("wraps last builtin to first when no custom", () => {
+		const last = builtins[builtins.length - 1];
+		assert.equal(getNextProfile(last, false), builtins[0]);
+	});
+
+	it("wraps custom to first builtin", () => {
+		assert.equal(getNextProfile("custom", true), builtins[0]);
+	});
+
+	it("transitions from last builtin to custom when custom exists", () => {
+		const last = builtins[builtins.length - 1];
+		assert.equal(getNextProfile(last, true), "custom");
+	});
+
+	it("cycles builtin to next builtin", () => {
+		assert.equal(getNextProfile(builtins[0], false), builtins[1]);
+		assert.equal(getNextProfile(builtins[0], true), builtins[1]);
+	});
+
+	it("returns first builtin for unknown current", () => {
+		assert.equal(getNextProfile("custom" as any, false), builtins[0]);
+	});
+});
+
+describe("applyProfileData", () => {
+	it("copies both aliases into an empty map", () => {
+		const map: Record<string, any> = {
+			"custom/large": { model: "", thinkingLevel: "off" },
+			"custom/medium": { model: "", thinkingLevel: "off" },
+		};
+		const customData = {
+			"custom/large": { model: "a/large", thinkingLevel: "high" as const },
+			"custom/medium": { model: "b/medium", thinkingLevel: "low" as const },
+		};
+		applyProfileData(map as any, customData);
+		assert.equal(map["custom/large"].model, "a/large");
+		assert.equal(map["custom/large"].thinkingLevel, "high");
+		assert.equal(map["custom/medium"].model, "b/medium");
+		assert.equal(map["custom/medium"].thinkingLevel, "low");
 	});
 });

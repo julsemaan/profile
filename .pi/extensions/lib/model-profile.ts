@@ -134,6 +134,44 @@ export function parseProfileContent(content: string): {
 	}
 }
 
+// ── Cycle helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Ordered list of all profiles that participate in the Alt+M cycle.
+ * "custom" is included only when a valid custom override file exists.
+ */
+export function getCycleProfiles(hasCustom: boolean): ModelProfile[] {
+	const list: ModelProfile[] = [...BUILTIN_PROFILES];
+	if (hasCustom) list.push("custom");
+	return list;
+}
+
+/**
+ * Return the next profile in the Alt+M cycle.
+ * Wraps custom → first builtin and last → first.
+ */
+export function getNextProfile(
+	current: ModelProfile,
+	hasCustom: boolean,
+): ModelProfile {
+	const cycle = getCycleProfiles(hasCustom);
+	const idx = cycle.indexOf(current);
+	if (idx === -1) return cycle[0];
+	return cycle[(idx + 1) % cycle.length];
+}
+
+/**
+ * Apply custom profile data into an existing modelMap (mutates in place).
+ */
+export function applyProfileData(
+	modelMap: ModelMap,
+	customData: Record<ModelAlias, AliasConfig>,
+): void {
+	for (const alias of BUILTIN_ALIASES) {
+		modelMap[alias] = { ...customData[alias] };
+	}
+}
+
 // ── Serialization ──────────────────────────────────────────────────────────
 
 export function serializeBuiltinProfile(profile: BuiltinProfile): string {

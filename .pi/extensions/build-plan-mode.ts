@@ -19,7 +19,9 @@ import {
 	type ModelAlias,
 	type ModelMap,
 	type ModelProfile,
+	applyProfileData,
 	findBuiltinProfile,
+	getNextProfile,
 	isThinkingLevel,
 	parseModelRef,
 	parseProfileContent,
@@ -548,9 +550,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			await applyProfile(fileProfile, ctx, `File override (${path.relative(ctx.cwd, filePath)})`);
 		} else if (customData) {
 			// Apply custom profile: set modelMap from parsed data
-			for (const alias of Object.keys(customData) as ModelAlias[]) {
-				modelMap[alias] = { ...customData[alias] };
-			}
+			applyProfileData(modelMap, customData);
 			emitModelConfig();
 			const modeConfig = getActiveModeConfig();
 			const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
@@ -837,6 +837,15 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			// 4. Refresh signature to prevent redundant reapplication
 			fileOverrideSignature = getFileOverrideSignature(targetFile, content);
 
+			// 5. Refresh cached override so Alt+M cycle picks up the profile immediately
+			if (profile !== "custom") {
+				fileOverrideProfile = profile;
+				fileOverrideCustomData = null;
+			} else {
+				fileOverrideProfile = null;
+				fileOverrideCustomData = structuredClone(modelMap);
+			}
+
 			const relPath = path.relative(ctx.cwd, targetFile);
 			const label = profile !== "custom" ? `built-in (${profile})` : "custom";
 			ctx.ui.notify(`Saved ${label} profile to ${relPath}`, "info");
@@ -920,13 +929,37 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerShortcut("alt+m", {
-		description: `Cycle model profile (${BUILTIN_PROFILES_DISPLAY})`,
+		description: `Cycle model profile (${BUILTIN_PROFILES_DISPLAY}${fileOverrideCustomData ? "|custom" : ""})`,
 		handler: async (ctx) => {
-			const profiles = Object.keys(MODEL_PROFILES) as BuiltinProfile[];
+			// Refresh override on every cycle so externally saved custom profiles appear
+			if (fileOverridePath) {
+				const { profile: fp, customData: cd } = readFileOverride(ctx);
+				fileOverrideProfile = fp;
+				fileOverrideCustomData = cd;
+			}
+
 			const current = getCurrentProfile(modelMap);
-			const idx = profiles.indexOf(current as BuiltinProfile);
-			const next = idx === -1 || idx >= profiles.length - 1 ? profiles[0] : profiles[idx + 1];
-			await applyProfile(next, ctx, "Cycled profile");
+			const hasCustom = fileOverrideCustomData !== null;
+			const next = getNextProfile(current, hasCustom);
+
+			if (next === "custom") {
+				// Apply saved custom profile
+				if (fileOverrideCustomData) {
+					applyProfileData(modelMap, fileOverrideCustomData);
+				}
+				emitModelConfig();
+				const modeConfig = getActiveModeConfig();
+				const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
+				await setSessionModel(activeAlias, ctx, false);
+				updateStatus(ctx);
+				persistState(ctx);
+				ctx.ui.notify(
+					`Cycled profile: custom\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+					"info",
+				);
+			} else {
+				await applyProfile(next, ctx, "Cycled profile");
+			}
 		},
 	});
 
@@ -1022,9 +1055,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		} else if (fileCustomData) {
 			// Custom profile from file
 			modelMap = defaultMap;
-			for (const alias of Object.keys(fileCustomData) as ModelAlias[]) {
-				modelMap[alias] = { ...fileCustomData[alias] };
-			}
+			applyProfileData(modelMap, fileCustomData);
 		} else {
 			// Pure DEFAULT_MODEL_MAP (no override from any source)
 			modelMap = defaultMap;
