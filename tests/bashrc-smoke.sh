@@ -270,6 +270,25 @@ _result=$(_run_interactive "" '
 ')
 assert_match "genCommitMsg without staged changes returns error" "GEN_NO_STAGED_OK" "$_result"
 
+# Test genCommitMsg accepts messages containing keywords like 'error'
+_result=$(_run_interactive "$FIXTURES_DIR" '
+  echo "source '"$LOADER"'" > "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+  mkdir "$HOME/repo"
+  cd "$HOME/repo" || exit 1
+  git init >/dev/null 2>&1
+  git config user.email "test@test.com"
+  git config user.name "Test"
+  echo "change" > file.txt
+  git add file.txt
+  msg="$(genCommitMsg openai-codex/gpt-5.4-mini 2>&1)"
+  rc=$?
+  echo "RC=$rc"
+  echo "MSG=$msg"
+')
+assert_match "genCommitMsg exits zero with keyword in message" "RC=0" "$_result"
+assert_match "genCommitMsg returns message unchanged" "MSG=fix: handle error response" "$_result"
+
 # Test klogs_deploy usage
 _result=$(_run_interactive "$FIXTURES_DIR" '
   echo "source '"$LOADER"'" > "$HOME/.bashrc"

@@ -58,10 +58,6 @@ function genCommitMsg {
     echo "genCommitMsg: model returned an empty commit message" >&2
     return 1
   fi
-  if printf '%s' "$msg" | grep -Eiq '(^|[^a-z])(error|exception|traceback|rate limit|429|failed|unauthorized|forbidden)([^a-z]|$)'; then
-    echo "genCommitMsg: refusing suspicious generated commit message: $msg" >&2
-    return 1
-  fi
 
   echo "$msg"
   return 0

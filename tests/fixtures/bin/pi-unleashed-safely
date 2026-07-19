@@ -1,0 +1,23 @@
+#!/bin/bash
+# Minimal pi-unleashed-safely stub for smoke tests
+# Parses --model and positional args to determine output.
+# Default: outputs a plausible commit message.
+
+MODEL=""
+for ((i=1; i<=$#; i++)); do
+  arg="${!i}"
+  if [ "$arg" = "--model" ]; then
+    next=$((i+1))
+    MODEL="${!next}"
+  fi
+done
+
+# Support overriding output via pi_stub_output env var (for regression tests)
+if [ -n "${pi_stub_output:-}" ]; then
+  echo "$pi_stub_output"
+  exit 0
+fi
+
+# Default plausible output
+echo "fix: handle error response"
+exit 0
