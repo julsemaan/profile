@@ -12,18 +12,24 @@ import {
 	type ModeRegistry,
 	type ThinkingLevel,
 } from "./modes.js";
+import {
+	BUILTIN_PROFILES,
+	type AliasConfig,
+	type BuiltinProfile,
+	type ModelAlias,
+	type ModelMap,
+	type ModelProfile,
+	findBuiltinProfile,
+	isThinkingLevel,
+	parseModelRef,
+	parseProfileContent,
+	serializeBuiltinProfile,
+	serializeCustomProfile,
+} from "./lib/model-profile.js";
 
-type ModelAlias = "custom/large" | "custom/medium";
-type AliasConfig = { model: string; thinkingLevel: ThinkingLevel };
-type ModelMap = Record<ModelAlias, AliasConfig>;
-type BuiltinProfile = "pubFree" | "pub" | "pubDeep" | "priv" | "copilotPriv";
-type ModelProfile = BuiltinProfile | "custom";
+const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
 
-type ModelProfileConfig = {
-	modelMap: ModelMap;
-};
-
-const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
+const MODEL_PROFILES: Record<BuiltinProfile, { modelMap: ModelMap }> = {
 	pubFree: {
 		modelMap: {
 			"custom/large": { model: "opencode/mimo-v2.5-free", thinkingLevel: "high" },
@@ -56,16 +62,6 @@ const MODEL_PROFILES: Record<BuiltinProfile, ModelProfileConfig> = {
 	},
 };
 
-const BUILTIN_PROFILES = Object.keys(MODEL_PROFILES) as BuiltinProfile[];
-function isBuiltinProfile(value: string): value is BuiltinProfile {
-	return (BUILTIN_PROFILES as readonly string[]).includes(value);
-}
-const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
-
-function findBuiltinProfile(value: string): BuiltinProfile | undefined {
-	const lower = value.toLowerCase();
-	return (BUILTIN_PROFILES as readonly string[]).find(p => p.toLowerCase() === lower) as BuiltinProfile | undefined;
-}
 
 type AppState = {
 	mode?: string;
@@ -153,15 +149,6 @@ async function waitForTurnStart(ctx: ExtensionContext, timeoutMs = 5000): Promis
 
 
 
-function parseModelRef(modelRef: string): { provider: string; modelId: string } | undefined {
-	const trimmed = modelRef.trim();
-	const slashIndex = trimmed.indexOf("/");
-	if (slashIndex <= 0 || slashIndex === trimmed.length - 1) return undefined;
-	return {
-		provider: trimmed.slice(0, slashIndex),
-		modelId: trimmed.slice(slashIndex + 1),
-	};
-}
 
 function parseAliasArgs(
 	raw: string,
@@ -206,9 +193,6 @@ function parseAliasArgs(
 	};
 }
 
-function isThinkingLevel(value: string): value is ThinkingLevel {
-	return value === "off" || value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
-}
 
 function getCurrentProfile(modelMap: ModelMap): ModelProfile {
 	for (const [profile, config] of Object.entries(MODEL_PROFILES)) {
@@ -301,6 +285,8 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	let currentModelRegistry: any;
 	let fileOverridePath: string | null = null;
 	let fileOverrideProfile: BuiltinProfile | null = null;
+	let fileOverrideCustomData: Record<ModelAlias, AliasConfig> | null = null;
+	let fileOverrideSignature: string | null = null;
 
 	function getModeToolNames(modeConfig?: ModeConfig): string[] {
 		if (modeConfig?.tools?.length) return modeConfig.tools;
@@ -487,6 +473,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	function readFileOverride(ctx: ExtensionContext): {
 		profile: BuiltinProfile | null;
+		customData: Record<ModelAlias, AliasConfig> | null;
 		filePath: string | null;
 	} {
 		let dir = ctx.cwd;
@@ -494,50 +481,88 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			const candidate = path.join(dir, FILE_OVERRIDE_RELPATH);
 			if (fs.existsSync(candidate)) {
 				try {
-					const content = fs.readFileSync(candidate, "utf-8").trim();
-					const matched = findBuiltinProfile(content);
-					if (matched) {
-						return { profile: matched, filePath: candidate };
+					const content = fs.readFileSync(candidate, "utf-8");
+					const parsed = parseProfileContent(content);
+					if (parsed.type === "builtin") {
+						return { profile: parsed.profile, customData: null, filePath: candidate };
+					}
+					if (parsed.type === "custom") {
+						return { profile: null, customData: parsed.data, filePath: candidate };
 					}
 					ctx.ui.notify(
-						`Invalid content in ${candidate}: expected ${BUILTIN_PROFILES.join(" or ")}, got "${content}"`,
+						`Invalid content in ${candidate}: ${parsed.error}`,
 						"warning",
 					);
-					return { profile: null, filePath: candidate };
+					return { profile: null, customData: null, filePath: candidate };
 				} catch (e) {
 					ctx.ui.notify(`Error reading ${candidate}: ${e}`, "warning");
-					return { profile: null, filePath: candidate };
+					return { profile: null, customData: null, filePath: candidate };
 				}
 			}
 			const parent = path.dirname(dir);
 			if (parent === dir) break;
 			dir = parent;
 		}
-		return { profile: null, filePath: null };
+		return { profile: null, customData: null, filePath: null };
+	}
+
+	function getFileOverrideSignature(filePath: string, content: string): string {
+		return `${filePath}:${content.trim()}`;
 	}
 
 	async function syncFileOverride(ctx: ExtensionContext): Promise<boolean> {
-		const { profile: fileProfile, filePath } = readFileOverride(ctx);
+		const { profile: fileProfile, customData, filePath } = readFileOverride(ctx);
 
 		if (!filePath) {
 			if (fileOverridePath) {
 				fileOverridePath = null;
 				fileOverrideProfile = null;
+				fileOverrideCustomData = null;
+				fileOverrideSignature = null;
 			}
 			return false;
 		}
 
-		if (!fileProfile) {
+		if (!fileProfile && !customData) {
 			return false;
 		}
 
-		if (fileProfile === fileOverrideProfile && filePath === fileOverridePath) {
+		// Build signature from path + content to detect changes even for custom profiles
+		let fileContent: string;
+		try {
+			fileContent = fs.readFileSync(filePath, "utf-8");
+		} catch {
+			return false;
+		}
+		const sig = getFileOverrideSignature(filePath, fileContent);
+		if (sig === fileOverrideSignature) {
 			return false;
 		}
 
 		fileOverridePath = filePath;
+		fileOverrideSignature = sig;
 		fileOverrideProfile = fileProfile;
-		await applyProfile(fileProfile, ctx, `File override (${path.relative(ctx.cwd, filePath)})`);
+		fileOverrideCustomData = customData;
+
+		if (fileProfile) {
+			await applyProfile(fileProfile, ctx, `File override (${path.relative(ctx.cwd, filePath)})`);
+		} else if (customData) {
+			// Apply custom profile: set modelMap from parsed data
+			for (const alias of Object.keys(customData) as ModelAlias[]) {
+				modelMap[alias] = { ...customData[alias] };
+			}
+			emitModelConfig();
+			const modeConfig = getActiveModeConfig();
+			const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
+			await setSessionModel(activeAlias, ctx, false);
+			updateStatus(ctx);
+			persistState(ctx);
+			ctx.ui.notify(
+				`File override (${path.relative(ctx.cwd, filePath)}): custom profile\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+				"info",
+			);
+		}
+
 		return true;
 	}
 
@@ -739,7 +764,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			const profile = args.trim().toLowerCase();
 			if (!profile) {
 				const current = getCurrentProfile(modelMap);
-				ctx.ui.notify(`Current profile: ${current}`, "info");
+				ctx.ui.notify(`Current profile: ${current}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`, "info");
 				return;
 			}
 			const matched = findBuiltinProfile(profile);
@@ -748,6 +773,73 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				return;
 			}
 			ctx.ui.notify(`Usage: /model-profile [${BUILTIN_PROFILES_DISPLAY}]`, "warning");
+		},
+	});
+
+	pi.registerCommand("save-model-profile", {
+		description: "Save current model profile to julsemaan-tmp/model-profile",
+		handler: async (_args, ctx) => {
+			const profile = getCurrentProfile(modelMap);
+
+			// Determine target: find existing file, nearest julsemaan-tmp/, or create
+			let targetDir: string | null = null;
+			let targetFile: string | null = null;
+
+			// 1. Find existing profile file in cwd or ancestors
+			let dir = ctx.cwd;
+			while (true) {
+				const candidate = path.join(dir, FILE_OVERRIDE_RELPATH);
+				if (fs.existsSync(candidate)) {
+					targetFile = candidate;
+					break;
+				}
+				// Check for julsemaan-tmp/ directory
+				const tmpDir = path.join(dir, "julsemaan-tmp");
+				if (fs.existsSync(tmpDir) && fs.statSync(tmpDir).isDirectory()) {
+					targetDir = dir;
+				}
+				const parent = path.dirname(dir);
+				if (parent === dir) break;
+				dir = parent;
+			}
+
+			// 2. If no existing file, use nearest julsemaan-tmp/ dir or create under cwd
+			if (!targetFile) {
+				if (targetDir) {
+					targetFile = path.join(targetDir, FILE_OVERRIDE_RELPATH);
+				} else {
+					const tmpDir = path.join(ctx.cwd, "julsemaan-tmp");
+					try {
+						fs.mkdirSync(tmpDir, { recursive: true });
+					} catch (e) {
+						ctx.ui.notify(`Failed to create ${tmpDir}: ${e}`, "warning");
+						return;
+					}
+					targetFile = path.join(tmpDir, "model-profile");
+				}
+			}
+
+			// 3. Serialize and write
+			let content: string;
+			if (profile !== "custom") {
+				content = serializeBuiltinProfile(profile);
+			} else {
+				content = serializeCustomProfile(modelMap);
+			}
+
+			try {
+				fs.writeFileSync(targetFile, content, "utf-8");
+			} catch (e) {
+				ctx.ui.notify(`Failed to write ${targetFile}: ${e}`, "warning");
+				return;
+			}
+
+			// 4. Refresh signature to prevent redundant reapplication
+			fileOverrideSignature = getFileOverrideSignature(targetFile, content);
+
+			const relPath = path.relative(ctx.cwd, targetFile);
+			const label = profile !== "custom" ? `built-in (${profile})` : "custom";
+			ctx.ui.notify(`Saved ${label} profile to ${relPath}`, "info");
 		},
 	});
 
@@ -916,9 +1008,10 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		}
 
 		// 3. File override (julsemaan-tmp/model-profile) — applied without side effects
-		const { profile: fileProfile, filePath } = readFileOverride(ctx);
+		const { profile: fileProfile, customData: fileCustomData, filePath } = readFileOverride(ctx);
 		fileOverridePath = filePath;
 		fileOverrideProfile = fileProfile;
+		fileOverrideCustomData = fileCustomData;
 
 		if (hasCustomState) {
 			// Session entries or temp file had custom state (highest priority)
@@ -926,6 +1019,12 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		} else if (fileProfile) {
 			// No custom state, fall back to file override profile
 			modelMap = structuredClone(MODEL_PROFILES[fileProfile].modelMap);
+		} else if (fileCustomData) {
+			// Custom profile from file
+			modelMap = defaultMap;
+			for (const alias of Object.keys(fileCustomData) as ModelAlias[]) {
+				modelMap[alias] = { ...fileCustomData[alias] };
+			}
 		} else {
 			// Pure DEFAULT_MODEL_MAP (no override from any source)
 			modelMap = defaultMap;
