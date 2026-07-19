@@ -19,6 +19,9 @@ RUN apt-get update \
     xsel \
  && rm -rf /var/lib/apt/lists/*
 
+COPY profile/.gitignore /usr/local/etc/.gitignore
+RUN git config --system core.excludesfile /usr/local/etc/.gitignore
+
 # ponytail: shfmt not in Debian bookworm, pin to match CI
 RUN /bin/bash -euo pipefail -c '\
 SHFMT_VERSION="v3.10.0"; \
