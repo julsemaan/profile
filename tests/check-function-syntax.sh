@@ -8,8 +8,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 files=(
   "$REPO_ROOT/profile/.bashrc_append"
   "$REPO_ROOT"/profile/bashrc.d/*.bash
-  "$REPO_ROOT"/tests/bashrc-smoke.sh
-  "$REPO_ROOT"/tests/lib/assert.sh
+)
+# Also check all test scripts for POSIX-style definitions
+while IFS= read -r -d '' f; do files+=("$f"); done < <(
+  find "$REPO_ROOT/tests" -name '*.sh' -print0
 )
 
 violations=0
@@ -17,8 +19,8 @@ while IFS= read -r match; do
   echo "  $match" >&2
   violations=$((violations + 1))
 done < <(
-  grep -Hn '^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*()[[:space:]]*{' "${files[@]}" 2>/dev/null \
-    | grep -v '^[^:]*:[0-9]*:[[:space:]]*#'
+  grep -Hn '^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*()[[:space:]]*{' "${files[@]}" 2>/dev/null |
+    grep -v '^[^:]*:[0-9]*:[[:space:]]*#'
 )
 
 if [ "$violations" -gt 0 ]; then
