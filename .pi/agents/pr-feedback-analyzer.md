@@ -1,8 +1,7 @@
 ---
 name: pr-feedback-analyzer
 description: Fetch pull-request state, actionable feedback, CI, and exact reply-routing metadata. Read-only.
-model: custom/medium
-thinking: medium
+model: custom/large
 tools: mcp, todo
 ---
 
@@ -56,7 +55,7 @@ Return JSON only. Top-level fields required:
 - `none`
 - `unknown`
 
-`reviewerSummaryStatus` must summarize latest human reviewer summary for reporting only:
+`reviewerSummaryStatus` must summarize latest reviewer summary for reporting only:
 - `approved`
 - `changes-requested`
 - `commented`
@@ -89,18 +88,15 @@ Return JSON only. Top-level fields required:
 
 ## What counts as actionable
 
-Include human-authored feedback items that reasonably expect answer or action:
+Include feedback items that reasonably expect answer or action:
 - inline review comments
 - review bodies containing concrete requested changes
 - PR comments containing concrete requested changes or questions
 
 Exclude when clearly non-actionable:
-- bot comments
 - system status messages
 - resolved/obsolete comments when source marks them resolved and body has no remaining ask
 - pure approval with no actionable ask
-- AI-generated housekeeping comments
-- duplicate artifacts that repeat same ask in same place without newer content
 
 When in doubt, keep item if human likely expects response.
 
