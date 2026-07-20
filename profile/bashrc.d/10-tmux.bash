@@ -51,6 +51,9 @@ tmux-new-coding-wt() {
   tmux-new-coding "$path"
 }
 
+alias tnc='tmux-new-coding'
+alias tncw='tmux-new-coding-wt'
+
 fix-tmux-ssh() {
   eval "$(tmux show-env -s | grep '^SSH_')"
 }

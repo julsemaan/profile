@@ -128,6 +128,13 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   alias qco >/dev/null 2>&1 && echo "__AL_qco__"
   alias qpush >/dev/null 2>&1 && echo "__AL_qpush__"
   alias k >/dev/null 2>&1 && echo "__AL_k__"
+
+  # Short agent/tmux/kube aliases
+  alias pus >/dev/null 2>&1 && echo "__AL_pus__"
+  alias puss >/dev/null 2>&1 && echo "__AL_puss__"
+  alias tnc >/dev/null 2>&1 && echo "__AL_tnc__"
+  alias tncw >/dev/null 2>&1 && echo "__AL_tncw__"
+  alias kld >/dev/null 2>&1 && echo "__AL_kld__"
 ')
 
 assert_match "sourcing with stubs succeeds" "__PROFILE_SOURCED_OK__" "$_result"
@@ -160,6 +167,42 @@ assert_match "rbrc-all alias" "__AL_rbrc_all__" "$_result"
 assert_match "qco alias" "__AL_qco__" "$_result"
 assert_match "qpush alias" "__AL_qpush__" "$_result"
 assert_match "k alias (with kubectl stub)" "__AL_k__" "$_result"
+
+assert_match "pus alias" "__AL_pus__" "$_result"
+assert_match "puss alias" "__AL_puss__" "$_result"
+assert_match "tnc alias" "__AL_tnc__" "$_result"
+assert_match "tncw alias" "__AL_tncw__" "$_result"
+assert_match "kld alias" "__AL_kld__" "$_result"
+
+# ---------------------------------------------------------------------------
+# Scenario 7 - tmux-new-coding-wt success path
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 7: tmux-new-coding-wt success path ==="
+
+_result=$(_run_interactive "" '
+  # Create a real temp dir to act as the worktree path
+  _wt_path="$(mktemp -d)"
+
+  # Override gwt and tmuxifier with functions (avoids PATH/heredoc issues)
+  function gwt { echo "$_wt_path"; }
+  export -f gwt
+  _TMUX_CALLED=""
+  _TMUX_TWR=""
+  function tmuxifier { _TMUX_CALLED="$*"; _TMUX_TWR="$T_WIN_ROOT"; }
+  export -f tmuxifier
+
+  echo "source '"$LOADER"'" > "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+
+  tmux-new-coding-wt
+  echo "T_WIN_ROOT=$_TMUX_TWR"
+  echo "TMUXIFIER_ARGS=$_TMUX_CALLED"
+  rm -rf "$_wt_path"
+')
+
+assert_match "tmux-new-coding-wt passes worktree path as T_WIN_ROOT" "T_WIN_ROOT=/tmp/" "$_result"
+assert_match "tmux-new-coding-wt calls tmuxifier load-window coding" "TMUXIFIER_ARGS=load-window coding" "$_result"
 
 # ---------------------------------------------------------------------------
 # Scenario 3 - Repeated source does not duplicate PROMPT_COMMAND hook

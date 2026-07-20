@@ -61,3 +61,5 @@ function klogs_deploy {
 
   k logs -n "$ns" "$pod" "$@"
 }
+
+alias kld='klogs_deploy'

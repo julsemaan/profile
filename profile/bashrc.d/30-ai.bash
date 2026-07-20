@@ -189,3 +189,5 @@ function gacp {
 alias codex-unleashed-safely-src='codex-unleashed-safely -m ~/src/'
 alias opencode-unleashed-safely-src='opencode-unleashed-safely -m ~/src/'
 alias pi-unleashed-safely-src='pi-unleashed-safely -m ~/src/'
+alias pus='pi-unleashed-safely'
+alias puss='pi-unleashed-safely-src'
