@@ -1,1 +1,0 @@
-- [] Have a way to do /execute-plan but without prompting to provide the final plan and instead take the last agent message and handoff to the build agent

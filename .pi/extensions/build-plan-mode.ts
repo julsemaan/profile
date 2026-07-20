@@ -622,6 +622,33 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		}));
 	}
 
+	async function executePlanHandoff(
+		plan: string,
+		args: string | undefined,
+		ctx: ExtensionContext,
+	): Promise<void> {
+		const executionPrompt = buildExecutionPrompt(plan, args);
+		const parentSession = ctx.sessionManager.getSessionFile();
+		const result = await ctx.newSession({
+			parentSession,
+			setup: async (sessionManager) => {
+				sessionManager.appendCustomEntry(STATE_TYPE, {
+					mode: "build",
+					profile: getCurrentProfile(modelMap),
+					modelMap: structuredClone(modelMap),
+				});
+			},
+			withSession: async (replacementCtx) => {
+				replacementCtx.sendUserMessage(executionPrompt).catch(() => {});
+				replacementCtx.ui.notify("Started fresh build session.", "info");
+			},
+		});
+
+		if (result.cancelled) {
+			ctx.ui.notify("Execute plan cancelled.", "info");
+		}
+	}
+
 	// ── Register commands for each mode ──────────────────────────────────
 
 	function registerModeCommands() {
@@ -670,31 +697,25 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				return;
 			}
 
-			const finalizedPlan = afterEntry.text;
-			const executionPrompt = buildExecutionPrompt(finalizedPlan, args);
-			const parentSession = ctx.sessionManager.getSessionFile();
-			const result = await ctx.newSession({
-				parentSession,
-				setup: async (sessionManager) => {
-					sessionManager.appendCustomEntry(STATE_TYPE, {
-						mode: "build",
-						profile: getCurrentProfile(modelMap),
-						modelMap: structuredClone(modelMap),
-					});
-				},
-				withSession: async (replacementCtx) => {
-					// New session already restores build mode from custom state during session_start.
-					// Do not call helpers that capture old `pi` here; stale session-bound objects throw.
-					// Fire-and-forget: don't await so TUI navigates to fresh session immediately
-					// instead of blocking until the entire plan execution completes.
-					replacementCtx.sendUserMessage(executionPrompt).catch(() => {});
-					replacementCtx.ui.notify("Started fresh build session from finalized plan.", "info");
-				},
-			});
+			await executePlanHandoff(afterEntry.text, args, ctx);
+		},
+	});
 
-			if (result.cancelled) {
-				ctx.ui.notify("Execute plan cancelled.", "info");
+	pi.registerCommand("execute-plan-now", {
+		description: "Start fresh build session from latest assistant message without finalizing it",
+		handler: async (args, ctx) => {
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("Wait for the current turn to finish before executing the plan.", "warning");
+				return;
 			}
+
+			const lastEntry = getLastAssistantEntry(ctx);
+			if (!lastEntry) {
+				ctx.ui.notify("No assistant message found. Nothing to execute.", "warning");
+				return;
+			}
+
+			await executePlanHandoff(lastEntry.text, args, ctx);
 		},
 	});
 
