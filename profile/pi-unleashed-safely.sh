@@ -27,7 +27,7 @@ PI_RUNTIME_PACKAGE_SOURCES=(
   "npm:@earendil-works/pi-tui"
   "npm:pi-mcp-adapter"
   "https://github.com/DietrichGebert/ponytail@v4.7.0"
-  "https://github.com/julsemaan/astatus@main"
+  "https://github.com/julsemaan/astatus@0.1.9"
 )
 
 function usage {
