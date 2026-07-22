@@ -108,7 +108,7 @@ From `code-sandbox/Dockerfile`:
 
 | Script | Agent | Image | Entrypoint |
 |---|---|---|---|
-| `pi-unleashed-safely.sh` | `@earendil-works/pi-coding-agent` | `pi-unleashed-safely:latest` | Custom entrypoint that re-registers extra pi packages at runtime |
+| `pi-unleashed-safely.sh` | `@earendil-works/pi-coding-agent` | `pi-unleashed-safely:latest` | `pi` |
 | `opencode-unleashed-safely.sh` | `opencode-ai` | `opencode-unleashed-safely:latest` | `opencode` |
 | `codex-unleashed-safely.sh` | `@openai/codex` | `codex-unleashed-safely:latest` | `codex --dangerously-bypass-approvals-and-sandbox` |
 
@@ -120,7 +120,7 @@ of `-v`, so host paths containing `:` (e.g. gvfs sftp mounts) work correctly.
 
 Located at the repository root, the `.pi/` directory configures the pi coding agent:
 
-- **`settings.json`** — Default provider/model (`openai-codex/gpt-5.5`), enabled models, compaction.
+- **`settings.json`** — Default provider/model (`openai-codex/gpt-5.5`), enabled models, compaction, and `packages` array for managed pi packages.
 - **`models.json`** — Provider overrides (e.g., DeepSeek context window).
 - **`mcp.json`** — MCP server definitions (Context7 docs, Playwright, GitHub MCP, Bitbucket MCP).
 - **`extensions/`** — Custom pi extensions (todo tracking,

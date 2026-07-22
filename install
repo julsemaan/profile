@@ -140,47 +140,6 @@ function sync_dir_in_place {
   done
 }
 
-function sync_pi_settings_preserving_runtime {
-  local src="$1"
-  local dst="$2"
-
-  local dst_dir tmp
-  dst_dir=$(dirname "$dst")
-  mkdir -p "$dst_dir"
-
-  if [ ! -f "$dst" ]; then
-    echo "  Installing Pi settings: $dst (new)"
-    sync_file_atomic "$src" "$dst"
-    return
-  fi
-
-  echo "  Syncing Pi settings with runtime package preservation: $dst"
-  tmp=$(mktemp "$dst.XXXXXXXXXX")
-
-  python3 - "$src" "$dst" "$tmp" <<'PY'
-import json
-import sys
-
-src, dst, tmp = sys.argv[1:4]
-
-with open(src, encoding='utf-8') as f:
-    result = json.load(f)
-with open(dst, encoding='utf-8') as f:
-    host = json.load(f)
-
-if isinstance(host.get('packages'), list):
-    result['packages'] = host['packages']
-elif 'packages' in result:
-    result.pop('packages', None)
-
-with open(tmp, 'w', encoding='utf-8') as f:
-    json.dump(result, f, indent=2)
-    f.write('\n')
-PY
-
-  mv -f "$tmp" "$dst"
-}
-
 function install_pi_global_config {
   local home="$1"
   local user="$2"
@@ -192,12 +151,8 @@ function install_pi_global_config {
 
   mkdir -p "$agent_dir"
 
-  exact_sync_files="mcp.json models.json TODO.md web-search.json"
+  exact_sync_files="settings.json mcp.json models.json TODO.md web-search.json"
   managed_dirs="extensions prompts agents modes skills"
-
-  if [ -f "$pi_src/settings.json" ]; then
-    sync_pi_settings_preserving_runtime "$pi_src/settings.json" "$agent_dir/settings.json"
-  fi
 
   # Sync install-managed files atomically (no delete-before-copy window)
   for f in $exact_sync_files; do

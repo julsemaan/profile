@@ -3,3 +3,5 @@ build/
 util/upload.conf
 .playwright-mcp/
 **/__pycache__/
+.pi/git/
+.pi/npm/
