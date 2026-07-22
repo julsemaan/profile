@@ -157,6 +157,9 @@ function gcoto {
   gcoto-commit-with-model "$_GCOTO_MODEL"
 }
 
+# --- gacoto (add + gcoto shortcut) ---
+alias gacoto='git add . && gcoto'
+
 # --- gacp (add-commit-push, depends on gcoto and gpush/gaireview from 20-git.bash) ---
 function gacp {
   local ai_review=0

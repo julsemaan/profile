@@ -128,6 +128,7 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   alias qco >/dev/null 2>&1 && echo "__AL_qco__"
   alias qpush >/dev/null 2>&1 && echo "__AL_qpush__"
   alias k >/dev/null 2>&1 && echo "__AL_k__"
+  alias gacoto >/dev/null 2>&1 && echo "__AL_gacoto__"
 
   # Short agent/tmux/kube aliases
   alias pus >/dev/null 2>&1 && echo "__AL_pus__"
@@ -167,6 +168,7 @@ assert_match "rbrc-all alias" "__AL_rbrc_all__" "$_result"
 assert_match "qco alias" "__AL_qco__" "$_result"
 assert_match "qpush alias" "__AL_qpush__" "$_result"
 assert_match "k alias (with kubectl stub)" "__AL_k__" "$_result"
+assert_match "gacoto alias" "__AL_gacoto__" "$_result"
 
 assert_match "pus alias" "__AL_pus__" "$_result"
 assert_match "puss alias" "__AL_puss__" "$_result"
