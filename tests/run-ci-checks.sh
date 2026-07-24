@@ -17,14 +17,14 @@ run_check "function syntax" bash tests/check-function-syntax.sh
 run_check "smoke tests" bash tests/bashrc-smoke.sh
 
 if command -v shellcheck >/dev/null 2>&1; then
-  run_check "shellcheck" shellcheck -x profile/.bashrc_append profile/bashrc.d/*.bash tests/bashrc-smoke.sh tests/lib/assert.sh
+  run_check "shellcheck" shellcheck -x profile/.bashrc_append profile/bashrc.d/*.bash profile/pi-unleashed-safely.sh tests/bashrc-smoke.sh tests/lib/assert.sh
 else
   echo "FAIL: shellcheck not installed — install it to proceed" >&2
   failures=$((failures + 1))
 fi
 
 if command -v shfmt >/dev/null 2>&1; then
-  run_check "shfmt" shfmt -i 2 -d profile/.bashrc_append profile/bashrc.d/*.bash tests/bashrc-smoke.sh tests/lib/assert.sh
+  run_check "shfmt" shfmt -i 2 -d profile/.bashrc_append profile/bashrc.d/*.bash profile/pi-unleashed-safely.sh tests/bashrc-smoke.sh tests/lib/assert.sh
 else
   echo "FAIL: shfmt not installed — install it to proceed" >&2
   failures=$((failures + 1))

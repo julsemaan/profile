@@ -95,6 +95,9 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
   tmux/X11/Wayland sockets when available.
 - **Go module cache** is mounted from the host (read-only by default) to reuse downloaded modules.
 - API keys for AI providers are forwarded from the host environment.
+- `pi-unleashed-safely.sh --docker-host` starts a companion Docker-in-Docker
+  container (`pi-dind`) on a private network. Pi container gets `DOCKER_HOST` pointing
+  at it. No host socket mounted. Inner containers cannot reach host filesystem.
 
 ### Shared Base Image: `julsemaan/code-sandbox-img`
 

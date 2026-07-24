@@ -9,11 +9,11 @@ MNT_HOST="$PWD"
 MNT_CONTAINER="$PWD"
 WORKDIR="$PWD"
 EXTRA_MOUNT_FLAGS=()
-WORKDIR_EXPLICIT=0
 REBUILD=0
 USE_TTY=1
 HIDE_HOME_PI_EXTENSIONS=0
 MODEL_PROFILE=""
+DIND_ENABLED=0
 
 # Extra npm packages to install into image.
 # `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
@@ -42,6 +42,9 @@ Arguments:
   --model-profile NAME
                       Start Pi with a specific model profile (e.g. pubDeep, pub, priv).
                       Overrides julsemaan-tmp/model-profile for this session only.
+  --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
+                      on a private network. Sets DOCKER_HOST inside the container
+                      so inner containers run in the companion, not on the host.
   -h, --help          Show this help text.
 
 Environment:
@@ -88,65 +91,68 @@ PI_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    --)
-      shift
-      PI_ARGS+=("$@")
-      break
-      ;;
-    -m|--mount)
-      if [[ -z "${2:-}" ]]; then
-        echo "Error: --mount requires a path argument." >&2
-        exit 1
-      fi
-      MNT_HOST="$2"
-      MNT_CONTAINER="$2"
-      shift 2
-      ;;
-    --mount2)
-      if [[ -z "${2:-}" || -z "${3:-}" ]]; then
-        echo "Error: --mount2 requires HOST_DIR and CONTAINER_DIR arguments." >&2
-        exit 1
-      fi
-      EXTRA_MOUNT_FLAGS+=(--mount "type=bind,src=$2,dst=$3")
-      shift 3
-      ;;
-    -w|--workdir)
-      if [[ -z "${2:-}" ]]; then
-        echo "Error: --workdir requires a path argument." >&2
-        exit 1
-      fi
-      WORKDIR="$2"
-      WORKDIR_EXPLICIT=1
-      shift 2
-      ;;
-    -r|--rebuild)
-      REBUILD=1
-      shift
-      ;;
-    --no-tty)
-      USE_TTY=0
-      shift
-      ;;
-    --dev)
-      HIDE_HOME_PI_EXTENSIONS=1
-      shift
-      ;;
-    --model-profile)
-      if [[ -z "${2:-}" ]]; then
-        echo "Error: --model-profile requires a profile name argument." >&2
-        exit 1
-      fi
-      MODEL_PROFILE="$2"
-      shift 2
-      ;;
-    *)
-      PI_ARGS+=("$1")
-      shift
-      ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  --)
+    shift
+    PI_ARGS+=("$@")
+    break
+    ;;
+  -m | --mount)
+    if [[ -z "${2:-}" ]]; then
+      echo "Error: --mount requires a path argument." >&2
+      exit 1
+    fi
+    MNT_HOST="$2"
+    MNT_CONTAINER="$2"
+    shift 2
+    ;;
+  --mount2)
+    if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+      echo "Error: --mount2 requires HOST_DIR and CONTAINER_DIR arguments." >&2
+      exit 1
+    fi
+    EXTRA_MOUNT_FLAGS+=(--mount "type=bind,src=$2,dst=$3")
+    shift 3
+    ;;
+  -w | --workdir)
+    if [[ -z "${2:-}" ]]; then
+      echo "Error: --workdir requires a path argument." >&2
+      exit 1
+    fi
+    WORKDIR="$2"
+    shift 2
+    ;;
+  -r | --rebuild)
+    REBUILD=1
+    shift
+    ;;
+  --no-tty)
+    USE_TTY=0
+    shift
+    ;;
+  --dev)
+    HIDE_HOME_PI_EXTENSIONS=1
+    shift
+    ;;
+  --model-profile)
+    if [[ -z "${2:-}" ]]; then
+      echo "Error: --model-profile requires a profile name argument." >&2
+      exit 1
+    fi
+    MODEL_PROFILE="$2"
+    shift 2
+    ;;
+  --docker-host)
+    DIND_ENABLED=1
+    shift
+    ;;
+  *)
+    PI_ARGS+=("$1")
+    shift
+    ;;
   esac
 done
 
@@ -254,20 +260,20 @@ if [[ -n "$HOST_SSH_KEY" && -f "$HOST_SSH_KEY" ]]; then
   SSH_KEY_CONTAINER_PATH="$CONTAINER_HOME/.ssh/id_rsa"
 
   case "$HOST_SSH_KEY" in
-    "$HOST_SSH_DIR"/*)
-      SSH_KEY_RELATIVE_PATH="${HOST_SSH_KEY#$HOST_SSH_DIR/}"
-      SSH_KEY_CONTAINER_PATH="$CONTAINER_HOME/.ssh/$SSH_KEY_RELATIVE_PATH"
-      SSH_KEY_CONTAINER_RELATIVE_DIR="$(dirname "$SSH_KEY_RELATIVE_PATH")"
+  "$HOST_SSH_DIR"/*)
+    SSH_KEY_RELATIVE_PATH="${HOST_SSH_KEY#"$HOST_SSH_DIR"/}"
+    SSH_KEY_CONTAINER_PATH="$CONTAINER_HOME/.ssh/$SSH_KEY_RELATIVE_PATH"
+    SSH_KEY_CONTAINER_RELATIVE_DIR="$(dirname "$SSH_KEY_RELATIVE_PATH")"
 
-      if [[ "$SSH_KEY_CONTAINER_RELATIVE_DIR" != "." ]]; then
-        SSH_KEY_PARENT="$CONTAINER_HOME/.ssh"
-        IFS='/' read -r -a SSH_KEY_DIR_PARTS <<< "$SSH_KEY_CONTAINER_RELATIVE_DIR"
-        for ssh_dir_part in "${SSH_KEY_DIR_PARTS[@]}"; do
-          SSH_KEY_PARENT="$SSH_KEY_PARENT/$ssh_dir_part"
-          SSH_DOCKER_FLAGS+=(--tmpfs "$SSH_KEY_PARENT:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
-        done
-      fi
-      ;;
+    if [[ "$SSH_KEY_CONTAINER_RELATIVE_DIR" != "." ]]; then
+      SSH_KEY_PARENT="$CONTAINER_HOME/.ssh"
+      IFS='/' read -r -a SSH_KEY_DIR_PARTS <<<"$SSH_KEY_CONTAINER_RELATIVE_DIR"
+      for ssh_dir_part in "${SSH_KEY_DIR_PARTS[@]}"; do
+        SSH_KEY_PARENT="$SSH_KEY_PARENT/$ssh_dir_part"
+        SSH_DOCKER_FLAGS+=(--tmpfs "$SSH_KEY_PARENT:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
+      done
+    fi
+    ;;
   esac
 
   SSH_DOCKER_FLAGS+=(-v "$HOST_SSH_KEY:$SSH_KEY_CONTAINER_PATH:ro")
@@ -300,10 +306,78 @@ RUN npm i -g "$PI_NPM_PACKAGE"
 
 RUN node -e 'const pkgs = JSON.parse(process.env.PI_NPM_INSTALL_PACKAGES_JSON || "[]"); if (pkgs.length) require("child_process").execFileSync("npm", ["i", "-g", ...pkgs], { stdio: "inherit" });'
 
+# ponytail: pin to match docker:dind-rootless major; bump together
+RUN set -eux; \
+  ARCH="$(dpkg --print-architecture)"; \
+  case "$ARCH" in \
+    amd64) DOCKER_ARCH="x86_64" ;; \
+    arm64) DOCKER_ARCH="aarch64" ;; \
+    *) echo "Unsupported arch for docker CLI: $ARCH" >&2; exit 1 ;; \
+  esac; \
+  DOCKER_VERSION="29.6.2"; \
+  curl -fsSL "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_VERSION}.tgz" -o /tmp/docker.tgz; \
+  tar --extract --file /tmp/docker.tgz --strip-components 1 --directory /usr/local/bin/ docker/docker; \
+  rm /tmp/docker.tgz; \
+  docker --version
+
 ENV EDITOR=vim
 
 ENTRYPOINT ["pi"]
 EOF
+
+# --- DinD companion (Docker-in-Docker) ---
+DIND_DOCKER_FLAGS=()
+if [[ $DIND_ENABLED -eq 1 ]]; then
+  DIND_NETWORK="pi-dind-net"
+  DIND_CONTAINER="pi-dind"
+  DIND_IMAGE="docker:dind"
+  DIND_VOLUME="pi-dind-store"
+  DIND_PORT="2375"
+
+  docker pull "$DIND_IMAGE"
+
+  docker network create "$DIND_NETWORK" >/dev/null 2>&1 || true
+
+  if ! docker inspect "$DIND_CONTAINER" >/dev/null 2>&1; then
+    docker run -d --name "$DIND_CONTAINER" \
+      --privileged \
+      --network "$DIND_NETWORK" \
+      -e DOCKER_TLS_CERTDIR= \
+      -v "$DIND_VOLUME:/var/lib/docker" \
+      "$DIND_IMAGE"
+  elif [[ "$(docker inspect -f '{{.State.Status}}' "$DIND_CONTAINER" 2>/dev/null)" == "running" ]]; then
+    : # already running, reuse
+  else
+    # ponytail: remove+recreate to pick up config changes; named volume persists data
+    docker rm -f "$DIND_CONTAINER" >/dev/null 2>&1 || true
+    docker run -d --name "$DIND_CONTAINER" \
+      --privileged \
+      --network "$DIND_NETWORK" \
+      -e DOCKER_TLS_CERTDIR= \
+      -v "$DIND_VOLUME:/var/lib/docker" \
+      "$DIND_IMAGE"
+  fi
+
+  # Wait up to 30s for dockerd to be ready
+  READY=0
+  for _ in $(seq 1 30); do
+    if docker exec "$DIND_CONTAINER" docker version >/dev/null 2>&1; then
+      READY=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ $READY -eq 0 ]]; then
+    echo "Error: pi-dind container failed to become ready after 30s. Logs:" >&2
+    docker logs "$DIND_CONTAINER" >&2 2>&1 || true
+    echo "Container status:" >&2
+    docker inspect -f '{{.State.Status}}' "$DIND_CONTAINER" >&2 2>&1 || true
+    exit 1
+  fi
+
+  DIND_DOCKER_FLAGS+=(--network "$DIND_NETWORK")
+  DIND_DOCKER_FLAGS+=(-e "DOCKER_HOST=tcp://$DIND_CONTAINER:$DIND_PORT")
+fi
 
 if [[ $USE_TTY -eq 1 ]]; then
   DOCKER_TTY_FLAGS="-it"
@@ -409,6 +483,7 @@ if [[ -n "${WAYLAND_DISPLAY:-}" && -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME
   CLIPBOARD_DOCKER_FLAGS+=(-v "$XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR")
 fi
 
+# shellcheck disable=SC2086 # word-splitting intentional: multi-flag string
 docker run --rm $DOCKER_TTY_FLAGS \
   $DOCKER_NO_TTY_ENV_FLAGS \
   "${TERMINAL_DOCKER_FLAGS[@]}" \
@@ -449,6 +524,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -v "$HOST_AGENT_STATUS:$CONTAINER_AGENT_STATUS" \
   "${GO_DOCKER_FLAGS[@]}" \
   "${SSH_DOCKER_FLAGS[@]}" \
+  "${DIND_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
   --mount "type=bind,src=$MNT_HOST,dst=$MNT_CONTAINER" -w "$WORKDIR" \
   "${EXTRA_MOUNT_FLAGS[@]}" \

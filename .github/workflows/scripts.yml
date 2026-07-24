@@ -88,6 +88,7 @@ jobs:
           files=(
             profile/.bashrc_append
             profile/bashrc.d/*.bash
+            profile/pi-unleashed-safely.sh
             tests/*.sh
             tests/lib/*.sh
           )
@@ -109,6 +110,7 @@ jobs:
           files=(
             profile/.bashrc_append
             profile/bashrc.d/*.bash
+            profile/pi-unleashed-safely.sh
             tests/*.sh
             tests/lib/*.sh
           )
