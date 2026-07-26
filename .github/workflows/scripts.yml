@@ -75,6 +75,14 @@ jobs:
       - name: Run smoke tests
         run: bash tests/bashrc-smoke.sh
 
+  tmux-equalize-row:
+    name: tmux-equalize-row tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tmux-equalize-row tests
+        run: bash tests/tmux-equalize-row-test.sh
+
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest

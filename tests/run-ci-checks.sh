@@ -15,6 +15,7 @@ function run_check {
 run_check "bash -n" bash -n install setup profile/.bashrc_append profile/bashrc.d/*.bash profile/*.sh utils/*.sh tmuxifiers/*.sh tests/*.sh tests/lib/*.sh
 run_check "function syntax" bash tests/check-function-syntax.sh
 run_check "smoke tests" bash tests/bashrc-smoke.sh
+run_check "tmux-equalize-row" bash tests/tmux-equalize-row-test.sh
 
 if command -v shellcheck >/dev/null 2>&1; then
   run_check "shellcheck" shellcheck -x profile/.bashrc_append profile/bashrc.d/*.bash profile/pi-unleashed-safely.sh tests/bashrc-smoke.sh tests/lib/assert.sh

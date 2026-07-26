@@ -1067,6 +1067,16 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		fileOverrideProfile = fileProfile;
 		fileOverrideCustomData = fileCustomData;
 
+		// Initialize signature so syncFileOverride won't re-apply an unchanged file on the first turn
+		if (filePath) {
+			try {
+				const content = fs.readFileSync(filePath, "utf-8");
+				fileOverrideSignature = getFileOverrideSignature(filePath, content);
+			} catch {
+				// File unreadable — syncFileOverride will handle on next turn
+			}
+		}
+
 		if (hasCustomState) {
 			// Session entries or temp file had custom state (highest priority)
 			modelMap = defaultMap;
