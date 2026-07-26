@@ -29,7 +29,7 @@ function buildExecutionPrompt(plan: string, extraInstructions: string): string {
 function buildFinalizePlanPrompt(extraInstructions: string): string {
   const extra = extraInstructions.trim()
   return [
-    "Provide the final implementation plan for this task.",
+    "Provide the final plan for this task.",
     extra ? `Additional instructions for the plan: ${extra}` : undefined,
   ]
     .filter(Boolean)
