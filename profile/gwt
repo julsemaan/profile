@@ -59,14 +59,14 @@ function __compute_wt_path {
 function __default_wt_name {
   local selected="${1:-}"
   case "$selected" in
-    local/*) printf '%s' "${selected#local/}" ;;
-    *)
-      if [[ "$selected" == */* ]]; then
-        printf '%s' "${selected#*/}"
-      else
-        printf '%s' "$selected"
-      fi
-      ;;
+  local/*) printf '%s' "${selected#local/}" ;;
+  *)
+    if [[ "$selected" == */* ]]; then
+      printf '%s' "${selected#*/}"
+    else
+      printf '%s' "$selected"
+    fi
+    ;;
   esac
 }
 
@@ -100,8 +100,15 @@ function __link_shared_path {
 
 function __link_shared_paths {
   local repo_root="$1" wt_path="$2"
-  __link_shared_path "$repo_root/.envrc"          "$wt_path/.envrc"
-  __link_shared_path "$repo_root/julsemaan-tmp"   "$wt_path/julsemaan-tmp"
+  __link_shared_path "$repo_root/.envrc" "$wt_path/.envrc"
+  __link_shared_path "$repo_root/julsemaan-tmp" "$wt_path/julsemaan-tmp"
+}
+
+function __add_new_branch_worktree {
+  local branch_name="$1" wt_path="$2" start_point="$3" remote="$4"
+  git worktree add --no-track -b "$branch_name" "$wt_path" "$start_point" >/dev/null || __die "worktree create failed"
+  git config --local "branch.$branch_name.remote" "$remote" || __die "failed to record remote for '$branch_name'"
+  git config --local push.autoSetupRemote true || __die "failed to enable automatic push setup"
 }
 
 function cmd_create {
@@ -163,73 +170,73 @@ function cmd_create {
   fi
 
   case "$selected" in
-    local/*)
-      local branch_name="${selected#local/}"
-      if [ "$branch_name" = "$primary_branch" ] && [ -n "$primary_branch" ]; then
-        echo "Creating worktree with new branch '$wt_name' from $primary_branch..." >&2
-        git worktree add -b "$wt_name" "$wt_path" "origin/$primary_branch" >/dev/null || __die "worktree create failed"
-      elif git show-ref --verify --quiet "refs/heads/$branch_name" 2>/dev/null; then
-        echo "Creating worktree on local branch '$branch_name'..." >&2
+  local/*)
+    local branch_name="${selected#local/}"
+    if [ "$branch_name" = "$primary_branch" ] && [ -n "$primary_branch" ]; then
+      echo "Creating worktree with new branch '$wt_name' from $primary_branch..." >&2
+      __add_new_branch_worktree "$wt_name" "$wt_path" "origin/$primary_branch" origin
+    elif git show-ref --verify --quiet "refs/heads/$branch_name" 2>/dev/null; then
+      echo "Creating worktree on local branch '$branch_name'..." >&2
+      git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
+    else
+      __die "local branch '$branch_name' does not exist"
+    fi
+    ;;
+  */*)
+    local remote="${selected%%/*}"
+    local branch_name="${selected#*/}"
+    local remote_ref="${remote}/${branch_name}"
+
+    if [ -n "$primary_branch" ] && [ "$branch_name" = "$primary_branch" ] && [ "$remote" = "origin" ]; then
+      echo "Creating worktree with new branch '$wt_name' from $primary_branch..." >&2
+      __add_new_branch_worktree "$wt_name" "$wt_path" "origin/$primary_branch" "$remote"
+    elif ! git show-ref --verify --quiet "refs/heads/$branch_name" 2>/dev/null; then
+      echo "Creating tracking branch '$branch_name' from '$remote_ref'..." >&2
+      git branch --track "$branch_name" "$remote_ref" || __die "failed to create tracking branch"
+      git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
+    else
+      local local_commit remote_commit
+      local_commit="$(git rev-parse "refs/heads/$branch_name" 2>/dev/null)"
+      remote_commit="$(git rev-parse "$remote_ref" 2>/dev/null)"
+
+      if [ "$local_commit" = "$remote_commit" ]; then
+        echo "Creating worktree on existing branch '$branch_name'..." >&2
         git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
       else
-        __die "local branch '$branch_name' does not exist"
-      fi
-      ;;
-    */*)
-      local remote="${selected%%/*}"
-      local branch_name="${selected#*/}"
-      local remote_ref="${remote}/${branch_name}"
+        echo "" >&2
+        echo "Local branch '$branch_name' diverges from '$remote_ref'" >&2
+        local choice
+        read -r -p "Reset local '$branch_name' to match remote? (y/N): " choice </dev/tty
 
-      if [ -n "$primary_branch" ] && [ "$branch_name" = "$primary_branch" ] && [ "$remote" = "origin" ]; then
-        echo "Creating worktree with new branch '$wt_name' from $primary_branch..." >&2
-        git worktree add -b "$wt_name" "$wt_path" "origin/$primary_branch" >/dev/null || __die "worktree create failed"
-      elif ! git show-ref --verify --quiet "refs/heads/$branch_name" 2>/dev/null; then
-        echo "Creating tracking branch '$branch_name' from '$remote_ref'..." >&2
-        git branch --track "$branch_name" "$remote_ref" || __die "failed to create tracking branch"
-        git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
-      else
-        local local_commit remote_commit
-        local_commit="$(git rev-parse "refs/heads/$branch_name" 2>/dev/null)"
-        remote_commit="$(git rev-parse "$remote_ref" 2>/dev/null)"
-
-        if [ "$local_commit" = "$remote_commit" ]; then
-          echo "Creating worktree on existing branch '$branch_name'..." >&2
+        if [[ "$choice" =~ ^[Yy] ]]; then
+          local other_wts
+          other_wts="$(__each | awk -F'\t' -v b="$branch_name" '$2 == b {print $1}')"
+          if [ -n "$other_wts" ]; then
+            __die "cannot reset '$branch_name': checked out in other worktree(s): $other_wts"
+          fi
+          echo "Resetting '$branch_name' to '$remote_ref'..." >&2
+          git branch -f "$branch_name" "$remote_ref" || __die "failed to reset branch"
           git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
         else
-          echo "" >&2
-          echo "Local branch '$branch_name' diverges from '$remote_ref'" >&2
-          local choice
-          read -r -p "Reset local '$branch_name' to match remote? (y/N): " choice </dev/tty
-
-          if [[ "$choice" =~ ^[Yy] ]]; then
-            local other_wts
-            other_wts="$(__each | awk -F'\t' -v b="$branch_name" '$2 == b {print $1}')"
-            if [ -n "$other_wts" ]; then
-              __die "cannot reset '$branch_name': checked out in other worktree(s): $other_wts"
-            fi
-            echo "Resetting '$branch_name' to '$remote_ref'..." >&2
-            git branch -f "$branch_name" "$remote_ref" || __die "failed to reset branch"
-            git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
-          else
-            if git show-ref --verify --quiet "refs/heads/$wt_name" 2>/dev/null; then
-              __die "local branch '$wt_name' already exists (from worktree name)"
-            fi
-            echo "Creating new branch '$wt_name' from '$branch_name'..." >&2
-            git worktree add -b "$wt_name" "$wt_path" "$remote_ref" >/dev/null || __die "worktree create failed"
+          if git show-ref --verify --quiet "refs/heads/$wt_name" 2>/dev/null; then
+            __die "local branch '$wt_name' already exists (from worktree name)"
           fi
+          echo "Creating new branch '$wt_name' from '$branch_name'..." >&2
+          __add_new_branch_worktree "$wt_name" "$wt_path" "$remote_ref" "$remote"
         fi
       fi
-      ;;
-    *)
-      local branch_name="$selected"
-      if [ -n "$primary_branch" ] && [ "$branch_name" = "$primary_branch" ]; then
-        echo "Creating worktree with new branch '$wt_name' from $primary_branch..." >&2
-        git worktree add -b "$wt_name" "$wt_path" "origin/$primary_branch" >/dev/null || __die "worktree create failed"
-      else
-        echo "Creating worktree on local branch '$branch_name'..." >&2
-        git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
-      fi
-      ;;
+    fi
+    ;;
+  *)
+    local branch_name="$selected"
+    if [ -n "$primary_branch" ] && [ "$branch_name" = "$primary_branch" ]; then
+      echo "Creating worktree with new branch '$wt_name' from $primary_branch..." >&2
+      __add_new_branch_worktree "$wt_name" "$wt_path" "origin/$primary_branch" origin
+    else
+      echo "Creating worktree on local branch '$branch_name'..." >&2
+      git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
+    fi
+    ;;
   esac
 
   __link_shared_paths "$repo_root" "$wt_path"
@@ -322,21 +329,21 @@ cmd="$1"
 shift
 
 case "$cmd" in
-  create)
-    cmd_create
-    ;;
-  list)
-    cmd_list
-    ;;
-  rm)
-    cmd_rm "${@:-}"
-    ;;
-  prune)
-    cmd_prune "$@"
-    ;;
-  *)
-    echo "usage: gwt [create|list|rm [branch-or-path]|prune]" >&2
-    echo "  (default: interactive create)" >&2
-    exit 1
-    ;;
+create)
+  cmd_create
+  ;;
+list)
+  cmd_list
+  ;;
+rm)
+  cmd_rm "${@:-}"
+  ;;
+prune)
+  cmd_prune "$@"
+  ;;
+*)
+  echo "usage: gwt [create|list|rm [branch-or-path]|prune]" >&2
+  echo "  (default: interactive create)" >&2
+  exit 1
+  ;;
 esac

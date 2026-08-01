@@ -9,6 +9,7 @@ on:
       - "install"
       - "setup"
       - "profile/.bashrc_append"
+      - "profile/gwt"
       - "profile/bashrc.d/**"
       - "profile/*.sh"
       - "utils/*.sh"
@@ -25,6 +26,7 @@ on:
       - "install"
       - "setup"
       - "profile/.bashrc_append"
+      - "profile/gwt"
       - "profile/bashrc.d/**"
       - "profile/*.sh"
       - "utils/*.sh"
@@ -50,6 +52,7 @@ jobs:
             install
             setup
             profile/.bashrc_append
+            profile/gwt
             profile/bashrc.d/*.bash
             profile/*.sh
             utils/*.sh
@@ -74,6 +77,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run smoke tests
         run: bash tests/bashrc-smoke.sh
+      - name: Run gwt tests
+        run: bash tests/gwt-test.sh
 
   tmux-equalize-row:
     name: tmux-equalize-row tests
@@ -95,6 +100,7 @@ jobs:
           # Refactored files only; expand scope as install/setup/utils are cleaned up
           files=(
             profile/.bashrc_append
+            profile/gwt
             profile/bashrc.d/*.bash
             profile/pi-unleashed-safely.sh
             tests/*.sh
@@ -117,6 +123,7 @@ jobs:
           # Refactored files only; expand scope as install/setup/utils are cleaned up
           files=(
             profile/.bashrc_append
+            profile/gwt
             profile/bashrc.d/*.bash
             profile/pi-unleashed-safely.sh
             tests/*.sh
