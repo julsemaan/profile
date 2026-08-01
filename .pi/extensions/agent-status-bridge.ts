@@ -2,7 +2,7 @@
  * Bridge: profile-side agent status enrichment.
  *
  * Reads state from existing extension signals and session data,
- * emits composite `agent-status:profile` event for the astatus writer.
+ * emits composite `agent-status:profile` event for the agent-status writer.
  *
  * Priority:
  *   question blocked → input-required
