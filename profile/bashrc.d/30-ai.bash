@@ -101,7 +101,7 @@ function gcoto-model {
       echo "Current model: $_GCOTO_MODEL"
     fi
     echo "Select AI model for commit messages:"
-    echo "  1) openai (gpt-5.4-mini)"
+    echo "  1) openai (gpt-5.6-luna)"
     echo "  2) deepseek (v4-flash)"
     echo "  3) free (mimo-v2.5)"
     echo "  q) cancel"
@@ -114,7 +114,7 @@ function gcoto-model {
       echo
       case $REPLY in
       1)
-        _GCOTO_MODEL="openai-codex/gpt-5.4-mini"
+        _GCOTO_MODEL="openai-codex/gpt-5.6-luna"
         break
         ;;
       2)
@@ -132,7 +132,7 @@ function gcoto-model {
       esac
     done
     ;;
-  openai) _GCOTO_MODEL="openai-codex/gpt-5.4-mini" ;;
+  openai) _GCOTO_MODEL="openai-codex/gpt-5.6-luna" ;;
   deepseek) _GCOTO_MODEL="deepseek/deepseek-v4-flash" ;;
   free) _GCOTO_MODEL="opencode/mimo-v2.5-free" ;;
   current) echo "${_GCOTO_MODEL:-<unset>}" ;;

@@ -353,8 +353,16 @@ echo ""
 echo "=== Scenario 5: gcoto-model tty single-key selection ==="
 
 _result=$(_run_gcoto_model_tty '1')
-assert_match "gcoto-model selects openai on single keypress" "__MODEL=openai-codex/gpt-5.4-mini__" "$_result"
+assert_match "gcoto-model selects openai on single keypress" "__MODEL=openai-codex/gpt-5.6-luna__" "$_result"
 assert_match "gcoto-model interactive success exits zero" "__RC=0__" "$_result"
+
+_result=$(_run_interactive "" '
+  echo "source '"$LOADER"'" > "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+  gcoto-model openai
+  echo "__MODEL=${_GCOTO_MODEL:-<unset>}__"
+')
+assert_match "gcoto-model openai argument selects openai" "__MODEL=openai-codex/gpt-5.6-luna__" "$_result"
 
 _result=$(_run_gcoto_model_tty 'x2')
 assert_match "gcoto-model invalid key reports error" "Invalid choice" "$_result"
@@ -373,7 +381,7 @@ assert_match "gcoto-model selection still updates model" "__MODEL=deepseek/deeps
 assert_match "gcoto-model selection exits zero" "__RC=0__" "$_result"
 
 _result=$(_run_gcoto_model_tty '1')
-assert_match "gcoto-model with no initial model selects openai" "__MODEL=openai-codex/gpt-5.4-mini__" "$_result"
+assert_match "gcoto-model with no initial model selects openai" "__MODEL=openai-codex/gpt-5.6-luna__" "$_result"
 assert_not_match "gcoto-model no initial model omits Current line" "Current model:" "$_result"
 
 # ---------------------------------------------------------------------------
