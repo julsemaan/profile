@@ -184,13 +184,21 @@ echo "=== Scenario 7: tmux coding window naming ==="
 
 _result=$(_run_interactive "" '
   _wt_path="$(mktemp -d)"
+  _git_common_dir="$(mktemp -d)"
+  mkdir -p "$_git_common_dir/worktrees/test"
   _regular_path="$(mktemp -d)/regular-root"
   mkdir -p "$_regular_path"
 
-  # Override gwt and git branch lookup with functions (avoids PATH/heredoc issues)
+  # Override gwt and git worktree lookup with functions (avoids PATH/heredoc issues)
   function gwt { echo "$_wt_path"; }
   function git {
-    if [ "${1:-}" = "-C" ] && [ "${3:-}" = "symbolic-ref" ]; then
+    if [ "${1:-}" = "-C" ] && [ "${2:-}" = "$_wt_path" ] && [ "${3:-}" = "rev-parse" ]; then
+      case "${4:-}" in
+        --git-dir) echo "$_git_common_dir/worktrees/test"; return 0 ;;
+        --git-common-dir) echo "$_git_common_dir"; return 0 ;;
+      esac
+    fi
+    if [ "${1:-}" = "-C" ] && [ "${2:-}" = "$_wt_path" ] && [ "${3:-}" = "symbolic-ref" ]; then
       echo "feature/foo"
       return 0
     fi
@@ -218,14 +226,18 @@ _result=$(_run_interactive "" '
   echo "TNCW_ROOT=$_LAYOUT_ROOT"
 
   unset T_WIN_NAME
+  tmux-new-coding "$_wt_path"
+  echo "TNC_WORKTREE_WINDOW=$_LAYOUT_WINDOW"
+
   tmux-new-coding "$_regular_path"
   echo "TNC_WINDOW=$_LAYOUT_WINDOW"
   echo "TNC_ROOT=$_LAYOUT_ROOT"
-  rm -rf "$_wt_path" "$(dirname "$_regular_path")"
+  rm -rf "$_wt_path" "$_git_common_dir" "$(dirname "$_regular_path")"
 ')
 
 assert_match "tncw passes worktree path as T_WIN_ROOT" "TNCW_ROOT=/tmp/" "$_result"
 assert_match "tncw names window from checked-out branch" "TNCW_WINDOW=feature/foo" "$_result"
+assert_match "tnc names worktree window from checked-out branch" "TNC_WORKTREE_WINDOW=feature/foo" "$_result"
 assert_match "tnc retains directory-basename naming" "TNC_WINDOW=regular-root" "$_result"
 
 # ---------------------------------------------------------------------------

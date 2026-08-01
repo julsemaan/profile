@@ -32,13 +32,37 @@ alias kpptmux="cd ~ && jointmuxifier kpp"
 alias kubextmux="cd ~ && jointmuxifier kubex"
 
 tmux-new-coding() {
-  local win_root="$1"
+  local win_root="$1" win_name git_dir common_dir
   if [ -z "$win_root" ]; then
     echo "usage: tmux-new-coding <T_WIN_ROOT>" >&2
     return 1
   fi
 
-  T_WIN_ROOT="$win_root" tmuxifier load-window coding
+  git_dir="$(git -C "$win_root" rev-parse --git-dir 2>/dev/null)" || git_dir=""
+  common_dir="$(git -C "$win_root" rev-parse --git-common-dir 2>/dev/null)" || common_dir=""
+  if [ -n "$git_dir" ] && [ -n "$common_dir" ]; then
+    git_dir="$(cd "$win_root" && cd "$git_dir" && pwd -P)" || git_dir=""
+    common_dir="$(cd "$win_root" && cd "$common_dir" && pwd -P)" || common_dir=""
+  fi
+
+  if [ -n "$git_dir" ] && [ -n "$common_dir" ] && [ "$git_dir" != "$common_dir" ]; then
+    win_name="$(git -C "$win_root" symbolic-ref --quiet --short HEAD)" || {
+      echo "tmux-new-coding: unable to resolve worktree branch" >&2
+      return 1
+    }
+    [ -n "$win_name" ] || {
+      echo "tmux-new-coding: unable to resolve worktree branch" >&2
+      return 1
+    }
+  else
+    win_name="${T_WIN_NAME:-}"
+  fi
+
+  if [ -n "$win_name" ]; then
+    T_WIN_NAME="$win_name" T_WIN_ROOT="$win_root" tmuxifier load-window coding
+  else
+    T_WIN_ROOT="$win_root" tmuxifier load-window coding
+  fi
 }
 
 tmux-new-coding-wt() {

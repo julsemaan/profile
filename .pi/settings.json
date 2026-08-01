@@ -26,6 +26,6 @@
     "npm:@earendil-works/pi-tui",
     "npm:pi-mcp-adapter",
     "https://github.com/DietrichGebert/ponytail@v4.7.0",
-    "https://github.com/julsemaan/agent-status@v0.1.13"
+    "https://github.com/julsemaan/agent-status@v0.1.28"
   ]
 }
