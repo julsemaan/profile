@@ -21,7 +21,7 @@ describe("findBuiltinProfile", () => {
 	it("parses bare built-in names", () => {
 		assert.equal(findBuiltinProfile("pub"), "pub");
 		assert.equal(findBuiltinProfile("priv"), "priv");
-		assert.equal(findBuiltinProfile("pubDeep"), "pubDeep");
+		assert.equal(findBuiltinProfile("deep"), "deep");
 		assert.equal(findBuiltinProfile("pubFree"), "pubFree");
 		assert.equal(findBuiltinProfile("copilotPriv"), "copilotPriv");
 	});
@@ -29,7 +29,7 @@ describe("findBuiltinProfile", () => {
 	it("is case-insensitive", () => {
 		assert.equal(findBuiltinProfile("PUB"), "pub");
 		assert.equal(findBuiltinProfile("Priv"), "priv");
-		assert.equal(findBuiltinProfile("PUBDEEP"), "pubDeep");
+		assert.equal(findBuiltinProfile("DEEP"), "deep");
 	});
 
 	it("returns undefined for unknown names", () => {
@@ -156,7 +156,7 @@ describe("parseProfileContent", () => {
 describe("serializeBuiltinProfile", () => {
 	it("returns canonical name", () => {
 		assert.equal(serializeBuiltinProfile("pub"), "pub");
-		assert.equal(serializeBuiltinProfile("pubDeep"), "pubDeep");
+		assert.equal(serializeBuiltinProfile("deep"), "deep");
 	});
 });
 
@@ -280,6 +280,11 @@ describe("getNextProfile", () => {
 	it("cycles builtin to next builtin", () => {
 		assert.equal(getNextProfile(builtins[0], false), builtins[1]);
 		assert.equal(getNextProfile(builtins[0], true), builtins[1]);
+	});
+
+	it("cycles pub to deep", () => {
+		assert.equal(getNextProfile("pub", false), "deep");
+		assert.equal(getNextProfile("pub", true), "deep");
 	});
 
 	it("returns first builtin for unknown current", () => {

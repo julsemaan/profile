@@ -46,22 +46,22 @@ const MODEL_PROFILES: Record<BuiltinProfile, { modelMap: ModelMap }> = {
 			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
 		},
 	},
-	pubDeep: {
+	deep: {
 		modelMap: {
-			"custom/large": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "high" },
-			"custom/medium": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "medium" },
+			"custom/large": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "max" },
+			"custom/medium": { model: "deepseek/deepseek-v4-flash", thinkingLevel: "max" },
 		},
 	},
 	priv: {
 		modelMap: {
 			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
-			"custom/medium": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "low" },
+			"custom/medium": { model: "openai-codex/gpt-5.6-luna", thinkingLevel: "max" },
 		},
 	},
 	copilotPriv: {
 		modelMap: {
 			"custom/large": { model: "github-copilot/gpt-5.6-sol", thinkingLevel: "high" },
-			"custom/medium": { model: "github-copilot/gpt-5.6-sol", thinkingLevel: "medium" },
+			"custom/medium": { model: "github-copilot/gpt-5.6-luna", thinkingLevel: "max" },
 		},
 	},
 };

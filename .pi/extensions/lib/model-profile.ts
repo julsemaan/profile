@@ -1,7 +1,7 @@
 /**
  * Model-profile codec — parse, validate, and serialize model profiles.
  *
- * Built-in profiles are bare names (case-insensitive): pub, priv, pubDeep, etc.
+ * Built-in profiles are bare names (case-insensitive): pub, deep, priv, etc.
  * Custom profiles are JSON with both alias keys.
  */
 
@@ -43,10 +43,10 @@ export function parseModelRef(modelRef: string): { provider: string; modelId: st
 
 // ── Built-in profile names (from build-plan-mode.ts) ───────────────────────
 
-export type BuiltinProfile = "pubFree" | "pub" | "pubDeep" | "priv" | "copilotPriv";
+export type BuiltinProfile = "pubFree" | "pub" | "deep" | "priv" | "copilotPriv";
 
 export const BUILTIN_PROFILES: readonly BuiltinProfile[] = [
-	"pubFree", "pub", "pubDeep", "priv", "copilotPriv",
+	"pubFree", "pub", "deep", "priv", "copilotPriv",
 ];
 
 export function isBuiltinProfile(value: string): value is BuiltinProfile {

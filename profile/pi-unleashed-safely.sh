@@ -40,7 +40,7 @@ Arguments:
                       Warning: can hide host-installed integrations like
                       Herdr `herdr-agent-state.ts`.
   --model-profile NAME
-                      Start Pi with a specific model profile (e.g. pubDeep, pub, priv).
+                      Start Pi with a specific model profile (e.g. deep, pub, priv).
                       Overrides julsemaan-tmp/model-profile for this session only.
   --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
                       on a private network. Sets DOCKER_HOST inside the container
@@ -82,7 +82,7 @@ Examples:
   ./pi-unleashed-safely.sh --mount /home/julien/src --workdir /home/julien/src/profile
   ./pi-unleashed-safely.sh --mount2 /run/user/1000/gvfs/sftp:host=ubun22-backup-2/root /backup --workdir /backup
   ./pi-unleashed-safely.sh --mount2 "$HOME" /mnt
-  ./pi-unleashed-safely.sh --model-profile pubDeep
+  ./pi-unleashed-safely.sh --model-profile deep
   ./pi-unleashed-safely.sh -- --help
 USAGE
 }
