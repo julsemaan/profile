@@ -14,6 +14,7 @@ import {
 } from "./modes.js";
 import {
 	BUILTIN_PROFILES,
+	VALID_THINKING_LEVELS,
 	type AliasConfig,
 	type BuiltinProfile,
 	type ModelAlias,
@@ -30,6 +31,7 @@ import {
 } from "./lib/model-profile.js";
 
 const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
+const THINKING_LEVELS_DISPLAY = VALID_THINKING_LEVELS.join("|");
 
 const MODEL_PROFILES: Record<BuiltinProfile, { modelMap: ModelMap }> = {
 	pubFree: {
@@ -171,7 +173,7 @@ function parseAliasArgs(
 			return { thinkingLevel: token };
 		}
 		return {
-			error: `Invalid argument: "${token}". Expected provider/model or thinking level (off|minimal|low|medium|high|xhigh).`,
+			error: `Invalid argument: "${token}". Expected provider/model or thinking level (${THINKING_LEVELS_DISPLAY}).`,
 		};
 	}
 
@@ -185,7 +187,7 @@ function parseAliasArgs(
 			return { error: `Invalid model reference: "${modelToken}". Expected format: provider/model` };
 		if (!isThinkingLevel(thinkingToken))
 			return {
-				error: `Second argument must be a thinking level (off|minimal|low|medium|high|xhigh), got: "${thinkingToken}"`,
+				error: `Second argument must be a thinking level (${THINKING_LEVELS_DISPLAY}), got: "${thinkingToken}"`,
 			};
 		return { model: modelToken, thinkingLevel: thinkingToken };
 	}
@@ -579,8 +581,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			if (!modelPart.includes("/")) return null;
 			if (!parseModelRef(modelPart)) return null;
 
-			const levels: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
-			const matching = levels.filter((l) => l.startsWith(thinkingPart));
+			const matching = VALID_THINKING_LEVELS.filter((l) => l.startsWith(thinkingPart));
 			if (matching.length === 0) return null;
 
 			return matching.map((level) => ({
@@ -720,14 +721,14 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("large-model", {
-		description: "Show or set model/thinking behind custom/large. Usage: /large-model [provider/model] [off|minimal|low|medium|high|xhigh]",
+		description: `Show or set model/thinking behind custom/large. Usage: /large-model [provider/model] [${THINKING_LEVELS_DISPLAY}]`,
 		getArgumentCompletions: (prefix: string) => getAliasArgumentCompletions(prefix, "custom/large"),
 		handler: async (args, ctx) => {
 			const parsed = parseAliasArgs(args);
 			if ("error" in parsed) {
 				ctx.ui.notify(parsed.error, "warning");
 				ctx.ui.notify(
-					`Usage: /large-model [provider/model] [off|minimal|low|medium|high|xhigh]\nCurrent: ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})`,
+					`Usage: /large-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\nCurrent: ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})`,
 					"info",
 				);
 				return;
@@ -747,14 +748,14 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("medium-model", {
-		description: "Show or set model/thinking behind custom/medium. Usage: /medium-model [provider/model] [off|minimal|low|medium|high|xhigh]",
+		description: `Show or set model/thinking behind custom/medium. Usage: /medium-model [provider/model] [${THINKING_LEVELS_DISPLAY}]`,
 		getArgumentCompletions: (prefix: string) => getAliasArgumentCompletions(prefix, "custom/medium"),
 		handler: async (args, ctx) => {
 			const parsed = parseAliasArgs(args);
 			if ("error" in parsed) {
 				ctx.ui.notify(parsed.error, "warning");
 				ctx.ui.notify(
-					`Usage: /medium-model [provider/model] [off|minimal|low|medium|high|xhigh]\nCurrent: ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+					`Usage: /medium-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\nCurrent: ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
 					"info",
 				);
 				return;

@@ -4,13 +4,15 @@
  * Built-in modes (build, plan) + extra modes from .pi/modes/*.md.
  */
 
+import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgentDir, parseFrontmatter } from "@mariozechner/pi-coding-agent";
+import { VALID_THINKING_LEVELS } from "./lib/model-profile.js";
 
 export type ModeAccess = "build" | "read-only";
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 
 export interface ModeConfig {
 	name: string;
@@ -37,14 +39,7 @@ export interface ModeConfig {
 	filePath?: string;
 }
 
-const VALID_THINKING_LEVELS = new Set<string>([
-	"off",
-	"minimal",
-	"low",
-	"medium",
-	"high",
-	"xhigh",
-]);
+const VALID_THINKING_LEVEL_SET = new Set<string>(VALID_THINKING_LEVELS);
 
 const VALID_ACCESS = new Set<string>(["build", "read-only"]);
 
@@ -161,7 +156,7 @@ function loadModeFromFile(filePath: string): ModeConfig | { error: string } {
 	let thinking: ThinkingLevel | undefined;
 	if (typeof frontmatter.thinking === "string") {
 		const tl = frontmatter.thinking.trim().toLowerCase();
-		if (VALID_THINKING_LEVELS.has(tl)) {
+		if (VALID_THINKING_LEVEL_SET.has(tl)) {
 			thinking = tl as ThinkingLevel;
 		}
 	}

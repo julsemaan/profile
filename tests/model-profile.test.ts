@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import {
 	BUILTIN_PROFILES,
+	VALID_THINKING_LEVELS,
 	applyProfileData,
 	findBuiltinProfile,
 	getCycleProfiles,
@@ -51,6 +52,23 @@ describe("validateCustomProfile", () => {
 			assert.equal(result.data["custom/large"].thinkingLevel, "high");
 			assert.equal(result.data["custom/medium"].model, "opencode/mimo-v2.5-free");
 			assert.equal(result.data["custom/medium"].thinkingLevel, "medium");
+		}
+	});
+
+	it("accepts and preserves every pi thinking level", () => {
+		for (const thinkingLevel of VALID_THINKING_LEVELS) {
+			const profile = {
+				"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel },
+				"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
+			};
+			const result = validateCustomProfile(profile);
+			assert.equal(result.ok, true);
+			if (result.ok) {
+				assert.equal(result.data["custom/large"].thinkingLevel, thinkingLevel);
+				const parsed = parseProfileContent(serializeCustomProfile(result.data));
+				assert.equal(parsed.type, "custom");
+				if (parsed.type === "custom") assert.deepEqual(parsed.data, result.data);
+			}
 		}
 	});
 

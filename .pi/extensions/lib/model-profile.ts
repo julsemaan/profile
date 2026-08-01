@@ -5,7 +5,7 @@
  * Custom profiles are JSON with both alias keys.
  */
 
-import type { ThinkingLevel } from "../modes.js";
+import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 
 export type ModelAlias = "custom/large" | "custom/medium";
 export type AliasConfig = { model: string; thinkingLevel: ThinkingLevel };
@@ -15,9 +15,17 @@ export type ModelMap = Record<ModelAlias, AliasConfig>;
 
 export const BUILTIN_ALIASES: readonly ModelAlias[] = ["custom/large", "custom/medium"];
 
-export const VALID_THINKING_LEVELS: readonly ThinkingLevel[] = [
-	"off", "minimal", "low", "medium", "high", "xhigh",
-];
+const THINKING_LEVELS: Record<ThinkingLevel, true> = {
+	off: true,
+	minimal: true,
+	low: true,
+	medium: true,
+	high: true,
+	xhigh: true,
+	max: true,
+};
+
+export const VALID_THINKING_LEVELS = Object.keys(THINKING_LEVELS) as ThinkingLevel[];
 
 export function isThinkingLevel(value: string): value is ThinkingLevel {
 	return (VALID_THINKING_LEVELS as readonly string[]).includes(value);
