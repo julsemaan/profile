@@ -42,13 +42,21 @@ tmux-new-coding() {
 }
 
 tmux-new-coding-wt() {
-  local path
+  local path branch
   path="$(gwt create)" || return 1
   [ -d "$path" ] || {
     echo "tmux-new-coding-wt: invalid worktree path" >&2
     return 1
   }
-  tmux-new-coding "$path"
+  branch="$(git -C "$path" symbolic-ref --quiet --short HEAD)" || {
+    echo "tmux-new-coding-wt: unable to resolve worktree branch" >&2
+    return 1
+  }
+  [ -n "$branch" ] || {
+    echo "tmux-new-coding-wt: unable to resolve worktree branch" >&2
+    return 1
+  }
+  T_WIN_NAME="$branch" tmux-new-coding "$path"
 }
 
 alias tnc='tmux-new-coding'

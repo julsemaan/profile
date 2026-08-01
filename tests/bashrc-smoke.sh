@@ -177,34 +177,56 @@ assert_match "tncw alias" "__AL_tncw__" "$_result"
 assert_match "kld alias" "__AL_kld__" "$_result"
 
 # ---------------------------------------------------------------------------
-# Scenario 7 - tmux-new-coding-wt success path
+# Scenario 7 - tmux coding window naming
 # ---------------------------------------------------------------------------
 echo ""
-echo "=== Scenario 7: tmux-new-coding-wt success path ==="
+echo "=== Scenario 7: tmux coding window naming ==="
 
 _result=$(_run_interactive "" '
-  # Create a real temp dir to act as the worktree path
   _wt_path="$(mktemp -d)"
+  _regular_path="$(mktemp -d)/regular-root"
+  mkdir -p "$_regular_path"
 
-  # Override gwt and tmuxifier with functions (avoids PATH/heredoc issues)
+  # Override gwt and git branch lookup with functions (avoids PATH/heredoc issues)
   function gwt { echo "$_wt_path"; }
-  export -f gwt
-  _TMUX_CALLED=""
-  _TMUX_TWR=""
-  function tmuxifier { _TMUX_CALLED="$*"; _TMUX_TWR="$T_WIN_ROOT"; }
-  export -f tmuxifier
+  function git {
+    if [ "${1:-}" = "-C" ] && [ "${3:-}" = "symbolic-ref" ]; then
+      echo "feature/foo"
+      return 0
+    fi
+    command git "$@"
+  }
+
+  # Run real coding.window.sh with tmuxifier primitives stubbed.
+  function window_root { _LAYOUT_ROOT="$1"; }
+  function new_window { _LAYOUT_WINDOW="$1"; }
+  function run_cmd { :; }
+  function split_v { :; }
+  function split_h { :; }
+  function select_pane { :; }
+  function tmuxifier {
+    if [ "$1" = "load-window" ] && [ "$2" = "coding" ]; then
+      source "'"$REPO_ROOT"'/tmuxifiers/coding.window.sh"
+    fi
+  }
 
   echo "source '"$LOADER"'" > "$HOME/.bashrc"
   source "$HOME/.bashrc"
 
   tmux-new-coding-wt
-  echo "T_WIN_ROOT=$_TMUX_TWR"
-  echo "TMUXIFIER_ARGS=$_TMUX_CALLED"
-  rm -rf "$_wt_path"
+  echo "TNCW_WINDOW=$_LAYOUT_WINDOW"
+  echo "TNCW_ROOT=$_LAYOUT_ROOT"
+
+  unset T_WIN_NAME
+  tmux-new-coding "$_regular_path"
+  echo "TNC_WINDOW=$_LAYOUT_WINDOW"
+  echo "TNC_ROOT=$_LAYOUT_ROOT"
+  rm -rf "$_wt_path" "$(dirname "$_regular_path")"
 ')
 
-assert_match "tmux-new-coding-wt passes worktree path as T_WIN_ROOT" "T_WIN_ROOT=/tmp/" "$_result"
-assert_match "tmux-new-coding-wt calls tmuxifier load-window coding" "TMUXIFIER_ARGS=load-window coding" "$_result"
+assert_match "tncw passes worktree path as T_WIN_ROOT" "TNCW_ROOT=/tmp/" "$_result"
+assert_match "tncw names window from checked-out branch" "TNCW_WINDOW=feature/foo" "$_result"
+assert_match "tnc retains directory-basename naming" "TNC_WINDOW=regular-root" "$_result"
 
 # ---------------------------------------------------------------------------
 # Scenario 3 - Repeated source does not duplicate PROMPT_COMMAND hook
