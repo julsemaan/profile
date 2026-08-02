@@ -25,7 +25,7 @@
     "npm:pi-caveman",
     "npm:@earendil-works/pi-tui",
     "npm:pi-mcp-adapter",
-    "https://github.com/DietrichGebert/ponytail@v4.7.0",
-    "https://github.com/julsemaan/agent-status@v0.1.28"
+    "npm:agent-status-pi",
+    "https://github.com/DietrichGebert/ponytail@v4.7.0"
   ]
 }

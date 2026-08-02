@@ -18,7 +18,7 @@ DIND_ENABLED=0
 # Extra npm packages to install into image.
 # `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
 # so install it explicitly to keep extension loadable.
-PI_NPM_INSTALL_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui" "pi-mcp-adapter")
+PI_NPM_INSTALL_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui" "pi-mcp-adapter" "agent-status-pi")
 
 function usage {
   cat <<'USAGE'
