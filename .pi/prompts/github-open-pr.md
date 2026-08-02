@@ -50,7 +50,6 @@ github_list_pull_requests({
   owner,
   repo,
   state: "open",
-  base,
   head: `${owner}:${head}`,
   perPage: 100,
   fields: ["number", "title", "html_url", "draft", "head", "base"]
@@ -114,7 +113,8 @@ Body:
 ```
 
 Then use the `question` tool for exactly one creation confirmation. Offer clear `Create PR` and
-`Cancel` choices. Do not ask for confirmation in plain assistant text. On cancellation, report that
+`Cancel` choices with `allowOther: false`; proceed only when the user selects `Create PR`. Do not
+ask for confirmation in plain assistant text. On cancellation or any non-Create answer, report that
 no push or pull request creation occurred and stop; do not alter files, refs, or remote state.
 
 ## Create
@@ -129,7 +129,7 @@ Only after the user selects `Create PR`:
 
    If push fails, report the exact error and stop. Do not call the create tool or retry.
 2. Recheck for an existing open pull request with `github_list_pull_requests` using the same owner,
-   repository, base, and head filters. If one now exists, report its URL and stop without creating a
+   repository, and head filters. If one now exists, report its URL and stop without creating a
    duplicate.
 3. Call `github_create_pull_request` with:
 
