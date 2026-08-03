@@ -50,13 +50,15 @@ Arguments:
 Environment:
   PI_NPM_PACKAGE        NPM package name to install for the CLI.
                         Defaults to "@mariozechner/pi-coding-agent".
-  PI_SSH_KEY_PATH       Opt-in host SSH private key path mounted read-only
-                        into container. No SSH key mounted unless set.
+  PI_SSH_KEY_PATH       Opt-in host SSH private key path. When valid, Git
+                        explicitly uses mounted key with IdentitiesOnly=yes
+                        and mounted host ~/.ssh/known_hosts for strict
+                        host-key verification.
   SSH forwarding        File-only. No SSH agent/socket forwarding.
                         When PI_SSH_KEY_PATH points under host ~/.ssh, key
                         keeps same relative path inside container ~/.ssh to
-                        match IdentityFile entries. Host ~/.ssh/known_hosts
-                        and ~/.ssh/config mount read-only when present.
+                        match IdentityFile entries. Host ~/.ssh/config is
+                        selected with -F when present.
   Pi state persistence  Persists ~/.pi across runs for settings,
                         auth, packages, and sessions.
                         Use --dev to isolate extensions, prompts, and skills.
@@ -258,6 +260,8 @@ if [[ -n "$HOST_SSH_KEY" && -f "$HOST_SSH_KEY" ]]; then
   SSH_DOCKER_FLAGS+=(--tmpfs "$CONTAINER_HOME/.ssh:rw,exec,uid=$RESOLVED_UID,gid=$RESOLVED_GID")
 
   SSH_KEY_CONTAINER_PATH="$CONTAINER_HOME/.ssh/id_rsa"
+  SSH_KNOWN_HOSTS_CONTAINER_PATH="$CONTAINER_HOME/.ssh/known_hosts"
+  SSH_CONFIG_CONTAINER_PATH="$CONTAINER_HOME/.ssh/config"
 
   case "$HOST_SSH_KEY" in
   "$HOST_SSH_DIR"/*)
@@ -279,12 +283,15 @@ if [[ -n "$HOST_SSH_KEY" && -f "$HOST_SSH_KEY" ]]; then
   SSH_DOCKER_FLAGS+=(-v "$HOST_SSH_KEY:$SSH_KEY_CONTAINER_PATH:ro")
 
   if [[ -f "$HOST_KNOWN_HOSTS" ]]; then
-    SSH_DOCKER_FLAGS+=(-v "$HOST_KNOWN_HOSTS:$CONTAINER_HOME/.ssh/known_hosts:ro")
+    SSH_DOCKER_FLAGS+=(-v "$HOST_KNOWN_HOSTS:$SSH_KNOWN_HOSTS_CONTAINER_PATH:ro")
   fi
 
+  GIT_SSH_COMMAND_VALUE="ssh -i $SSH_KEY_CONTAINER_PATH -o IdentitiesOnly=yes -o UserKnownHostsFile=$SSH_KNOWN_HOSTS_CONTAINER_PATH"
   if [[ -f "$HOST_SSH_CONFIG" ]]; then
-    SSH_DOCKER_FLAGS+=(-v "$HOST_SSH_CONFIG:$CONTAINER_HOME/.ssh/config:ro")
+    SSH_DOCKER_FLAGS+=(-v "$HOST_SSH_CONFIG:$SSH_CONFIG_CONTAINER_PATH:ro")
+    GIT_SSH_COMMAND_VALUE+=" -F $SSH_CONFIG_CONTAINER_PATH"
   fi
+  SSH_DOCKER_FLAGS+=(-e "GIT_SSH_COMMAND=$GIT_SSH_COMMAND_VALUE")
 fi
 
 if [[ $REBUILD -eq 1 ]]; then

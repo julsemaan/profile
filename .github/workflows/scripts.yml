@@ -79,6 +79,8 @@ jobs:
         run: bash tests/bashrc-smoke.sh
       - name: Run gwt tests
         run: bash tests/gwt-test.sh
+      - name: Run pi wrapper tests
+        run: bash tests/pi-unleashed-safely-test.sh
 
   tmux-equalize-row:
     name: tmux-equalize-row tests
