@@ -60,6 +60,21 @@ function gch {
     git checkout "$@"
   fi
 }
+
+# bash-completion may lazy-load Git completion; load it before registering gch.
+if ! declare -F __git_complete >/dev/null 2>&1; then
+  if declare -F _comp_load >/dev/null 2>&1; then
+    _comp_load -- git >/dev/null 2>&1 || :
+  elif declare -F __load_completion >/dev/null 2>&1; then
+    __load_completion git >/dev/null 2>&1 || :
+  elif declare -F _completion_loader >/dev/null 2>&1; then
+    _completion_loader git >/dev/null 2>&1 || :
+  fi
+fi
+if ! declare -F __git_complete >/dev/null 2>&1 && [ -f /usr/share/bash-completion/completions/git ]; then
+  # shellcheck disable=SC1091
+  source /usr/share/bash-completion/completions/git >/dev/null 2>&1 || :
+fi
 if type __git_complete >/dev/null 2>&1; then
   __git_complete gch git_checkout
 fi

@@ -177,6 +177,48 @@ assert_match "tncw alias" "__AL_tncw__" "$_result"
 assert_match "kld alias" "__AL_kld__" "$_result"
 
 # ---------------------------------------------------------------------------
+# Scenario 2b - Git completion loads before gch registration
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 2b: Lazy Git completion loading ==="
+
+_result=$(_run_interactive "" '
+  unset -f _comp_load __load_completion _completion_loader __git_complete 2>/dev/null || true
+  complete -r gch 2>/dev/null || true
+  function add_alias { :; }
+  function _comp_load {
+    if [ "$1" != "--" ] || [ "$2" != "git" ]; then
+      return 1
+    fi
+    function git_checkout { :; }
+    function __git_complete {
+      complete -F "$2" "$1"
+    }
+  }
+  source "'"$FRAGMENTS_DIR"'/20-git.bash"
+  complete -p gch
+')
+assert_match "current Git completion loader registers gch" "git_checkout" "$_result"
+
+_result=$(_run_interactive "" '
+  unset -f _comp_load __load_completion _completion_loader __git_complete 2>/dev/null || true
+  complete -r gch 2>/dev/null || true
+  function add_alias { :; }
+  function __load_completion {
+    if [ "$1" != "git" ]; then
+      return 1
+    fi
+    function git_checkout { :; }
+    function __git_complete {
+      complete -F "$2" "$1"
+    }
+  }
+  source "'"$FRAGMENTS_DIR"'/20-git.bash"
+  complete -p gch
+')
+assert_match "legacy Git completion loader registers gch" "git_checkout" "$_result"
+
+# ---------------------------------------------------------------------------
 # Scenario 7 - tmux coding window naming
 # ---------------------------------------------------------------------------
 echo ""
