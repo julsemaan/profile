@@ -125,31 +125,19 @@ If worker fails for one item:
 
 After all items:
 
-Check for commits ahead of upstream:
-
 ```bash
-git log --oneline @{upstream}..HEAD
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git log --oneline @{upstream}..HEAD 2>/dev/null || git log --oneline origin/HEAD..HEAD 2>/dev/null || true
+git push --set-upstream origin "$BRANCH"
 ```
 
-If output is non-empty, run:
-
-```bash
-git push
-```
+`--set-upstream` creates the tracking ref if missing, updates it if present — so branches created in worktrees without an upstream push cleanly.
 
 Rules:
 - push once only
 - if push fails, report exact failure
 - do not retry
 - do not create synthetic commits
-
-If upstream is unavailable, fall back to:
-
-```bash
-git log --oneline origin/HEAD..HEAD
-```
-
-If both checks fail, report push-status uncertainty in final report.
 
 ### 6. Final report
 
@@ -287,7 +275,7 @@ Ensure todos are completed before exit.
 
 Never run `git add *`.
 If worker created commits, assume worker staged only intended files.
-Main session only inspects commit state and runs single final `git push` when needed.
+Main session only inspects commit state and runs single final `git push --set-upstream origin "$(git rev-parse --abbrev-ref HEAD)"` when needed.
 
 ## Success definition
 
