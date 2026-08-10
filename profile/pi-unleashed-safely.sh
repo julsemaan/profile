@@ -396,6 +396,28 @@ if [[ $DIND_ENABLED -eq 1 ]]; then
   DIND_DOCKER_FLAGS+=(-e "DOCKER_HOST=tcp://$DIND_CONTAINER:$DIND_PORT")
 fi
 
+IDENTITY_TMPDIR="$(mktemp -d)"
+TMP_PASSWD="$IDENTITY_TMPDIR/passwd"
+TMP_GROUP="$IDENTITY_TMPDIR/group"
+trap 'rm -rf "$IDENTITY_TMPDIR"' EXIT
+
+if ! docker run --rm --entrypoint cat "$IMAGE" /etc/passwd > "$TMP_PASSWD" \
+  || ! docker run --rm --entrypoint cat "$IMAGE" /etc/group > "$TMP_GROUP"; then
+  echo "Error: image identity files could not be prepared." >&2
+  exit 1
+fi
+
+awk -F: -v user="$RESOLVED_USER" -v uid="$RESOLVED_UID" -v gid="$RESOLVED_GID" -v home="$RESOLVED_HOME" '
+  $1 != user && $3 != uid { print }
+  END { printf "%s:x:%s:%s:%s:%s:/bin/bash\n", user, uid, gid, user, home }
+' "$TMP_PASSWD" > "$TMP_PASSWD.tmp"
+mv "$TMP_PASSWD.tmp" "$TMP_PASSWD"
+
+awk -F: -v group_name="$RESOLVED_USER" -v gid="$RESOLVED_GID" '
+  $1 != group_name && $3 != gid { print }
+  END { printf "%s:x:%s:\n", group_name, gid }
+' "$TMP_GROUP" > "$TMP_GROUP.tmp"
+mv "$TMP_GROUP.tmp" "$TMP_GROUP"
 if [[ $USE_TTY -eq 1 ]]; then
   DOCKER_TTY_FLAGS="-it"
   DOCKER_NO_TTY_ENV_FLAGS=""
@@ -537,7 +559,11 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e PI_BUILD_PLAN_MODEL_PROFILE="$MODEL_PROFILE" \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \
+  -e USER="$RESOLVED_USER" \
+  -e LOGNAME="$RESOLVED_USER" \
   -u "$RESOLVED_UID:$RESOLVED_GID" \
+  -v "$TMP_PASSWD:/etc/passwd:ro" \
+  -v "$TMP_GROUP:/etc/group:ro" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
   -v "$HOST_AGENT_STATUS:$CONTAINER_AGENT_STATUS" \
   "${GO_DOCKER_FLAGS[@]}" \
