@@ -42,6 +42,10 @@ Arguments:
   --model-profile NAME
                       Start Pi with a specific model profile (e.g. deep, pub, priv).
                       Overrides julsemaan-tmp/model-profile for this session only.
+  Git config forwarding
+                      Host ~/.gitconfig is mounted read-only into the container
+                      when present on the host. No credential stores or included
+                      config files are forwarded.
   --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
                       on a private network. Sets DOCKER_HOST inside the container
                       so inner containers run in the companion, not on the host.
@@ -294,6 +298,12 @@ if [[ -n "$HOST_SSH_KEY" && -f "$HOST_SSH_KEY" ]]; then
   SSH_DOCKER_FLAGS+=(-e "GIT_SSH_COMMAND=$GIT_SSH_COMMAND_VALUE")
 fi
 
+GIT_CONFIG_DOCKER_FLAGS=()
+HOST_GITCONFIG="$RESOLVED_HOME/.gitconfig"
+if [[ -f "$HOST_GITCONFIG" ]]; then
+  GIT_CONFIG_DOCKER_FLAGS+=(-v "$HOST_GITCONFIG:$RESOLVED_HOME/.gitconfig:ro")
+fi
+
 if [[ $REBUILD -eq 1 ]]; then
   REBUILD_DOCKER_ARG="--no-cache"
 else
@@ -522,6 +532,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e BRAVE_API_KEY \
   -e GH_MCP_TOKEN \
   -e BB_MCP_TOKEN \
+  "${GIT_CONFIG_DOCKER_FLAGS[@]}" \
   -e CONTEXT7_API_KEY \
   -e PI_BUILD_PLAN_MODEL_PROFILE="$MODEL_PROFILE" \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \

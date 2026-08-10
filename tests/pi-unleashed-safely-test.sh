@@ -59,6 +59,20 @@ function run_wrapper {
   )
 }
 
+# --- .gitconfig forwarding tests ---
+gitconfig="$home/.gitconfig"
+printf '[user]\n  name = Test User\n  email = test@example.com\n' >"$gitconfig"
+
+run_wrapper
+run_args=$(<"$docker_run_log")
+assert_contains ".gitconfig mounted read-only" "$run_args" "$gitconfig:$home/.gitconfig:ro"
+
+rm "$gitconfig"
+run_wrapper
+run_args=$(<"$docker_run_log")
+assert_not_match "absent .gitconfig is not mounted" "gitconfig" "$run_args"
+
+# --- SSH key tests ---
 run_wrapper
 run_args=$(<"$docker_run_log")
 expected_command="GIT_SSH_COMMAND=ssh -i $home/.ssh/id_rsa_git -o IdentitiesOnly=yes -o UserKnownHostsFile=$home/.ssh/known_hosts -F $home/.ssh/config"
