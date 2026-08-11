@@ -1,13 +1,13 @@
 ---
 description: Open current branch as a Bitbucket pull request (no preview, no confirmation)
-argument-hint: "[draft]"
+argument-hint: "[ready|draft]"
 mode: build
 ---
 
 # Open Bitbucket Pull Request
 
 Open the current branch as one Bitbucket pull request. Treat `$1` as the optional mode argument:
-- empty: ready for review (`draft: false`)
+- omitted or `ready`: ready for review (`draft: false`)
 - `draft`: draft pull request (`draft: true`)
 - anything else: fail before doing any work
 
@@ -55,13 +55,17 @@ bitbucket_bitbucketPullRequest({
   workspaceId: "<workspace>",
   repoId: "<repo>",
   state: "OPEN",
-  q: "source.repository.full_name = <workspace>/<repo> AND source.branch.name = <head>",
-  pagelen: 100
+  q: "source.branch.name=\"<head>\""
 })
 ```
 
-If any matching pull request exists, print its URL (and title when available) and stop. Do not
-push or create another pull request.
+If this request returns `Bad Request`, retry exactly once with the normalized query above, using
+only `state` and `q`; do not add pagination. Stop and report the exact error if retry fails. Stop on
+any other request failure too. This pre-push duplicate check must succeed; never treat a failed
+request as no matches.
+
+If any matching pull request exists, print its URL (and title when available) and stop. Continue
+toward push only after a successful duplicate check. Do not push or create another pull request.
 
 ## Generate PR content
 
@@ -93,8 +97,10 @@ There is no preview, confirmation, or `question` call. Proceed directly:
    ```
 
    If push fails, report the exact error and stop. Do not call the create tool or retry.
-2. Recheck for an existing open pull request with the same duplicate-detection query. If one now
-   exists, report its URL and stop without creating a duplicate.
+2. Recheck for an existing open pull request with the same `state` and `q`, applying the same
+   one-`Bad Request` retry rule and omitting pagination. If one now exists, report its URL and stop
+   without creating a duplicate. If either request fails, report the exact error and stop; create
+   only after a successful post-push duplicate check.
 3. Call `bitbucket_bitbucketPullRequest` with:
 
    ```text
