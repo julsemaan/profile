@@ -1,5 +1,5 @@
 ---
-description: Open current branch as a GitHub pull request after preview and confirmation
+description: Open current branch as a GitHub pull request after preview without confirmation
 argument-hint: "[draft]"
 mode: build
 ---
@@ -13,7 +13,7 @@ Open the current branch as one GitHub pull request. Treat `$1` as the optional m
 
 Use only local Git commands and the GitHub MCP tools. Do not use `gh`, Bitbucket MCP, or any
 other forge. Keep preflight and all MCP reads read-only. Do not push, create, or otherwise mutate
-remote state until the user confirms the complete preview.
+remote state until all preflight, duplicate-detection, issue-matching, and content-generation checks pass.
 
 ## Preflight
 
@@ -95,7 +95,7 @@ Generate a concise title describing the primary change. Generate a short Markdow
 - `## Validation` listing checks actually run, or `Not run (not requested)`
 - the single `Fixes #<number>` line only when an issue was selected
 
-Show this complete preview before asking for approval:
+Show this complete preview, then proceed directly to creation:
 
 ```text
 Repository: OWNER/REPO
@@ -112,14 +112,12 @@ Body:
 ...
 ```
 
-Then use the `question` tool for exactly one creation confirmation. Offer clear `Create PR` and
-`Cancel` choices with `allowOther: false`; proceed only when the user selects `Create PR`. Do not
-ask for confirmation in plain assistant text. On cancellation or any non-Create answer, report that
-no push or pull request creation occurred and stop; do not alter files, refs, or remote state.
+After printing the preview, proceed directly to `Create`. Do not use the `question` tool for
+creation confirmation.
 
 ## Create
 
-Only after the user selects `Create PR`:
+After the preview:
 
 1. Push exactly once:
 
