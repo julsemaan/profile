@@ -72,7 +72,7 @@ Return JSON only. Top-level fields required:
 - `filePath` — when inline
 - `line` — when inline
 - `side` — when available
-- `commentId`
+- `commentId` — numeric REST review-comment ID only for `review-comment` artifacts; `null` for `review` artifacts
 - `threadId`
 - `parentId`
 - `state`
@@ -81,7 +81,7 @@ Return JSON only. Top-level fields required:
 - `inlineAnchor`
 
 `routing` must include exact metadata needed by worker to reply:
-- GitHub: owner, repo, pullNumber, commentId, threadId when available, and whether fallback must be PR-level comment
+- GitHub: owner, repo, pullNumber, `commentId` only for review comments, `threadId` when available, and whether fallback must be PR-level comment. Never put a review's `id` in `commentId`; review bodies require PR-level comments.
 - Bitbucket: workspaceId, repoId, prId, parentCommentId when applicable, plus any inline path and line anchors needed for threaded or inline reply
 
 `inlineAnchor` should preserve any available path/line/side/start-line anchors needed to attach reply in same location.
