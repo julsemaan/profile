@@ -90,9 +90,9 @@ issue is selected, append exactly one `Fixes #<number>` line to the pull request
 
 ## Build and preview
 
-Generate a concise title describing the primary change. Generate a short Markdown body with:
-- `## Summary` and up to three accurate bullets
-- `## Validation` listing checks actually run, or `Not run (not requested)`
+Generate a concise title describing the primary change following the Conventional Commit standard. Generate a short Markdown body with:
+- `## Summary` with up to three accurate bullets that describe the changes
+- `## Impact` with bullet points if necessary that describes the impact (if any) of the changes in the PR
 - the single `Fixes #<number>` line only when an issue was selected
 
 Show this complete preview, then proceed directly to creation:

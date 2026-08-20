@@ -79,10 +79,10 @@ git diff --name-status <base-ref>...HEAD
 
 Use commit subjects, diff summary, and changed paths to generate:
 
-- A concise title describing the primary change.
+- A concise title describing the primary change following the Conventional Commit standard.
 - A Markdown description containing:
-  - `## Summary` with up to three accurate bullets
-  - `## Validation` listing checks actually run, or `Not run (not requested)`
+  - `## Summary` with up to three accurate bullets that describe the changes
+  - `## Impact` with bullet points if necessary that describes the impact (if any) of the changes in the PR
 
 No Jira or Bitbucket issue matching. Do not search for or link issues.
 
