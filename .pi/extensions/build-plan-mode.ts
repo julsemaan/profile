@@ -36,14 +36,14 @@ const THINKING_LEVELS_DISPLAY = VALID_THINKING_LEVELS.join("|");
 const MODEL_PROFILES: Record<BuiltinProfile, { modelMap: ModelMap }> = {
 	pubFree: {
 		modelMap: {
-			"custom/large": { model: "opencode/mimo-v2.5-free", thinkingLevel: "high" },
-			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
+			"custom/large": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
+			"custom/medium": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
 		},
 	},
 	pub: {
 		modelMap: {
 			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
-			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
+			"custom/medium": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
 		},
 	},
 	deep: {
