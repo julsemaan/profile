@@ -22,7 +22,6 @@
   },
   "packages": [
     "npm:pi-web-access",
-    "npm:pi-caveman",
     "npm:@earendil-works/pi-tui",
     "npm:pi-mcp-adapter",
     "npm:agent-status-pi",

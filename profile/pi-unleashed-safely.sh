@@ -16,9 +16,7 @@ MODEL_PROFILE=""
 DIND_ENABLED=0
 
 # Extra npm packages to install into image.
-# `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
-# so install it explicitly to keep extension loadable.
-PI_NPM_INSTALL_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui" "pi-mcp-adapter" "agent-status-pi")
+PI_NPM_INSTALL_PACKAGES=("pi-web-access" "@earendil-works/pi-tui" "pi-mcp-adapter" "agent-status-pi")
 
 function usage {
   cat <<'USAGE'
@@ -208,7 +206,16 @@ function ensure_host_dir {
 
 HOST_PI_HOME="$RESOLVED_HOME/.pi"
 HOST_AGENT_STATUS="$RESOLVED_HOME/.local/state/agent-status"
+HOST_UNSLOP_PROMPT="$HOST_PI_HOME/agent/UNSLOP.md"
+HOST_UNSLOP_EXTENSION="$HOST_PI_HOME/agent/always-on-unslop.ts"
 CONTAINER_HOME="$RESOLVED_HOME"
+
+for required_file in "$HOST_UNSLOP_PROMPT" "$HOST_UNSLOP_EXTENSION"; do
+  if [[ ! -f "$required_file" ]]; then
+    echo "Error: required Pi unslop file is missing: $required_file" >&2
+    exit 1
+  fi
+done
 CONTAINER_AGENT_STATUS="$CONTAINER_HOME/.local/state/agent-status"
 HOST_SSH_DIR="$RESOLVED_HOME/.ssh"
 HOST_SSH_KEY="${PI_SSH_KEY_PATH:-}"
@@ -417,8 +424,8 @@ TMP_PASSWD="$IDENTITY_TMPDIR/passwd"
 TMP_GROUP="$IDENTITY_TMPDIR/group"
 trap 'rm -rf "$IDENTITY_TMPDIR"' EXIT
 
-if ! docker run --rm --entrypoint cat "$IMAGE" /etc/passwd > "$TMP_PASSWD" \
-  || ! docker run --rm --entrypoint cat "$IMAGE" /etc/group > "$TMP_GROUP"; then
+if ! docker run --rm --entrypoint cat "$IMAGE" /etc/passwd >"$TMP_PASSWD" ||
+  ! docker run --rm --entrypoint cat "$IMAGE" /etc/group >"$TMP_GROUP"; then
   echo "Error: image identity files could not be prepared." >&2
   exit 1
 fi
@@ -426,13 +433,13 @@ fi
 awk -F: -v user="$RESOLVED_USER" -v uid="$RESOLVED_UID" -v gid="$RESOLVED_GID" -v home="$RESOLVED_HOME" '
   $1 != user && $3 != uid { print }
   END { printf "%s:x:%s:%s:%s:%s:/bin/bash\n", user, uid, gid, user, home }
-' "$TMP_PASSWD" > "$TMP_PASSWD.tmp"
+' "$TMP_PASSWD" >"$TMP_PASSWD.tmp"
 mv "$TMP_PASSWD.tmp" "$TMP_PASSWD"
 
 awk -F: -v group_name="$RESOLVED_USER" -v gid="$RESOLVED_GID" '
   $1 != group_name && $3 != gid { print }
   END { printf "%s:x:%s:\n", group_name, gid }
-' "$TMP_GROUP" > "$TMP_GROUP.tmp"
+' "$TMP_GROUP" >"$TMP_GROUP.tmp"
 mv "$TMP_GROUP.tmp" "$TMP_GROUP"
 if [[ $USE_TTY -eq 1 ]]; then
   DOCKER_TTY_FLAGS="-it"
@@ -590,4 +597,6 @@ docker run --rm $DOCKER_TTY_FLAGS \
   --mount "type=bind,src=$MNT_HOST,dst=$MNT_CONTAINER" -w "$WORKDIR" \
   "${EXTRA_MOUNT_FLAGS[@]}" \
   "${DEV_DOCKER_FLAGS[@]}" \
-  "$IMAGE" "${PI_ARGS[@]}"
+  "$IMAGE" \
+  --extension "$CONTAINER_HOME/.pi/agent/always-on-unslop.ts" \
+  "${PI_ARGS[@]}"
