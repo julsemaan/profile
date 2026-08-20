@@ -46,6 +46,9 @@ Arguments:
                       Host ~/.gitconfig is mounted read-only into the container
                       when present on the host. No credential stores or included
                       config files are forwarded.
+                      Installed /usr/local/etc/.gitignore (from
+                      profile/.gitignore) is mounted read-only as the
+                      container's global gitignore.
   --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
                       on a private network. Sets DOCKER_HOST inside the container
                       so inner containers run in the companion, not on the host.
@@ -304,6 +307,19 @@ if [[ -f "$HOST_GITCONFIG" ]]; then
   GIT_CONFIG_DOCKER_FLAGS+=(-v "$HOST_GITCONFIG:$RESOLVED_HOME/.gitconfig:ro")
 fi
 
+# Load the repo's profile/.gitignore as the container's global gitignore.
+# Mounted read-only over the path the base image's system config references,
+# and registered via GIT_CONFIG_* env so it applies even if the published
+# image lags the repo.
+GITIGNORE_DOCKER_FLAGS=()
+# Installed by `install` to /usr/local/etc/.gitignore; mounted read-only into
+# the container as its global gitignore, registered via GIT_CONFIG_* env so it
+# applies even if the published image lags the repo.
+if [[ -f /usr/local/etc/.gitignore ]]; then
+  GITIGNORE_DOCKER_FLAGS+=(-v /usr/local/etc/.gitignore:/usr/local/etc/.gitignore:ro)
+  GITIGNORE_DOCKER_FLAGS+=(-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=core.excludesfile -e GIT_CONFIG_VALUE_0=/usr/local/etc/.gitignore)
+fi
+
 if [[ $REBUILD -eq 1 ]]; then
   REBUILD_DOCKER_ARG="--no-cache"
 else
@@ -555,6 +571,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e GH_MCP_TOKEN \
   -e BB_MCP_TOKEN \
   "${GIT_CONFIG_DOCKER_FLAGS[@]}" \
+  "${GITIGNORE_DOCKER_FLAGS[@]}" \
   -e CONTEXT7_API_KEY \
   -e PI_BUILD_PLAN_MODEL_PROFILE="$MODEL_PROFILE" \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
