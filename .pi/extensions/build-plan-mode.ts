@@ -30,6 +30,7 @@ import {
 	parseProfileContent,
 	serializeBuiltinProfile,
 	serializeCustomProfile,
+	resolveStartupMap,
 } from "./lib/model-profile.js";
 
 const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
@@ -81,6 +82,10 @@ function getTempStateFilePath(cwd: string): string {
 	const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 12);
 	return path.join(os.tmpdir(), `pi-model-state-${hash}.json`);
 }
+const BUILTIN_MODEL_MAPS = Object.fromEntries(
+	Object.entries(MODEL_PROFILES).map(([p, v]) => [p, v.modelMap]),
+) as Record<BuiltinProfile, ModelMap>;
+
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv.modelMap);
 const DEFAULT_NEW_SESSION_MODE = "plan";
 const DEFAULT_EXISTING_SESSION_MODE = "build";
@@ -1037,11 +1042,8 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			mode = "build";
 		}
 
-		// Resolve modelMap with precedence: env override > session entries > temp file > file override > default
-		const defaultMap = structuredClone(DEFAULT_MODEL_MAP);
-		let hasCustomState = false;
-
-		// 0. Env override from wrapper (--model-profile / PI_BUILD_PLAN_MODEL_PROFILE)
+		// Resolve modelMap. During /reload a valid file override beats stale
+		// session/temp state; otherwise env > session > temp > file > default.
 		let envProfile: BuiltinProfile | null = null;
 		const envRaw = process.env.PI_BUILD_PLAN_MODEL_PROFILE?.trim();
 		if (envRaw) {
@@ -1056,38 +1058,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 		}
 
-		if (envProfile) {
-			// Highest precedence: env override. Applied but not persisted to session state.
-			const envMap = MODEL_PROFILES[envProfile].modelMap;
-			for (const alias of Object.keys(envMap) as ModelAlias[]) {
-				defaultMap[alias] = { ...defaultMap[alias], ...envMap[alias] };
-			}
-			hasCustomState = true;
-		} else if (lastState?.data?.modelMap) {
-			for (const alias of Object.keys(lastState.data.modelMap) as ModelAlias[]) {
-				const saved = lastState.data.modelMap[alias];
-				if (saved) {
-					defaultMap[alias] = { ...defaultMap[alias], ...saved };
-				}
-			}
-			hasCustomState = true;
-		}
-
-		// 2. Temp file (if no session entries)
-		if (!hasCustomState) {
-			const fileState = readStateFromFile(ctx.cwd);
-			if (fileState) {
-				for (const alias of Object.keys(fileState) as ModelAlias[]) {
-					const saved = fileState[alias];
-					if (saved) {
-						defaultMap[alias] = { ...defaultMap[alias], ...saved };
-					}
-				}
-				hasCustomState = true;
-			}
-		}
-
-		// 3. File override (julsemaan-tmp/model-profile) — applied without side effects
+		// File override (julsemaan-tmp/model-profile)
 		const { profile: fileProfile, customData: fileCustomData, filePath } = readFileOverride(ctx);
 		fileOverridePath = filePath;
 		fileOverrideProfile = fileProfile;
@@ -1103,19 +1074,24 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 		}
 
-		if (hasCustomState) {
-			// Session entries or temp file had custom state (highest priority)
-			modelMap = defaultMap;
-		} else if (fileProfile) {
-			// No custom state, fall back to file override profile
-			modelMap = structuredClone(MODEL_PROFILES[fileProfile].modelMap);
-		} else if (fileCustomData) {
-			// Custom profile from file
-			modelMap = defaultMap;
-			applyProfileData(modelMap, fileCustomData);
-		} else {
-			// Pure DEFAULT_MODEL_MAP (no override from any source)
-			modelMap = defaultMap;
+		const resolved = resolveStartupMap(
+			{
+				reason: event.reason,
+				envProfile,
+				sessionMap: lastState?.data?.modelMap ?? null,
+				tempMap: readStateFromFile(ctx.cwd),
+				fileProfile,
+				fileCustomData,
+			},
+			DEFAULT_MODEL_MAP,
+			BUILTIN_MODEL_MAPS,
+		);
+		modelMap = resolved.modelMap;
+
+		// Reload picked up an externally changed profile: persist it so the next
+		// reload doesn't restore the stale session state.
+		if (event.reason === "reload" && resolved.source === "file") {
+			persistState(ctx);
 		}
 
 		currentModelRegistry = ctx.modelRegistry;

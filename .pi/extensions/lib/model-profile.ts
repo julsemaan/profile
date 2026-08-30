@@ -184,6 +184,83 @@ export function applyProfileData(
 	}
 }
 
+// ── Startup profile resolution ──────────────────────────────────────────────
+
+export type PartialAliasMap = Partial<Record<ModelAlias, Partial<AliasConfig>>>;
+
+export type StartupProfileSource = "env" | "file" | "session" | "temp" | "default";
+
+function mergeInto(map: ModelMap, patch: PartialAliasMap): void {
+	for (const alias of Object.keys(patch) as ModelAlias[]) {
+		const update = patch[alias];
+		if (update) map[alias] = { ...map[alias], ...update };
+	}
+}
+
+/**
+ * Resolve the model map at session_start.
+ *
+ * Precedence during /reload (reason === "reload"):
+ *   env override > file override > session state > temp state > default
+ * Precedence otherwise (startup, resume, new, fork):
+ *   env override > session state > temp state > file override > default
+ */
+export function resolveStartupMap(
+	input: {
+		reason: string;
+		envProfile?: BuiltinProfile | null;
+		sessionMap?: PartialAliasMap | null;
+		tempMap?: PartialAliasMap | null;
+		fileProfile?: BuiltinProfile | null;
+		fileCustomData?: Record<ModelAlias, AliasConfig> | null;
+	},
+	defaultMap: ModelMap,
+	builtinMaps: Record<BuiltinProfile, ModelMap>,
+): { modelMap: ModelMap; source: StartupProfileSource } {
+	const { reason, envProfile, sessionMap, tempMap, fileProfile, fileCustomData } = input;
+	const fileWins = reason === "reload" && !!(fileProfile || fileCustomData);
+
+	if (envProfile) {
+		const modelMap = structuredClone(defaultMap);
+		mergeInto(modelMap, builtinMaps[envProfile]);
+		return { modelMap, source: "env" };
+	}
+
+	if (fileWins && fileProfile) {
+		return { modelMap: structuredClone(builtinMaps[fileProfile]), source: "file" };
+	}
+
+	if (fileWins && fileCustomData) {
+		const modelMap = structuredClone(defaultMap);
+		applyProfileData(modelMap, fileCustomData);
+		return { modelMap, source: "file" };
+	}
+
+	if (sessionMap) {
+		const modelMap = structuredClone(defaultMap);
+		mergeInto(modelMap, sessionMap);
+		return { modelMap, source: "session" };
+	}
+
+	if (tempMap) {
+		const modelMap = structuredClone(defaultMap);
+		mergeInto(modelMap, tempMap);
+		return { modelMap, source: "temp" };
+	}
+
+	if (fileProfile) {
+		return { modelMap: structuredClone(builtinMaps[fileProfile]), source: "file" };
+	}
+
+	if (fileCustomData) {
+		const modelMap = structuredClone(defaultMap);
+		applyProfileData(modelMap, fileCustomData);
+		return { modelMap, source: "file" };
+	}
+
+	return { modelMap: structuredClone(defaultMap), source: "default" };
+}
+
 // ── Serialization ──────────────────────────────────────────────────────────
 
 export function serializeBuiltinProfile(profile: BuiltinProfile): string {
