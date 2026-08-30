@@ -37,11 +37,18 @@ const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
 const THINKING_LEVELS_DISPLAY = VALID_THINKING_LEVELS.join("|");
 
 const MODEL_PROFILES: Record<BuiltinProfile, { modelMap: ModelMap }> = {
-	pubFreeOpencode: {
+	opencode: {
 		modelMap: {
 			"custom/large": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
 			"custom/medium": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
 			"custom/small": { model: "opencode/mimo-v2.5-free", thinkingLevel: "max" },
+		},
+	},
+	openrouter: {
+		modelMap: {
+			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
+			"custom/medium": { model: "openrouter/z-ai/glm-5.3-flash", thinkingLevel: "high" },
+			"custom/small": { model: "openrouter/openai/gpt-5.6-luna", thinkingLevel: "high" },
 		},
 	},
 	deep: {
