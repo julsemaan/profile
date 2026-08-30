@@ -50,7 +50,7 @@ export function parseModelRef(modelRef: string): { provider: string; modelId: st
 export type BuiltinProfile = "pubFree" | "pub" | "deep" | "priv" | "copilotPriv";
 
 export const BUILTIN_PROFILES: readonly BuiltinProfile[] = [
-	"pubFree", "pub", "deep", "priv", "copilotPriv",
+	"opencode", "openrouter", "deep", "priv", "copilotPriv",
 ];
 
 export function isBuiltinProfile(value: string): value is BuiltinProfile {
