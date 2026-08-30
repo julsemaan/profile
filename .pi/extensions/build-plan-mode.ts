@@ -13,6 +13,7 @@ import {
 	type ThinkingLevel,
 } from "./modes.js";
 import {
+	BUILTIN_ALIASES,
 	BUILTIN_PROFILES,
 	VALID_THINKING_LEVELS,
 	type AliasConfig,
@@ -23,6 +24,7 @@ import {
 	applyProfileData,
 	findBuiltinProfile,
 	getNextProfile,
+	isModelAlias,
 	isThinkingLevel,
 	parseModelRef,
 	parseProfileContent,
@@ -34,34 +36,32 @@ const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
 const THINKING_LEVELS_DISPLAY = VALID_THINKING_LEVELS.join("|");
 
 const MODEL_PROFILES: Record<BuiltinProfile, { modelMap: ModelMap }> = {
-	pubFree: {
+	pubFreeOpencode: {
 		modelMap: {
 			"custom/large": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
 			"custom/medium": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
-		},
-	},
-	pub: {
-		modelMap: {
-			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
-			"custom/medium": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
+			"custom/small": { model: "opencode/mimo-v2.5-free", thinkingLevel: "max" },
 		},
 	},
 	deep: {
 		modelMap: {
 			"custom/large": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "max" },
 			"custom/medium": { model: "deepseek/deepseek-v4-flash", thinkingLevel: "max" },
+			"custom/small": { model: "deepseek/deepseek-v4-flash", thinkingLevel: "max" },
 		},
 	},
 	priv: {
 		modelMap: {
 			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
 			"custom/medium": { model: "openai-codex/gpt-5.6-luna", thinkingLevel: "max" },
+			"custom/small": { model: "openai-codex/gpt-5.6-luna", thinkingLevel: "high" },
 		},
 	},
 	copilotPriv: {
 		modelMap: {
 			"custom/large": { model: "github-copilot/gpt-5.6-sol", thinkingLevel: "high" },
 			"custom/medium": { model: "github-copilot/gpt-5.6-luna", thinkingLevel: "max" },
+			"custom/small": { model: "github-copilot/gpt-5.6-luna", thinkingLevel: "high" },
 		},
 	},
 };
@@ -200,14 +200,11 @@ function parseAliasArgs(
 
 function getCurrentProfile(modelMap: ModelMap): ModelProfile {
 	for (const [profile, config] of Object.entries(MODEL_PROFILES)) {
-		const large = config.modelMap["custom/large"];
-		const medium = config.modelMap["custom/medium"];
-		if (
-			modelMap["custom/large"].model === large.model &&
-			modelMap["custom/medium"].model === medium.model &&
-			modelMap["custom/large"].thinkingLevel === large.thinkingLevel &&
-			modelMap["custom/medium"].thinkingLevel === medium.thinkingLevel
-		) {
+		if (BUILTIN_ALIASES.every((alias) => {
+			const current = modelMap[alias];
+			const expected = config.modelMap[alias];
+			return current.model === expected.model && current.thinkingLevel === expected.thinkingLevel;
+		})) {
 			return profile as ModelProfile;
 		}
 	}
@@ -215,9 +212,10 @@ function getCurrentProfile(modelMap: ModelMap): ModelProfile {
 }
 
 function getActiveAlias(modeConfig: ModeConfig): ModelAlias {
-	// If mode config specifies a model that looks like an alias, use it
-	if (modeConfig.model === "custom/large" || modeConfig.model === "custom/medium") {
-		return modeConfig.model;
+	// If mode config specifies a model alias, use it
+	const configuredModel = modeConfig.model;
+	if (configuredModel && isModelAlias(configuredModel)) {
+		return configuredModel;
 	}
 	// Fall back: read-only modes use custom/large, build modes use custom/medium
 	return modeConfig.access === "read-only" ? "custom/large" : "custom/medium";
@@ -357,7 +355,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
 		updateStatus(ctx);
 		ctx.ui.notify(
-			`${notify}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+			`${notify}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
 			"info",
 		);
 	}
@@ -417,7 +415,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		const activeAlias = getActiveAlias(modeConfig);
 
 		// Resolve model: mode config's model field takes priority over alias
-		const resolvedModel = modeConfig.model && modeConfig.model !== "custom/large" && modeConfig.model !== "custom/medium"
+		const resolvedModel = modeConfig.model && !isModelAlias(modeConfig.model)
 			? modeConfig.model
 			: undefined;
 
@@ -469,7 +467,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 		if (notify) {
 			ctx.ui.notify(
-				`${source}: ${profile}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+				`${source}: ${profile}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
 				"info",
 			);
 		}
@@ -560,7 +558,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			updateStatus(ctx);
 			persistState(ctx);
 			ctx.ui.notify(
-				`File override (${path.relative(ctx.cwd, filePath)}): custom profile\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+				`File override (${path.relative(ctx.cwd, filePath)}): custom profile\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
 				"info",
 			);
 		}
@@ -774,6 +772,33 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("small-model", {
+		description: `Show or set model/thinking behind custom/small. Usage: /small-model [provider/model] [${THINKING_LEVELS_DISPLAY}]`,
+		getArgumentCompletions: (prefix: string) => getAliasArgumentCompletions(prefix, "custom/small"),
+		handler: async (args, ctx) => {
+			const parsed = parseAliasArgs(args);
+			if ("error" in parsed) {
+				ctx.ui.notify(parsed.error, "warning");
+				ctx.ui.notify(
+					`Usage: /small-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\nCurrent: ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
+					"info",
+				);
+				return;
+			}
+			if (!parsed.model && !parsed.thinkingLevel) {
+				ctx.ui.notify(
+					`custom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
+					"info",
+				);
+				return;
+			}
+			const update: Partial<AliasConfig> = {};
+			if (parsed.model) update.model = parsed.model;
+			if (parsed.thinkingLevel) update.thinkingLevel = parsed.thinkingLevel;
+			await updateModelMap({ "custom/small": update }, ctx, "Updated model alias.");
+		},
+	});
+
 	pi.registerCommand("model-profile", {
 		description: `Show or set model alias profile (${BUILTIN_PROFILES_DISPLAY})`,
 		handler: async (args, ctx) => {
@@ -786,7 +811,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			const profile = args.trim().toLowerCase();
 			if (!profile) {
 				const current = getCurrentProfile(modelMap);
-				ctx.ui.notify(`Current profile: ${current}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`, "info");
+				ctx.ui.notify(`Current profile: ${current}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`, "info");
 				return;
 			}
 			const matched = findBuiltinProfile(profile);
@@ -976,7 +1001,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				updateStatus(ctx);
 				persistState(ctx);
 				ctx.ui.notify(
-					`Cycled profile: custom\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+					`Cycled profile: custom\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
 					"info",
 				);
 			} else {
@@ -1106,7 +1131,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			const aliasConfig = modelMap[activeAlias];
 
 			// Mode's own model override
-			if (modeConfig.model && modeConfig.model !== "custom/large" && modeConfig.model !== "custom/medium") {
+			if (modeConfig.model && !isModelAlias(modeConfig.model)) {
 				const parsed = parseModelRef(modeConfig.model);
 				if (parsed) {
 					const model = ctx.modelRegistry.find(parsed.provider, parsed.modelId);

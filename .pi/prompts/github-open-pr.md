@@ -1,7 +1,7 @@
 ---
 description: Open current branch as a GitHub pull request after preview without confirmation
 argument-hint: "[draft]"
-mode: build
+mode: small-build
 ---
 
 # Open GitHub Pull Request

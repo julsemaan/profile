@@ -2,18 +2,22 @@
  * Model-profile codec — parse, validate, and serialize model profiles.
  *
  * Built-in profiles are bare names (case-insensitive): pub, deep, priv, etc.
- * Custom profiles are JSON with both alias keys.
+ * Custom profiles are JSON with all configured alias keys.
  */
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 
-export type ModelAlias = "custom/large" | "custom/medium";
+export type ModelAlias = "custom/large" | "custom/medium" | "custom/small";
 export type AliasConfig = { model: string; thinkingLevel: ThinkingLevel };
 export type ModelMap = Record<ModelAlias, AliasConfig>;
 
 // ── Built-in profiles ──────────────────────────────────────────────────────
 
-export const BUILTIN_ALIASES: readonly ModelAlias[] = ["custom/large", "custom/medium"];
+export const BUILTIN_ALIASES: readonly ModelAlias[] = ["custom/large", "custom/medium", "custom/small"];
+
+export function isModelAlias(value: string): value is ModelAlias {
+	return (BUILTIN_ALIASES as readonly string[]).includes(value);
+}
 
 const THINKING_LEVELS: Record<ThinkingLevel, true> = {
 	off: true,
@@ -64,7 +68,7 @@ export type ModelProfile = BuiltinProfile | "custom";
 
 // ── Custom profile validation ──────────────────────────────────────────────
 
-export type CustomProfile = Record<string, { model: string; thinkingLevel: string }>;
+export type CustomProfile = Record<ModelAlias, { model: string; thinkingLevel: string }>;
 
 export function validateCustomProfile(raw: unknown): {
 	ok: true;
@@ -187,5 +191,6 @@ export function serializeBuiltinProfile(profile: BuiltinProfile): string {
 }
 
 export function serializeCustomProfile(data: Record<ModelAlias, AliasConfig>): string {
-	return JSON.stringify(data, null, 2) + "\n";
+	const profile = Object.fromEntries(BUILTIN_ALIASES.map(alias => [alias, data[alias]]));
+	return JSON.stringify(profile, null, 2) + "\n";
 }

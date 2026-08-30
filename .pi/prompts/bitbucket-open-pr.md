@@ -1,7 +1,7 @@
 ---
 description: Open current branch as a Bitbucket pull request (no preview, no confirmation)
 argument-hint: "[ready|draft]"
-mode: build
+mode: small-build
 ---
 
 # Open Bitbucket Pull Request

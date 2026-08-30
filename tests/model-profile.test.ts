@@ -5,12 +5,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import {
+	BUILTIN_ALIASES,
 	BUILTIN_PROFILES,
 	VALID_THINKING_LEVELS,
 	applyProfileData,
 	findBuiltinProfile,
 	getCycleProfiles,
 	getNextProfile,
+	isModelAlias,
 	parseProfileContent,
 	serializeBuiltinProfile,
 	serializeCustomProfile,
@@ -38,10 +40,22 @@ describe("findBuiltinProfile", () => {
 	});
 });
 
+describe("isModelAlias", () => {
+	it("recognizes every configured alias", () => {
+		for (const alias of BUILTIN_ALIASES) assert.equal(isModelAlias(alias), true);
+	});
+
+	it("rejects non-alias model references", () => {
+		assert.equal(isModelAlias("openai-codex/gpt-5.6-sol"), false);
+		assert.equal(isModelAlias("custom/unknown"), false);
+	});
+});
+
 describe("validateCustomProfile", () => {
 	const validCustom = {
 		"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
 		"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
+		"custom/small": { model: "opencode/mimo-v2.5-free", thinkingLevel: "low" },
 	};
 
 	it("accepts valid custom profile", () => {
@@ -52,6 +66,8 @@ describe("validateCustomProfile", () => {
 			assert.equal(result.data["custom/large"].thinkingLevel, "high");
 			assert.equal(result.data["custom/medium"].model, "opencode/mimo-v2.5-free");
 			assert.equal(result.data["custom/medium"].thinkingLevel, "medium");
+			assert.equal(result.data["custom/small"].model, "opencode/mimo-v2.5-free");
+			assert.equal(result.data["custom/small"].thinkingLevel, "low");
 		}
 	});
 
@@ -60,6 +76,7 @@ describe("validateCustomProfile", () => {
 			const profile = {
 				"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel },
 				"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
+				"custom/small": { model: "opencode/mimo-v2.5-free", thinkingLevel: "low" },
 			};
 			const result = validateCustomProfile(profile);
 			assert.equal(result.ok, true);
@@ -78,14 +95,24 @@ describe("validateCustomProfile", () => {
 		});
 		assert.equal(result.ok, false);
 		if (!result.ok) {
-			assert.ok(result.error.includes("Missing required alias keys"));
+			assert.equal(result.error, "Missing required alias keys: custom/medium, custom/small");
 		}
+	});
+
+	it("rejects a legacy two-alias profile", () => {
+		const result = validateCustomProfile({
+			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
+			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
+		});
+		assert.equal(result.ok, false);
+		if (!result.ok) assert.ok(result.error.includes("custom/small"));
 	});
 
 	it("rejects invalid model reference", () => {
 		const result = validateCustomProfile({
 			"custom/large": { model: "bad-model", thinkingLevel: "high" },
 			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
+			"custom/small": { model: "opencode/mimo-v2.5-free", thinkingLevel: "low" },
 		});
 		assert.equal(result.ok, false);
 		if (!result.ok) {
@@ -97,6 +124,7 @@ describe("validateCustomProfile", () => {
 		const result = validateCustomProfile({
 			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "ultra" },
 			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
+			"custom/small": { model: "opencode/mimo-v2.5-free", thinkingLevel: "low" },
 		});
 		assert.equal(result.ok, false);
 		if (!result.ok) {
@@ -129,11 +157,14 @@ describe("parseProfileContent", () => {
 		const json = JSON.stringify({
 			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
 			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" },
+			"custom/small": { model: "opencode/mimo-v2.5-free", thinkingLevel: "low" },
 		});
 		const result = parseProfileContent(json);
 		assert.equal(result.type, "custom");
 		if (result.type === "custom") {
 			assert.equal(result.data["custom/large"].model, "openai-codex/gpt-5.6-sol");
+			assert.equal(result.data["custom/small"].model, "opencode/mimo-v2.5-free");
+			assert.equal(result.data["custom/small"].thinkingLevel, "low");
 		}
 	});
 
@@ -165,6 +196,7 @@ describe("serializeCustomProfile", () => {
 		const data = {
 			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" as const },
 			"custom/medium": { model: "opencode/mimo-v2.5-free", thinkingLevel: "medium" as const },
+			"custom/small": { model: "opencode/mimo-v2.5-free", thinkingLevel: "low" as const },
 		};
 		const serialized = serializeCustomProfile(data);
 		const parsed = parseProfileContent(serialized);
@@ -219,6 +251,7 @@ describe("julsemaan-tmp/ target discovery", () => {
 			const custom = serializeCustomProfile({
 				"custom/large": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "high" },
 				"custom/medium": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "medium" },
+				"custom/small": { model: "deepseek/deepseek-v4-flash", thinkingLevel: "low" },
 			});
 			fs.writeFileSync(targetFile, custom, "utf-8");
 			const result = parseProfileContent(fs.readFileSync(targetFile, "utf-8"));
@@ -293,19 +326,23 @@ describe("getNextProfile", () => {
 });
 
 describe("applyProfileData", () => {
-	it("copies both aliases into an empty map", () => {
+	it("copies all aliases into an empty map", () => {
 		const map: Record<string, any> = {
 			"custom/large": { model: "", thinkingLevel: "off" },
 			"custom/medium": { model: "", thinkingLevel: "off" },
+			"custom/small": { model: "", thinkingLevel: "off" },
 		};
 		const customData = {
 			"custom/large": { model: "a/large", thinkingLevel: "high" as const },
 			"custom/medium": { model: "b/medium", thinkingLevel: "low" as const },
+			"custom/small": { model: "c/small", thinkingLevel: "minimal" as const },
 		};
 		applyProfileData(map as any, customData);
 		assert.equal(map["custom/large"].model, "a/large");
 		assert.equal(map["custom/large"].thinkingLevel, "high");
 		assert.equal(map["custom/medium"].model, "b/medium");
 		assert.equal(map["custom/medium"].thinkingLevel, "low");
+		assert.equal(map["custom/small"].model, "c/small");
+		assert.equal(map["custom/small"].thinkingLevel, "minimal");
 	});
 });
