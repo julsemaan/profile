@@ -932,16 +932,13 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerShortcut("ctrl+shift+p", {
-		description: "Toggle between first two modes",
+	pi.registerShortcut("alt+x", {
+		description: "Cycle plan, build, and small-build modes",
 		handler: async (ctx) => {
-			const names = Array.from(modeRegistry.byName.keys());
-			const currentIdx = names.indexOf(mode);
-			if (currentIdx < 0 || currentIdx >= names.length - 1) {
-				await applyMode(names[0], ctx);
-			} else {
-				await applyMode(names[currentIdx + 1], ctx);
-			}
+			const cycle = ["plan", "build", "small-build"];
+			const currentIdx = cycle.indexOf(mode);
+			const nextMode = cycle[(currentIdx + 1) % cycle.length] ?? cycle[0];
+			await applyMode(nextMode, ctx);
 		},
 	});
 
