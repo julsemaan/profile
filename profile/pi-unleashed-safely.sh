@@ -205,6 +205,7 @@ function ensure_host_dir {
 }
 
 HOST_PI_HOME="$RESOLVED_HOME/.pi"
+HOST_PI_JITI_CACHE="$HOST_PI_HOME/cache/jiti"
 HOST_AGENT_STATUS="$RESOLVED_HOME/.local/state/agent-status"
 HOST_UNSLOP_PROMPT="$HOST_PI_HOME/agent/UNSLOP.md"
 HOST_UNSLOP_EXTENSION="$HOST_PI_HOME/agent/always-on-unslop.ts"
@@ -228,6 +229,7 @@ if [[ ${#PI_NPM_INSTALL_PACKAGES[@]} -gt 0 ]]; then
   PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON="${PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON/, ]/]}"
 fi
 ensure_host_dir "$HOST_PI_HOME"
+ensure_host_dir "$HOST_PI_JITI_CACHE"
 ensure_host_dir "$HOST_AGENT_STATUS"
 
 # Ownership preflight: detect and repair existing root-owned state
@@ -545,6 +547,7 @@ if [[ -n "${WAYLAND_DISPLAY:-}" && -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME
   CLIPBOARD_DOCKER_FLAGS+=(-v "$XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR")
 fi
 
+# Jiti's current env parser treats JITI_FS_CACHE as a boolean, so TMPDIR selects its persistent cache root.
 # shellcheck disable=SC2086 # word-splitting intentional: multi-flag string
 docker run --rm $DOCKER_TTY_FLAGS \
   $DOCKER_NO_TTY_ENV_FLAGS \
@@ -580,6 +583,10 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${GIT_CONFIG_DOCKER_FLAGS[@]}" \
   "${GITIGNORE_DOCKER_FLAGS[@]}" \
   -e CONTEXT7_API_KEY \
+  -e PI_TIMING \
+  -e PI_STARTUP_BENCHMARK \
+  -e JITI_FS_CACHE="$CONTAINER_HOME/.pi/cache/jiti" \
+  -e TMPDIR="$CONTAINER_HOME/.pi/cache" \
   -e PI_BUILD_PLAN_MODEL_PROFILE="$MODEL_PROFILE" \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \

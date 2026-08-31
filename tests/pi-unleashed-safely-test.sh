@@ -75,6 +75,9 @@ assert_contains "explicit extension path points at persisted Pi config" "$run_ar
 assert_contains "isolation flags remain forwarded to Pi" "$run_args" "--no-extensions"
 assert_contains "skills isolation flag remains forwarded to Pi" "$run_args" "--no-skills"
 assert_contains "custom prompt remains forwarded to Pi" "$run_args" "$tmp_dir/custom-prompt.md"
+assert_contains "--dev masks host extensions" "$run_args" "$home/.pi/agent/extensions:rw,exec,uid=$(id -u),gid=$(id -g)"
+assert_contains "--dev masks host prompts" "$run_args" "$home/.pi/agent/prompts:rw,exec,uid=$(id -u),gid=$(id -g)"
+assert_contains "--dev masks host skills" "$run_args" "$home/.pi/agent/skills:rw,exec,uid=$(id -u),gid=$(id -g)"
 
 rm "$unslop_prompt"
 rm -f "$docker_command_log"
@@ -148,6 +151,22 @@ NODE
     test_fail "unslop extension injects the full prompt once" "extension runtime check failed"
   fi
 fi
+
+# --- Jiti cache and profiling tests ---
+run_wrapper
+run_args=$(<"$docker_run_log")
+if [[ -d "$home/.pi/cache/jiti" ]]; then
+  test_pass "Jiti cache directory is created"
+else
+  test_fail "Jiti cache directory is created" "directory is missing"
+fi
+assert_contains "Jiti cache path is forwarded" "$run_args" "JITI_FS_CACHE=$home/.pi/cache/jiti"
+assert_contains "Jiti temp root is persistent" "$run_args" "TMPDIR=$home/.pi/cache"
+
+PI_TIMING=1 PI_STARTUP_BENCHMARK=1 run_wrapper
+run_args=$(<"$docker_run_log")
+assert_contains "PI_TIMING reaches the container" "$run_args" "PI_TIMING"
+assert_contains "PI_STARTUP_BENCHMARK reaches the container" "$run_args" "PI_STARTUP_BENCHMARK"
 
 # --- .gitconfig forwarding tests ---
 gitconfig="$home/.gitconfig"
