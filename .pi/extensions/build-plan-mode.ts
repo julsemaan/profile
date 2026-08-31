@@ -24,6 +24,7 @@ import {
 	type ModelProfile,
 	applyProfileData,
 	findBuiltinProfile,
+	getModelCompletionCandidates,
 	getNextProfile,
 	isModelAlias,
 	isThinkingLevel,
@@ -254,7 +255,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		builtinNames: new Set(),
 	};
 	let modelMap: ModelMap = structuredClone(DEFAULT_MODEL_MAP);
-	let currentModelRegistry: any;
+	let activeContext: ExtensionContext | undefined;
 	let fileOverridePath: string | null = null;
 	let fileOverrideProfile: BuiltinProfile | null = null;
 	let fileOverrideCustomData: Record<ModelAlias, AliasConfig> | null = null;
@@ -536,8 +537,9 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		return true;
 	}
 
-	function getAliasArgumentCompletions(prefix: string, alias: ModelAlias): AutocompleteItem[] | null {
-		if (!currentModelRegistry) return null;
+	async function getAliasArgumentCompletions(prefix: string, alias: ModelAlias): Promise<AutocompleteItem[] | null> {
+		const ctx = activeContext;
+		if (!ctx) return null;
 
 		const trimmedPrefix = prefix.trim();
 		const spaceIndex = trimmedPrefix.indexOf(" ");
@@ -559,32 +561,25 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}));
 		}
 
-		currentModelRegistry.refresh();
-		const models = currentModelRegistry.getAvailable();
-		if (!models || models.length === 0) return null;
-
-		const items = models.map((m: any) => ({
-			id: m.id,
-			provider: m.provider,
-			label: `${m.provider}/${m.id}`,
+		const currentValue = modelMap[alias].model;
+		const scopedModels = ctx.scopedModels ?? [];
+		let models;
+		if (scopedModels.length > 0) {
+			models = getModelCompletionCandidates([], scopedModels, currentValue);
+		} else {
+			await ctx.modelRegistry.refresh();
+			models = getModelCompletionCandidates(ctx.modelRegistry.getAvailable(), [], currentValue);
+		}
+		const items = models.map((model) => ({
+			id: model.id,
+			provider: model.provider,
+			label: `${model.provider}/${model.id}`,
 		}));
 
-		const currentValue = modelMap[alias].model;
-		if (currentValue && !items.some((item: any) => item.label === currentValue)) {
-			const parsed = parseModelRef(currentValue);
-			if (parsed) {
-				items.unshift({
-					id: parsed.modelId,
-					provider: parsed.provider,
-					label: currentValue,
-				});
-			}
-		}
-
-		const filtered = fuzzyFilter(items, trimmedPrefix, (item: any) => `${item.id} ${item.provider}`);
+		const filtered = fuzzyFilter(items, trimmedPrefix, (item) => `${item.id} ${item.provider}`);
 		if (filtered.length === 0) return null;
 
-		return filtered.map((item: any) => ({
+		return filtered.map((item) => ({
 			value: item.label,
 			label: item.id,
 			description: item.provider,
@@ -980,6 +975,8 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	// ── Lifecycle handlers ──────────────────────────────────────────────
 
 	pi.on("session_start", async (event, ctx) => {
+		activeContext = ctx;
+
 		// Discover modes from project
 		modeRegistry = discoverModes(ctx.cwd);
 
@@ -1055,8 +1052,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		if (event.reason === "reload" && resolved.source === "file") {
 			persistState(ctx);
 		}
-
-		currentModelRegistry = ctx.modelRegistry;
 
 		emitModelConfig();
 

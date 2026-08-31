@@ -11,6 +11,7 @@ import {
 	VALID_THINKING_LEVELS,
 	applyProfileData,
 	findBuiltinProfile,
+	getModelCompletionCandidates,
 	getCycleProfiles,
 	getNextProfile,
 	isModelAlias,
@@ -62,6 +63,52 @@ describe("MODEL_PROFILES", () => {
 				if (config) assert.ok(parseModelRef(config.model), `${profile}/${alias} has an invalid model reference`);
 			}
 		}
+	});
+});
+
+describe("getModelCompletionCandidates", () => {
+	const model = (provider: string, id: string) => ({ provider, id });
+
+	it("returns exactly the scoped models when a scope exists", () => {
+		const available = [model("openai", "outside"), model("openai", "one"), model("openai", "two")];
+		const scoped = [{ model: available[1] }, { model: available[2] }];
+
+		assert.deepEqual(
+			getModelCompletionCandidates(available, scoped, "openai/outside"),
+			scoped.map(({ model: scopedModel }) => scopedModel),
+		);
+	});
+
+	it("excludes an out-of-scope current alias value", () => {
+		const available = [model("openai", "outside"), model("openai", "inside")];
+		const scoped = [{ model: available[1] }];
+
+		assert.deepEqual(
+			getModelCompletionCandidates(available, scoped, "openai/outside"),
+			[available[1]],
+		);
+	});
+
+	it("returns all available models when the session is unscoped", () => {
+		const available = [model("openai", "one"), model("anthropic", "two")];
+
+		assert.deepEqual(
+			getModelCompletionCandidates(available, [], "openai/one"),
+			available,
+		);
+	});
+
+	it("keeps an unavailable current alias value only when unscoped", () => {
+		const available = [model("openai", "one")];
+
+		assert.deepEqual(
+			getModelCompletionCandidates(available, [], "anthropic/current"),
+			[model("anthropic", "current"), ...available],
+		);
+		assert.deepEqual(
+			getModelCompletionCandidates(available, [{ model: available[0] }], "anthropic/current"),
+			available,
+		);
 	});
 });
 
