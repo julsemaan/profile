@@ -10,6 +10,9 @@
     "openai-codex/gpt-5.6-sol",
     "openai-codex/gpt-5.6-terra",
     "opencode/*-free",
+    "openrouter/free",
+    "openrouter/z-ai/glm-5.3-flash",
+    "openrouter/deepseek/deepseek-v4-flash-0731",
     "github-copilot/*"
   ],
   "compaction": {
