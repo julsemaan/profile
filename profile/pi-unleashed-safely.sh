@@ -38,7 +38,7 @@ Arguments:
                       Warning: can hide host-installed integrations like
                       Herdr `herdr-agent-state.ts`.
   --model-profile NAME
-                      Start Pi with a specific model profile (e.g. deep, pub, priv).
+                      Start Pi with a specific model profile (e.g. deep, openrouter, priv).
                       Overrides julsemaan-tmp/model-profile for this session only.
   Git config forwarding
                       Host ~/.gitconfig is mounted read-only into the container

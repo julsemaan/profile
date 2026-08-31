@@ -1,7 +1,7 @@
 /**
  * Model-profile codec — parse, validate, and serialize model profiles.
  *
- * Built-in profiles are bare names (case-insensitive): pub, deep, priv, etc.
+ * Built-in profiles are bare names (case-insensitive): opencode, openrouter, deep, priv, and copilotPriv.
  * Custom profiles are JSON with all configured alias keys.
  */
 
@@ -14,6 +14,48 @@ export type ModelMap = Record<ModelAlias, AliasConfig>;
 // ── Built-in profiles ──────────────────────────────────────────────────────
 
 export const BUILTIN_ALIASES: readonly ModelAlias[] = ["custom/large", "custom/medium", "custom/small"];
+
+const GPT_SOL_MODEL_ID = "gpt-5.6-sol";
+const GPT_LUNA_MODEL_ID = "gpt-5.6-luna";
+const DEEPSEEK_PRO_MODEL_ID = "deepseek-v4-pro";
+const DEEPSEEK_FLASH_MODEL_ID = "deepseek-v4-flash";
+const OPENCODE_MEDIUM_MODEL_ID = "deepseek-v4-flash-free";
+const OPENROUTER_MEDIUM_MODEL_ID = "glm-5.3-flash";
+
+function modelRef(prefix: string, modelId: string): string {
+	return `${prefix}/${modelId}`;
+}
+
+export const MODEL_PROFILES = {
+	opencode: {
+		"custom/large": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
+		"custom/medium": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
+		"custom/small": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
+	},
+	openrouter: {
+		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
+		"custom/medium": { model: modelRef("openrouter/z-ai", OPENROUTER_MEDIUM_MODEL_ID), thinkingLevel: "high" },
+		"custom/small": { model: modelRef("openrouter/openai", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
+	},
+	deep: {
+		"custom/large": { model: modelRef("deepseek", DEEPSEEK_PRO_MODEL_ID), thinkingLevel: "max" },
+		"custom/medium": { model: modelRef("deepseek", DEEPSEEK_FLASH_MODEL_ID), thinkingLevel: "max" },
+		"custom/small": { model: modelRef("deepseek", DEEPSEEK_FLASH_MODEL_ID), thinkingLevel: "max" },
+	},
+	priv: {
+		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
+		"custom/medium": { model: modelRef("openai-codex", GPT_LUNA_MODEL_ID), thinkingLevel: "max" },
+		"custom/small": { model: modelRef("openai-codex", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
+	},
+	copilotPriv: {
+		"custom/large": { model: modelRef("github-copilot", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
+		"custom/medium": { model: modelRef("github-copilot", GPT_LUNA_MODEL_ID), thinkingLevel: "max" },
+		"custom/small": { model: modelRef("github-copilot", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
+	},
+} satisfies Record<string, ModelMap>;
+
+export type BuiltinProfile = keyof typeof MODEL_PROFILES;
+export const BUILTIN_PROFILES = Object.keys(MODEL_PROFILES) as BuiltinProfile[];
 
 export function isModelAlias(value: string): value is ModelAlias {
 	return (BUILTIN_ALIASES as readonly string[]).includes(value);
@@ -45,23 +87,13 @@ export function parseModelRef(modelRef: string): { provider: string; modelId: st
 	};
 }
 
-// ── Built-in profile names (from build-plan-mode.ts) ───────────────────────
-
-export type BuiltinProfile = "pubFree" | "pub" | "deep" | "priv" | "copilotPriv";
-
-export const BUILTIN_PROFILES: readonly BuiltinProfile[] = [
-	"opencode", "openrouter", "deep", "priv", "copilotPriv",
-];
-
 export function isBuiltinProfile(value: string): value is BuiltinProfile {
-	return (BUILTIN_PROFILES as readonly string[]).includes(value);
+	return BUILTIN_PROFILES.includes(value as BuiltinProfile);
 }
 
 export function findBuiltinProfile(value: string): BuiltinProfile | undefined {
 	const lower = value.toLowerCase();
-	return (BUILTIN_PROFILES as readonly string[]).find(
-		p => p.toLowerCase() === lower,
-	) as BuiltinProfile | undefined;
+	return BUILTIN_PROFILES.find((profile) => profile.toLowerCase() === lower);
 }
 
 export type ModelProfile = BuiltinProfile | "custom";

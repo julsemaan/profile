@@ -7,12 +7,14 @@ import * as path from "node:path";
 import {
 	BUILTIN_ALIASES,
 	BUILTIN_PROFILES,
+	MODEL_PROFILES,
 	VALID_THINKING_LEVELS,
 	applyProfileData,
 	findBuiltinProfile,
 	getCycleProfiles,
 	getNextProfile,
 	isModelAlias,
+	parseModelRef,
 	parseProfileContent,
 	serializeBuiltinProfile,
 	serializeCustomProfile,
@@ -21,18 +23,16 @@ import {
 } from "../.pi/extensions/lib/model-profile.ts";
 
 describe("findBuiltinProfile", () => {
-	it("parses bare built-in names", () => {
-		assert.equal(findBuiltinProfile("pub"), "pub");
-		assert.equal(findBuiltinProfile("priv"), "priv");
-		assert.equal(findBuiltinProfile("deep"), "deep");
-		assert.equal(findBuiltinProfile("pubFree"), "pubFree");
-		assert.equal(findBuiltinProfile("copilotPriv"), "copilotPriv");
+	it("parses every built-in name", () => {
+		for (const profile of BUILTIN_PROFILES) {
+			assert.equal(findBuiltinProfile(profile), profile);
+		}
 	});
 
 	it("is case-insensitive", () => {
-		assert.equal(findBuiltinProfile("PUB"), "pub");
-		assert.equal(findBuiltinProfile("Priv"), "priv");
-		assert.equal(findBuiltinProfile("DEEP"), "deep");
+		for (const profile of BUILTIN_PROFILES) {
+			assert.equal(findBuiltinProfile(profile.toUpperCase()), profile);
+		}
 	});
 
 	it("returns undefined for unknown names", () => {
@@ -49,6 +49,19 @@ describe("isModelAlias", () => {
 	it("rejects non-alias model references", () => {
 		assert.equal(isModelAlias("openai-codex/gpt-5.6-sol"), false);
 		assert.equal(isModelAlias("custom/unknown"), false);
+	});
+});
+
+describe("MODEL_PROFILES", () => {
+	it("contains every alias with a valid model reference", () => {
+		for (const profile of BUILTIN_PROFILES) {
+			const modelMap = MODEL_PROFILES[profile];
+			for (const alias of BUILTIN_ALIASES) {
+				assert.ok(alias in modelMap, `${profile} is missing ${alias}`);
+				const config = modelMap[alias];
+				if (config) assert.ok(parseModelRef(config.model), `${profile}/${alias} has an invalid model reference`);
+			}
+		}
 	});
 });
 
@@ -142,10 +155,10 @@ describe("validateCustomProfile", () => {
 });
 
 describe("parseProfileContent", () => {
-	it("parses bare built-in name", () => {
-		const result = parseProfileContent("pub");
+	it("parses a bare built-in name", () => {
+		const result = parseProfileContent("opencode");
 		assert.equal(result.type, "builtin");
-		if (result.type === "builtin") assert.equal(result.profile, "pub");
+		if (result.type === "builtin") assert.equal(result.profile, "opencode");
 	});
 
 	it("parses case-insensitive built-in name", () => {
@@ -187,8 +200,8 @@ describe("parseProfileContent", () => {
 
 describe("serializeBuiltinProfile", () => {
 	it("returns canonical name", () => {
-		assert.equal(serializeBuiltinProfile("pub"), "pub");
-		assert.equal(serializeBuiltinProfile("deep"), "deep");
+		assert.equal(serializeBuiltinProfile("opencode"), "opencode");
+		assert.equal(serializeBuiltinProfile("openrouter"), "openrouter");
 	});
 });
 
@@ -245,8 +258,8 @@ describe("julsemaan-tmp/ target discovery", () => {
 			const targetFile = path.join(tmpDir, "model-profile");
 
 			// Write initial content
-			fs.writeFileSync(targetFile, "pub", "utf-8");
-			assert.equal(fs.readFileSync(targetFile, "utf-8"), "pub");
+			fs.writeFileSync(targetFile, "openrouter", "utf-8");
+			assert.equal(fs.readFileSync(targetFile, "utf-8"), "openrouter");
 
 			// Overwrite with custom
 			const custom = serializeCustomProfile({
@@ -311,14 +324,11 @@ describe("getNextProfile", () => {
 		assert.equal(getNextProfile(last, true), "custom");
 	});
 
-	it("cycles builtin to next builtin", () => {
-		assert.equal(getNextProfile(builtins[0], false), builtins[1]);
-		assert.equal(getNextProfile(builtins[0], true), builtins[1]);
-	});
-
-	it("cycles pub to deep", () => {
-		assert.equal(getNextProfile("pub", false), "deep");
-		assert.equal(getNextProfile("pub", true), "deep");
+	it("cycles each builtin to the next builtin", () => {
+		for (let i = 0; i < builtins.length - 1; i++) {
+			assert.equal(getNextProfile(builtins[i], false), builtins[i + 1]);
+			assert.equal(getNextProfile(builtins[i], true), builtins[i + 1]);
+		}
 	});
 
 	it("returns first builtin for unknown current", () => {
@@ -349,35 +359,8 @@ describe("applyProfileData", () => {
 });
 
 describe("resolveStartupMap", () => {
-	const builtinMaps = {
-		pubFree: {
-			"custom/large": { model: "p/large", thinkingLevel: "max" as const },
-			"custom/medium": { model: "p/medium", thinkingLevel: "max" as const },
-			"custom/small": { model: "p/small", thinkingLevel: "max" as const },
-		},
-		pub: {
-			"custom/large": { model: "b/large", thinkingLevel: "high" as const },
-			"custom/medium": { model: "b/medium", thinkingLevel: "high" as const },
-			"custom/small": { model: "b/small", thinkingLevel: "high" as const },
-		},
-		deep: {
-			"custom/large": { model: "d/large", thinkingLevel: "max" as const },
-			"custom/medium": { model: "d/medium", thinkingLevel: "max" as const },
-			"custom/small": { model: "d/small", thinkingLevel: "max" as const },
-		},
-		priv: {
-			"custom/large": { model: "v/large", thinkingLevel: "medium" as const },
-			"custom/medium": { model: "v/medium", thinkingLevel: "medium" as const },
-			"custom/small": { model: "v/small", thinkingLevel: "medium" as const },
-		},
-		copilotPriv: {
-			"custom/large": { model: "c/large", thinkingLevel: "low" as const },
-			"custom/medium": { model: "c/medium", thinkingLevel: "low" as const },
-			"custom/small": { model: "c/small", thinkingLevel: "low" as const },
-		},
-	};
-
-	const defaultMap = structuredClone(builtinMaps.priv);
+	const builtinMaps = MODEL_PROFILES;
+	const defaultMap = structuredClone(MODEL_PROFILES.priv);
 	const customFileData = {
 		"custom/large": { model: "f/large", thinkingLevel: "high" as const },
 		"custom/medium": { model: "f/medium", thinkingLevel: "medium" as const },
@@ -389,14 +372,14 @@ describe("resolveStartupMap", () => {
 
 	it("reload: valid file override beats session state", () => {
 		const { modelMap, source } = resolveStartupMap(
-			{ reason: "reload", sessionMap: staleSessionMap, fileProfile: "pub" },
+			{ reason: "reload", sessionMap: staleSessionMap, fileProfile: "openrouter" },
 			defaultMap,
 			builtinMaps,
 		);
 		assert.equal(source, "file");
-		assert.equal(modelMap["custom/large"].model, "b/large");
+		assert.equal(modelMap["custom/large"].model, MODEL_PROFILES.openrouter["custom/large"].model);
 		assert.equal(modelMap["custom/large"].thinkingLevel, "high");
-		assert.equal(modelMap["custom/small"].model, "b/small");
+		assert.equal(modelMap["custom/small"].model, MODEL_PROFILES.openrouter["custom/small"].model);
 	});
 
 	it("reload: custom file override beats session state", () => {
@@ -411,24 +394,24 @@ describe("resolveStartupMap", () => {
 
 	it("reload: environment profile still wins over file override", () => {
 		const { modelMap, source } = resolveStartupMap(
-			{ reason: "reload", envProfile: "deep", fileProfile: "pub", fileCustomData: customFileData },
+			{ reason: "reload", envProfile: "deep", fileProfile: "openrouter", fileCustomData: customFileData },
 			defaultMap,
 			builtinMaps,
 		);
 		assert.equal(source, "env");
-		assert.equal(modelMap["custom/large"].model, "d/large");
-		assert.equal(modelMap["custom/small"].model, "d/small");
+		assert.equal(modelMap["custom/large"].model, MODEL_PROFILES.deep["custom/large"].model);
+		assert.equal(modelMap["custom/small"].model, MODEL_PROFILES.deep["custom/small"].model);
 	});
 
 	it("startup: session state keeps existing precedence over file override", () => {
 		const { modelMap, source } = resolveStartupMap(
-			{ reason: "startup", sessionMap: staleSessionMap, fileProfile: "pub", fileCustomData: customFileData },
+			{ reason: "startup", sessionMap: staleSessionMap, fileProfile: "openrouter", fileCustomData: customFileData },
 			defaultMap,
 			builtinMaps,
 		);
 		assert.equal(source, "session");
 		assert.equal(modelMap["custom/large"].model, "stale/large");
-		assert.equal(modelMap["custom/medium"].model, "v/medium");
+		assert.equal(modelMap["custom/medium"].model, MODEL_PROFILES.priv["custom/medium"].model);
 	});
 
 	it("startup: file override applies when no session or temp state", () => {
@@ -461,7 +444,7 @@ describe("resolveStartupMap", () => {
 		);
 		assert.equal(source, "temp");
 		assert.equal(modelMap["custom/medium"].model, "t/medium");
-		assert.equal(modelMap["custom/large"].model, "v/large");
+		assert.equal(modelMap["custom/large"].model, MODEL_PROFILES.priv["custom/large"].model);
 	});
 
 	it("no overrides: returns default", () => {

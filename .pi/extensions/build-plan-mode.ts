@@ -15,6 +15,7 @@ import {
 import {
 	BUILTIN_ALIASES,
 	BUILTIN_PROFILES,
+	MODEL_PROFILES,
 	VALID_THINKING_LEVELS,
 	type AliasConfig,
 	type BuiltinProfile,
@@ -36,45 +37,6 @@ import {
 const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
 const THINKING_LEVELS_DISPLAY = VALID_THINKING_LEVELS.join("|");
 
-const MODEL_PROFILES: Record<BuiltinProfile, { modelMap: ModelMap }> = {
-	opencode: {
-		modelMap: {
-			"custom/large": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
-			"custom/medium": { model: "opencode/deepseek-v4-flash-free", thinkingLevel: "max" },
-			"custom/small": { model: "opencode/mimo-v2.5-free", thinkingLevel: "max" },
-		},
-	},
-	openrouter: {
-		modelMap: {
-			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
-			"custom/medium": { model: "openrouter/z-ai/glm-5.3-flash", thinkingLevel: "high" },
-			"custom/small": { model: "openrouter/openai/gpt-5.6-luna", thinkingLevel: "high" },
-		},
-	},
-	deep: {
-		modelMap: {
-			"custom/large": { model: "deepseek/deepseek-v4-pro", thinkingLevel: "max" },
-			"custom/medium": { model: "deepseek/deepseek-v4-flash", thinkingLevel: "max" },
-			"custom/small": { model: "deepseek/deepseek-v4-flash", thinkingLevel: "max" },
-		},
-	},
-	priv: {
-		modelMap: {
-			"custom/large": { model: "openai-codex/gpt-5.6-sol", thinkingLevel: "high" },
-			"custom/medium": { model: "openai-codex/gpt-5.6-luna", thinkingLevel: "max" },
-			"custom/small": { model: "openai-codex/gpt-5.6-luna", thinkingLevel: "high" },
-		},
-	},
-	copilotPriv: {
-		modelMap: {
-			"custom/large": { model: "github-copilot/gpt-5.6-sol", thinkingLevel: "high" },
-			"custom/medium": { model: "github-copilot/gpt-5.6-luna", thinkingLevel: "max" },
-			"custom/small": { model: "github-copilot/gpt-5.6-luna", thinkingLevel: "high" },
-		},
-	},
-};
-
-
 type AppState = {
 	mode?: string;
 	profile?: ModelProfile;
@@ -89,11 +51,7 @@ function getTempStateFilePath(cwd: string): string {
 	const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 12);
 	return path.join(os.tmpdir(), `pi-model-state-${hash}.json`);
 }
-const BUILTIN_MODEL_MAPS = Object.fromEntries(
-	Object.entries(MODEL_PROFILES).map(([p, v]) => [p, v.modelMap]),
-) as Record<BuiltinProfile, ModelMap>;
-
-const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv.modelMap);
+const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv);
 const DEFAULT_NEW_SESSION_MODE = "plan";
 const DEFAULT_EXISTING_SESSION_MODE = "build";
 
@@ -214,7 +172,7 @@ function getCurrentProfile(modelMap: ModelMap): ModelProfile {
 	for (const [profile, config] of Object.entries(MODEL_PROFILES)) {
 		if (BUILTIN_ALIASES.every((alias) => {
 			const current = modelMap[alias];
-			const expected = config.modelMap[alias];
+			const expected = config[alias];
 			return current.model === expected.model && current.thinkingLevel === expected.thinkingLevel;
 		})) {
 			return profile as ModelProfile;
@@ -466,7 +424,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		source: string,
 		notify = true,
 	) {
-		modelMap = structuredClone(MODEL_PROFILES[profile].modelMap);
+		modelMap = structuredClone(MODEL_PROFILES[profile]);
 
 		const modeConfig = getActiveModeConfig();
 		const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
@@ -1091,7 +1049,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				fileCustomData,
 			},
 			DEFAULT_MODEL_MAP,
-			BUILTIN_MODEL_MAPS,
+			MODEL_PROFILES,
 		);
 		modelMap = resolved.modelMap;
 
