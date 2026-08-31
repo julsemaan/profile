@@ -45,6 +45,28 @@ export function parseModelRef(modelRef: string): { provider: string; modelId: st
 	};
 }
 
+export type ModelCompletionCandidate = { provider: string; id: string };
+export type ScopedModelCompletion = { model: ModelCompletionCandidate };
+
+export function getModelCompletionCandidates(
+	availableModels: readonly ModelCompletionCandidate[],
+	scopedModels: readonly ScopedModelCompletion[],
+	currentValue?: string,
+): ModelCompletionCandidate[] {
+	const candidates = scopedModels.length > 0
+		? scopedModels.map(({ model }) => model)
+		: [...availableModels];
+
+	if (scopedModels.length === 0 && currentValue) {
+		const parsed = parseModelRef(currentValue);
+		if (parsed && !candidates.some((model) => model.provider === parsed.provider && model.id === parsed.modelId)) {
+			candidates.unshift({ provider: parsed.provider, id: parsed.modelId });
+		}
+	}
+
+	return candidates;
+}
+
 // ── Built-in profile names (from build-plan-mode.ts) ───────────────────────
 
 export type BuiltinProfile = "pubFree" | "pub" | "deep" | "priv" | "copilotPriv";
