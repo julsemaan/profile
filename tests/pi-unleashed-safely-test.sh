@@ -35,6 +35,23 @@ pull)
 build)
   cat >/dev/null
   ;;
+create)
+  echo "stub-container-id"
+  ;;
+cp)
+  src="$2"
+  dst="$3"
+  case "$src" in
+  stub-container-id:/etc/passwd) cp /etc/passwd "$dst" ;;
+  stub-container-id:/etc/group) cp /etc/group "$dst" ;;
+  *)
+    echo "unexpected docker cp: $src -> $dst" >&2
+    exit 1
+    ;;
+  esac
+  ;;
+rm)
+  ;;
 run)
   printf '%s\n' "$@" >"$DOCKER_RUN_LOG"
   ;;
@@ -63,6 +80,8 @@ function run_wrapper {
 gitconfig="$home/.gitconfig"
 printf '[user]\n  name = Test User\n  email = test@example.com\n' >"$gitconfig"
 
+# First run_wrapper exercises the cold/refresh path (pull, build, identity
+# regen into ~/.cache/pi-unleashed-safely); later calls hit the 24h warm path.
 run_wrapper
 run_args=$(<"$docker_run_log")
 assert_contains ".gitconfig mounted read-only" "$run_args" "$gitconfig:$home/.gitconfig:ro"
