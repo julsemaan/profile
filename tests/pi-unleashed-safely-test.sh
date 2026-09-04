@@ -85,6 +85,7 @@ printf '[user]\n  name = Test User\n  email = test@example.com\n' >"$gitconfig"
 run_wrapper
 run_args=$(<"$docker_run_log")
 assert_contains ".gitconfig mounted read-only" "$run_args" "$gitconfig:$home/.gitconfig:ro"
+assert_contains "host .cache bind-mounted (jiti compile cache persists)" "$run_args" "$home/.cache:$home/.cache"
 
 rm "$gitconfig"
 run_wrapper
