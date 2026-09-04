@@ -50,6 +50,29 @@ assert_eq 'new branch starts without upstream' '' "$(git -C "$wt_path" rev-parse
 assert_eq 'selected remote is recorded' origin "$(git -C "$repo" config --local --get branch.feature.remote || true)"
 assert_eq 'push auto-setup is enabled locally' true "$(git -C "$repo" config --local --get push.autoSetupRemote || true)"
 
+# A remote-only branch exercises gwt's tracking-branch path.
+git -C "$repo" push -q origin main:remote-only
+git -C "$repo" fetch -q origin
+cat >"$stub_dir/fzf" <<'STUB'
+#!/usr/bin/env bash
+cat >/dev/null
+printf '%s\n' 'origin/remote-only'
+STUB
+chmod +x "$stub_dir/fzf"
+
+remote_wt_path="$tmp_dir/repo-remote-only"
+remote_stdout_file="$tmp_dir/gwt-create.stdout"
+remote_create_command="cd $(printf '%q' "$repo") && bash $(printf '%q' "$REPO_ROOT/profile/gwt") create > $(printf '%q' "$remote_stdout_file")"
+if remote_create_output=$(printf 'remote-only\n' | PATH="$stub_dir:$PATH" script -qfec "$remote_create_command" /dev/null 2>&1); then
+  test_pass 'remote-only interactive create succeeds'
+else
+  test_fail 'remote-only interactive create succeeds' "$remote_create_output"
+  test_summary
+  exit 1
+fi
+
+assert_eq 'gwt create stdout is only worktree path' "$remote_wt_path" "$(<"$remote_stdout_file")"
+
 printf 'feature\n' >"$wt_path/feature.txt"
 git -C "$wt_path" add feature.txt
 git -C "$wt_path" commit -q -m feature

@@ -1,7 +1,7 @@
 ---
-description: Open current branch as a GitHub pull request after preview and confirmation
+description: Open current branch as a GitHub pull request after preview without confirmation
 argument-hint: "[draft]"
-mode: build
+mode: small-build
 ---
 
 # Open GitHub Pull Request
@@ -13,7 +13,7 @@ Open the current branch as one GitHub pull request. Treat `$1` as the optional m
 
 Use only local Git commands and the GitHub MCP tools. Do not use `gh`, Bitbucket MCP, or any
 other forge. Keep preflight and all MCP reads read-only. Do not push, create, or otherwise mutate
-remote state until the user confirms the complete preview.
+remote state until all preflight, duplicate-detection, issue-matching, and content-generation checks pass.
 
 ## Preflight
 
@@ -90,12 +90,12 @@ issue is selected, append exactly one `Fixes #<number>` line to the pull request
 
 ## Build and preview
 
-Generate a concise title describing the primary change. Generate a short Markdown body with:
-- `## Summary` and up to three accurate bullets
-- `## Validation` listing checks actually run, or `Not run (not requested)`
+Generate a concise title describing the primary change following the Conventional Commit standard. Generate a short Markdown body with:
+- `## Summary` with up to three accurate bullets that describe the changes
+- `## Impact` with bullet points if necessary that describes the impact (if any) of the changes in the PR
 - the single `Fixes #<number>` line only when an issue was selected
 
-Show this complete preview before asking for approval:
+Show this complete preview, then proceed directly to creation:
 
 ```text
 Repository: OWNER/REPO
@@ -112,14 +112,12 @@ Body:
 ...
 ```
 
-Then use the `question` tool for exactly one creation confirmation. Offer clear `Create PR` and
-`Cancel` choices with `allowOther: false`; proceed only when the user selects `Create PR`. Do not
-ask for confirmation in plain assistant text. On cancellation or any non-Create answer, report that
-no push or pull request creation occurred and stop; do not alter files, refs, or remote state.
+After printing the preview, proceed directly to `Create`. Do not use the `question` tool for
+creation confirmation.
 
 ## Create
 
-Only after the user selects `Create PR`:
+After the preview:
 
 1. Push exactly once:
 

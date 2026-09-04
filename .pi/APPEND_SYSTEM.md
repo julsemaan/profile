@@ -9,8 +9,7 @@
 
 You are running in a docker container that acts as a sandbox. You have limited access to the host system provided via some mount points. You have network access in the docker network and can access the internet.
 
-# Documentation prose carve-out
+# Documentation prose
 
-- When generating human-facing documentation, write in normal professional English, not caveman style.
+- When generating human-facing documentation, write in normal professional English.
 - Applies to content intended for file output such as `README*`, `CHANGELOG*`, ADRs, `docs/**`, `.md`, `.mdx`, and inline documentation sections being written into files.
-- Do not treat Markdown broadly as a signal for normal prose in chat; non-documentation assistant chatter stays caveman.

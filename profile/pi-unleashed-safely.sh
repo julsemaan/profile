@@ -14,9 +14,7 @@ MODEL_PROFILE=""
 DIND_ENABLED=0
 
 # Extra npm packages to install into image.
-# `pi-caveman` currently imports `@earendil-works/pi-tui` without declaring it,
-# so install it explicitly to keep extension loadable.
-PI_NPM_INSTALL_PACKAGES=("pi-web-access" "pi-caveman" "@earendil-works/pi-tui" "pi-mcp-adapter" "agent-status-pi")
+PI_NPM_INSTALL_PACKAGES=("pi-web-access" "@earendil-works/pi-tui" "pi-mcp-adapter" "agent-status-pi")
 
 function usage {
   cat <<'USAGE'
@@ -38,12 +36,15 @@ Arguments:
                       Warning: can hide host-installed integrations like
                       Herdr `herdr-agent-state.ts`.
   --model-profile NAME
-                      Start Pi with a specific model profile (e.g. deep, pub, priv).
+                      Start Pi with a specific model profile (e.g. deep, openrouter, priv).
                       Overrides julsemaan-tmp/model-profile for this session only.
   Git config forwarding
                       Host ~/.gitconfig is mounted read-only into the container
                       when present on the host. No credential stores or included
                       config files are forwarded.
+                      Installed /usr/local/etc/.gitignore (from
+                      profile/.gitignore) is mounted read-only as the
+                      container's global gitignore.
   --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
                       on a private network. Sets DOCKER_HOST inside the container
                       so inner containers run in the companion, not on the host.
@@ -202,8 +203,18 @@ function ensure_host_dir {
 }
 
 HOST_PI_HOME="$RESOLVED_HOME/.pi"
+HOST_PI_JITI_CACHE="$HOST_PI_HOME/cache/jiti"
 HOST_AGENT_STATUS="$RESOLVED_HOME/.local/state/agent-status"
+HOST_UNSLOP_PROMPT="$HOST_PI_HOME/agent/UNSLOP.md"
+HOST_UNSLOP_EXTENSION="$HOST_PI_HOME/agent/always-on-unslop.ts"
 CONTAINER_HOME="$RESOLVED_HOME"
+
+for required_file in "$HOST_UNSLOP_PROMPT" "$HOST_UNSLOP_EXTENSION"; do
+  if [[ ! -f "$required_file" ]]; then
+    echo "Error: required Pi unslop file is missing: $required_file" >&2
+    exit 1
+  fi
+done
 CONTAINER_AGENT_STATUS="$CONTAINER_HOME/.local/state/agent-status"
 HOST_SSH_DIR="$RESOLVED_HOME/.ssh"
 HOST_SSH_KEY="${PI_SSH_KEY_PATH:-}"
@@ -219,6 +230,7 @@ if [[ ${#PI_NPM_INSTALL_PACKAGES[@]} -gt 0 ]]; then
   PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON="${PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON/, ]/]}"
 fi
 ensure_host_dir "$HOST_PI_HOME"
+ensure_host_dir "$HOST_PI_JITI_CACHE"
 ensure_host_dir "$HOST_AGENT_STATUS"
 
 # Image/identity freshness cache: 24h gate on pull+build+identity regen.
@@ -309,6 +321,19 @@ GIT_CONFIG_DOCKER_FLAGS=()
 HOST_GITCONFIG="$RESOLVED_HOME/.gitconfig"
 if [[ -f "$HOST_GITCONFIG" ]]; then
   GIT_CONFIG_DOCKER_FLAGS+=(-v "$HOST_GITCONFIG:$RESOLVED_HOME/.gitconfig:ro")
+fi
+
+# Load the repo's profile/.gitignore as the container's global gitignore.
+# Mounted read-only over the path the base image's system config references,
+# and registered via GIT_CONFIG_* env so it applies even if the published
+# image lags the repo.
+GITIGNORE_DOCKER_FLAGS=()
+# Installed by `install` to /usr/local/etc/.gitignore; mounted read-only into
+# the container as its global gitignore, registered via GIT_CONFIG_* env so it
+# applies even if the published image lags the repo.
+if [[ -f /usr/local/etc/.gitignore ]]; then
+  GITIGNORE_DOCKER_FLAGS+=(-v /usr/local/etc/.gitignore:/usr/local/etc/.gitignore:ro)
+  GITIGNORE_DOCKER_FLAGS+=(-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=core.excludesfile -e GIT_CONFIG_VALUE_0=/usr/local/etc/.gitignore)
 fi
 
 if [[ $REBUILD -eq 1 ]]; then
@@ -557,6 +582,7 @@ if [[ -n "${WAYLAND_DISPLAY:-}" && -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME
   CLIPBOARD_DOCKER_FLAGS+=(-v "$XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR")
 fi
 
+# Jiti's current env parser treats JITI_FS_CACHE as a boolean, so TMPDIR selects its persistent cache root.
 # shellcheck disable=SC2086 # word-splitting intentional: multi-flag string
 docker run --rm $DOCKER_TTY_FLAGS \
   $DOCKER_NO_TTY_ENV_FLAGS \
@@ -591,7 +617,12 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e GH_MCP_TOKEN \
   -e BB_MCP_TOKEN \
   "${GIT_CONFIG_DOCKER_FLAGS[@]}" \
+  "${GITIGNORE_DOCKER_FLAGS[@]}" \
   -e CONTEXT7_API_KEY \
+  -e PI_TIMING \
+  -e PI_STARTUP_BENCHMARK \
+  -e JITI_FS_CACHE="$CONTAINER_HOME/.pi/cache/jiti" \
+  -e TMPDIR="$CONTAINER_HOME/.pi/cache" \
   -e PI_BUILD_PLAN_MODEL_PROFILE="$MODEL_PROFILE" \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \
@@ -609,4 +640,6 @@ docker run --rm $DOCKER_TTY_FLAGS \
   --mount "type=bind,src=$MNT_HOST,dst=$MNT_CONTAINER" -w "$WORKDIR" \
   "${EXTRA_MOUNT_FLAGS[@]}" \
   "${DEV_DOCKER_FLAGS[@]}" \
-  "$IMAGE" "${PI_ARGS[@]}"
+  "$IMAGE" \
+  --extension "$CONTAINER_HOME/.pi/agent/always-on-unslop.ts" \
+  "${PI_ARGS[@]}"

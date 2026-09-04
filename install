@@ -151,7 +151,7 @@ function install_pi_global_config {
 
   mkdir -p "$agent_dir"
 
-  exact_sync_files="settings.json mcp.json models.json TODO.md web-search.json"
+  exact_sync_files="settings.json mcp.json models.json TODO.md web-search.json UNSLOP.md always-on-unslop.ts"
   managed_dirs="extensions prompts agents modes skills"
 
   # Sync install-managed files atomically (no delete-before-copy window)

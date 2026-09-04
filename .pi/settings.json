@@ -10,19 +10,16 @@
     "openai-codex/gpt-5.6-sol",
     "openai-codex/gpt-5.6-terra",
     "opencode/*-free",
-    "opencode/big-pickle",
-    "github-copilot/gpt-5.4",
-    "github-copilot/gpt-5.5",
-    "github-copilot/gpt-5.6-luna",
-    "github-copilot/gpt-5.6-sol",
-    "github-copilot/gpt-5.6-terra"
+    "openrouter/free",
+    "openrouter/z-ai/glm-5.3-flash",
+    "openrouter/deepseek/deepseek-v4-flash-0731",
+    "github-copilot/*"
   ],
   "compaction": {
     "enabled": true
   },
   "packages": [
     "npm:pi-web-access",
-    "npm:pi-caveman",
     "npm:@earendil-works/pi-tui",
     "npm:pi-mcp-adapter",
     "npm:agent-status-pi",

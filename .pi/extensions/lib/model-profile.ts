@@ -1,19 +1,65 @@
 /**
  * Model-profile codec — parse, validate, and serialize model profiles.
  *
- * Built-in profiles are bare names (case-insensitive): pub, deep, priv, etc.
- * Custom profiles are JSON with both alias keys.
+ * Built-in profiles are bare names (case-insensitive): opencode, openrouter, deep, priv, and copilotPriv.
+ * Custom profiles are JSON with all configured alias keys.
  */
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 
-export type ModelAlias = "custom/large" | "custom/medium";
+export type ModelAlias = "custom/large" | "custom/medium" | "custom/small";
 export type AliasConfig = { model: string; thinkingLevel: ThinkingLevel };
 export type ModelMap = Record<ModelAlias, AliasConfig>;
 
 // ── Built-in profiles ──────────────────────────────────────────────────────
 
-export const BUILTIN_ALIASES: readonly ModelAlias[] = ["custom/large", "custom/medium"];
+export const BUILTIN_ALIASES: readonly ModelAlias[] = ["custom/large", "custom/medium", "custom/small"];
+
+const GPT_SOL_MODEL_ID = "gpt-5.6-sol";
+const GPT_LUNA_MODEL_ID = "gpt-5.6-luna";
+const DEEPSEEK_PRO_MODEL_ID = "deepseek-v4-pro";
+const DEEPSEEK_FLASH_MODEL_ID = "deepseek-v4-flash";
+const OPENCODE_MEDIUM_MODEL_ID = "deepseek-v4-flash-free";
+const OPENROUTER_MEDIUM_MODEL_ID = "glm-5.3-flash";
+
+function modelRef(prefix: string, modelId: string): string {
+	return `${prefix}/${modelId}`;
+}
+
+export const MODEL_PROFILES = {
+	opencode: {
+		"custom/large": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
+		"custom/medium": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
+		"custom/small": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
+	},
+	openrouter: {
+		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
+		"custom/medium": { model: modelRef("openrouter/z-ai", OPENROUTER_MEDIUM_MODEL_ID), thinkingLevel: "high" },
+		"custom/small": { model: modelRef("openrouter/openai", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
+	},
+	deep: {
+		"custom/large": { model: modelRef("deepseek", DEEPSEEK_PRO_MODEL_ID), thinkingLevel: "max" },
+		"custom/medium": { model: modelRef("deepseek", DEEPSEEK_FLASH_MODEL_ID), thinkingLevel: "max" },
+		"custom/small": { model: modelRef("deepseek", DEEPSEEK_FLASH_MODEL_ID), thinkingLevel: "max" },
+	},
+	priv: {
+		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
+		"custom/medium": { model: modelRef("openai-codex", GPT_LUNA_MODEL_ID), thinkingLevel: "max" },
+		"custom/small": { model: modelRef("openai-codex", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
+	},
+	copilotPriv: {
+		"custom/large": { model: modelRef("github-copilot", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
+		"custom/medium": { model: modelRef("github-copilot", GPT_LUNA_MODEL_ID), thinkingLevel: "max" },
+		"custom/small": { model: modelRef("github-copilot", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
+	},
+} satisfies Record<string, ModelMap>;
+
+export type BuiltinProfile = keyof typeof MODEL_PROFILES;
+export const BUILTIN_PROFILES = Object.keys(MODEL_PROFILES) as BuiltinProfile[];
+
+export function isModelAlias(value: string): value is ModelAlias {
+	return (BUILTIN_ALIASES as readonly string[]).includes(value);
+}
 
 const THINKING_LEVELS: Record<ThinkingLevel, true> = {
 	off: true,
@@ -41,30 +87,42 @@ export function parseModelRef(modelRef: string): { provider: string; modelId: st
 	};
 }
 
-// ── Built-in profile names (from build-plan-mode.ts) ───────────────────────
+export type ModelCompletionCandidate = { provider: string; id: string };
+export type ScopedModelCompletion = { model: ModelCompletionCandidate };
 
-export type BuiltinProfile = "pubFree" | "pub" | "deep" | "priv" | "copilotPriv";
+export function getModelCompletionCandidates(
+	availableModels: readonly ModelCompletionCandidate[],
+	scopedModels: readonly ScopedModelCompletion[],
+	currentValue?: string,
+): ModelCompletionCandidate[] {
+	const candidates = scopedModels.length > 0
+		? scopedModels.map(({ model }) => model)
+		: [...availableModels];
 
-export const BUILTIN_PROFILES: readonly BuiltinProfile[] = [
-	"pubFree", "pub", "deep", "priv", "copilotPriv",
-];
+	if (scopedModels.length === 0 && currentValue) {
+		const parsed = parseModelRef(currentValue);
+		if (parsed && !candidates.some((model) => model.provider === parsed.provider && model.id === parsed.modelId)) {
+			candidates.unshift({ provider: parsed.provider, id: parsed.modelId });
+		}
+	}
+
+	return candidates;
+}
 
 export function isBuiltinProfile(value: string): value is BuiltinProfile {
-	return (BUILTIN_PROFILES as readonly string[]).includes(value);
+	return BUILTIN_PROFILES.includes(value as BuiltinProfile);
 }
 
 export function findBuiltinProfile(value: string): BuiltinProfile | undefined {
 	const lower = value.toLowerCase();
-	return (BUILTIN_PROFILES as readonly string[]).find(
-		p => p.toLowerCase() === lower,
-	) as BuiltinProfile | undefined;
+	return BUILTIN_PROFILES.find((profile) => profile.toLowerCase() === lower);
 }
 
 export type ModelProfile = BuiltinProfile | "custom";
 
 // ── Custom profile validation ──────────────────────────────────────────────
 
-export type CustomProfile = Record<string, { model: string; thinkingLevel: string }>;
+export type CustomProfile = Record<ModelAlias, { model: string; thinkingLevel: string }>;
 
 export function validateCustomProfile(raw: unknown): {
 	ok: true;
@@ -180,6 +238,83 @@ export function applyProfileData(
 	}
 }
 
+// ── Startup profile resolution ──────────────────────────────────────────────
+
+export type PartialAliasMap = Partial<Record<ModelAlias, Partial<AliasConfig>>>;
+
+export type StartupProfileSource = "env" | "file" | "session" | "temp" | "default";
+
+function mergeInto(map: ModelMap, patch: PartialAliasMap): void {
+	for (const alias of Object.keys(patch) as ModelAlias[]) {
+		const update = patch[alias];
+		if (update) map[alias] = { ...map[alias], ...update };
+	}
+}
+
+/**
+ * Resolve the model map at session_start.
+ *
+ * Precedence during /reload (reason === "reload"):
+ *   env override > file override > session state > temp state > default
+ * Precedence otherwise (startup, resume, new, fork):
+ *   env override > session state > temp state > file override > default
+ */
+export function resolveStartupMap(
+	input: {
+		reason: string;
+		envProfile?: BuiltinProfile | null;
+		sessionMap?: PartialAliasMap | null;
+		tempMap?: PartialAliasMap | null;
+		fileProfile?: BuiltinProfile | null;
+		fileCustomData?: Record<ModelAlias, AliasConfig> | null;
+	},
+	defaultMap: ModelMap,
+	builtinMaps: Record<BuiltinProfile, ModelMap>,
+): { modelMap: ModelMap; source: StartupProfileSource } {
+	const { reason, envProfile, sessionMap, tempMap, fileProfile, fileCustomData } = input;
+	const fileWins = reason === "reload" && !!(fileProfile || fileCustomData);
+
+	if (envProfile) {
+		const modelMap = structuredClone(defaultMap);
+		mergeInto(modelMap, builtinMaps[envProfile]);
+		return { modelMap, source: "env" };
+	}
+
+	if (fileWins && fileProfile) {
+		return { modelMap: structuredClone(builtinMaps[fileProfile]), source: "file" };
+	}
+
+	if (fileWins && fileCustomData) {
+		const modelMap = structuredClone(defaultMap);
+		applyProfileData(modelMap, fileCustomData);
+		return { modelMap, source: "file" };
+	}
+
+	if (sessionMap) {
+		const modelMap = structuredClone(defaultMap);
+		mergeInto(modelMap, sessionMap);
+		return { modelMap, source: "session" };
+	}
+
+	if (tempMap) {
+		const modelMap = structuredClone(defaultMap);
+		mergeInto(modelMap, tempMap);
+		return { modelMap, source: "temp" };
+	}
+
+	if (fileProfile) {
+		return { modelMap: structuredClone(builtinMaps[fileProfile]), source: "file" };
+	}
+
+	if (fileCustomData) {
+		const modelMap = structuredClone(defaultMap);
+		applyProfileData(modelMap, fileCustomData);
+		return { modelMap, source: "file" };
+	}
+
+	return { modelMap: structuredClone(defaultMap), source: "default" };
+}
+
 // ── Serialization ──────────────────────────────────────────────────────────
 
 export function serializeBuiltinProfile(profile: BuiltinProfile): string {
@@ -187,5 +322,6 @@ export function serializeBuiltinProfile(profile: BuiltinProfile): string {
 }
 
 export function serializeCustomProfile(data: Record<ModelAlias, AliasConfig>): string {
-	return JSON.stringify(data, null, 2) + "\n";
+	const profile = Object.fromEntries(BUILTIN_ALIASES.map(alias => [alias, data[alias]]));
+	return JSON.stringify(profile, null, 2) + "\n";
 }

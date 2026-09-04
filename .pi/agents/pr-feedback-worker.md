@@ -50,8 +50,8 @@ Expect:
 Use exact target metadata from item.
 
 ### GitHub
-- If `routing.commentId` exists, prefer reply-to-review-comment tool.
-- Otherwise post PR-level comment.
+- Use `github_add_issue_comment` for `artifactType: review`, `artifactType: pr-comment`, or `routing.fallbackToPrComment: true`. Pass `issue_number=pullNumber`; never pass a review ID as `commentId`.
+- Use `github_add_reply_to_pull_request_comment` only for `artifactType: review-comment` when `routing.fallbackToPrComment` is false and `routing.commentId` is the numeric REST review-comment ID from a `discussion_r...` anchor. GraphQL thread IDs (`PRRT_...`) and review IDs (`pullrequestreview-...`) are invalid `commentId` values.
 - Preserve same thread when possible.
 
 ### Bitbucket
