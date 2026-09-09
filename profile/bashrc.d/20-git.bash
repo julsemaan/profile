@@ -22,7 +22,15 @@ fi
 add_alias gpush 'git push origin HEAD'
 add_alias grh 'git reset HEAD --hard'
 add_alias gfo 'git fetch origin'
-add_alias gpoh 'git fetch origin && git pull --no-rebase origin HEAD'
+unalias gpoh 2>/dev/null
+function gpoh {
+  local branch
+  branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null)" || {
+    echo "gpoh: detached HEAD or outside a Git repository" >&2
+    return 1
+  }
+  git pull --no-rebase origin "$branch"
+}
 add_alias gs 'git status'
 add_alias sbrc 'source ~/.bashrc'
 

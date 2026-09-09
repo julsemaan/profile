@@ -104,6 +104,7 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   declare -F trigger-bashrc-reload >/dev/null && echo "__FN_trigger_bashrc_reload__"
   declare -F gchjira >/dev/null && echo "__FN_gchjira__"
   declare -F gom >/dev/null && echo "__FN_gom__"
+  declare -F gpoh >/dev/null && echo "__FN_gpoh__"
   declare -F gtagpush >/dev/null && echo "__FN_gtagpush__"
   declare -F gcoto >/dev/null && echo "__FN_gcoto__"
   declare -F gcoto-model >/dev/null && echo "__FN_gcoto_model__"
@@ -120,7 +121,7 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   alias gs >/dev/null 2>&1 && echo "__AL_gs__"
   alias grh >/dev/null 2>&1 && echo "__AL_grh__"
   alias gfo >/dev/null 2>&1 && echo "__AL_gfo__"
-  alias gpoh >/dev/null 2>&1 && echo "__AL_gpoh__"
+  ! alias gpoh >/dev/null 2>&1 && echo "__NO_AL_gpoh__"
   alias ll >/dev/null 2>&1 && echo "__AL_ll__"
   alias rm >/dev/null 2>&1 && echo "__AL_rm__"
   alias sbrc >/dev/null 2>&1 && echo "__AL_sbrc__"
@@ -145,6 +146,8 @@ assert_match "parse_git_dirty exists" "__FN_parse_git_dirty__" "$_result"
 assert_match "trigger-bashrc-reload exists" "__FN_trigger_bashrc_reload__" "$_result"
 assert_match "gchjira exists" "__FN_gchjira__" "$_result"
 assert_match "gom exists" "__FN_gom__" "$_result"
+assert_match "gpoh exists" "__FN_gpoh__" "$_result"
+assert_match "gpoh is not an alias" "__NO_AL_gpoh__" "$_result"
 assert_match "gtagpush exists" "__FN_gtagpush__" "$_result"
 assert_match "gcoto exists" "__FN_gcoto__" "$_result"
 assert_match "gcoto-model exists" "__FN_gcoto_model__" "$_result"
@@ -160,7 +163,7 @@ assert_match "gpush alias" "__AL_gpush__" "$_result"
 assert_match "gs alias" "__AL_gs__" "$_result"
 assert_match "grh alias" "__AL_grh__" "$_result"
 assert_match "gfo alias" "__AL_gfo__" "$_result"
-assert_match "gpoh alias" "__AL_gpoh__" "$_result"
+assert_match "gpoh has no alias" "__NO_AL_gpoh__" "$_result"
 assert_match "ll alias" "__AL_ll__" "$_result"
 assert_match "rm alias" "__AL_rm__" "$_result"
 assert_match "sbrc alias" "__AL_sbrc__" "$_result"
@@ -289,10 +292,14 @@ echo ""
 echo "=== Scenario 3: Repeated source does not duplicate PROMPT_COMMAND ==="
 
 _result=$(_run_interactive "" '
+  alias gpoh="echo stale-gpoh-alias"
   echo "source '"$LOADER"'" > "$HOME/.bashrc"
   source "$HOME/.bashrc"
   source "$HOME/.bashrc"
   source "$HOME/.bashrc"
+
+  declare -F gpoh >/dev/null && echo "GPOH_FN_AFTER_RELOAD=1"
+  ! alias gpoh >/dev/null 2>&1 && echo "GPOH_ALIAS_AFTER_RELOAD=0"
 
   count=$(printf "%s" "$PROMPT_COMMAND" | grep -o "jprofile_prompt_hook" | wc -l)
   echo "HOOK_COUNT=$count"
@@ -304,8 +311,87 @@ _result=$(_run_interactive "" '
   echo "PATH_COUNT=$path_count"
 ')
 
+assert_match "gpoh function survives re-source" "GPOH_FN_AFTER_RELOAD=1" "$_result"
+assert_match "gpoh alias stays cleared after re-source" "GPOH_ALIAS_AFTER_RELOAD=0" "$_result"
 assert_match "single hook after re-source" "HOOK_COUNT=1" "$_result"
 assert_match "path prepend is idempotent" "PATH_COUNT=1" "$_result"
+
+# ---------------------------------------------------------------------------
+# Scenario 3b - Branch-aware gpoh behavior
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Scenario 3b: Branch-aware gpoh behavior ==="
+
+_result=$(_run_interactive "" '
+  echo "source '"$LOADER"'" > "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+  set -e
+  remote="$HOME/remote.git"
+  seed="$HOME/seed"
+  work="$HOME/work"
+
+  git init --bare "$remote" >/dev/null
+  git init "$seed" >/dev/null
+  git -C "$seed" config user.email "test@test.com"
+  git -C "$seed" config user.name "Test"
+  printf "main\\n" > "$seed/file.txt"
+  git -C "$seed" add file.txt
+  git -C "$seed" commit -m main >/dev/null
+  git -C "$seed" branch -M main
+  git -C "$seed" remote add origin "$remote"
+  git -C "$seed" push -u origin main >/dev/null
+  git -C "$seed" checkout -b feature >/dev/null
+  printf "feature\\n" > "$seed/file.txt"
+  git -C "$seed" commit -am feature >/dev/null
+  git -C "$seed" push -u origin feature >/dev/null
+
+  git --git-dir="$remote" symbolic-ref HEAD refs/heads/main
+  git clone "$remote" "$work" >/dev/null
+  git -C "$work" checkout feature >/dev/null
+  printf "updated\\n" > "$seed/file.txt"
+  git -C "$seed" commit -am updated >/dev/null
+  git -C "$seed" push >/dev/null
+
+  echo "GPOH_REMOTE_HEAD=$(git --git-dir="$remote" symbolic-ref --short HEAD)"
+  cd "$work"
+  if gpoh >/dev/null; then
+    echo "GPOH_PULL_OK"
+  else
+    echo "GPOH_PULL_FAIL"
+  fi
+  echo "GPOH_BRANCH=$(git branch --show-current)"
+  echo "GPOH_FILE=$(cat file.txt)"
+
+  git checkout --detach >/dev/null
+  if gpoh >/dev/null 2>&1; then
+    echo "GPOH_DETACHED_FAIL"
+  else
+    echo "GPOH_DETACHED_OK"
+  fi
+
+  git checkout -b missing >/dev/null
+  if output="$(gpoh 2>&1)"; then
+    echo "GPOH_MISSING_FAIL"
+  else
+    echo "GPOH_MISSING_OK"
+    printf "%s\\n" "$output"
+  fi
+
+  cd "$HOME"
+  if gpoh >/dev/null 2>&1; then
+    echo "GPOH_NO_REPO_FAIL"
+  else
+    echo "GPOH_NO_REPO_OK"
+  fi
+')
+assert_match "gpoh test uses a different remote HEAD" "GPOH_REMOTE_HEAD=main" "$_result"
+assert_match "gpoh pulls successfully" "GPOH_PULL_OK" "$_result"
+assert_match "gpoh pulls the checked-out branch" "GPOH_BRANCH=feature" "$_result"
+assert_match "gpoh updates from the checked-out branch" "GPOH_FILE=updated" "$_result"
+assert_match "gpoh rejects detached HEAD" "GPOH_DETACHED_OK" "$_result"
+assert_match "gpoh fails for a missing remote branch" "GPOH_MISSING_OK" "$_result"
+assert_match "gpoh leaves missing-branch reporting to Git" "remote ref missing" "$_result"
+assert_match "gpoh rejects paths outside a repository" "GPOH_NO_REPO_OK" "$_result"
 
 # ---------------------------------------------------------------------------
 # Scenario 4 - Helper command sanity
@@ -363,6 +449,65 @@ _result=$(_run_interactive "" '
   fi
 ')
 assert_match "gom outside git repo returns error" "GOM_NO_GIT_OK" "$_result"
+
+# Test gom fetches before merging
+_result=$(_run_interactive "" '
+  echo "source '"$LOADER"'" > "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+  _gom_log="$HOME/gom.log"
+  function git {
+    printf "%s\\n" "$*" >> "$_gom_log"
+    case "${1:-}" in
+      fetch) return 0 ;;
+      symbolic-ref) printf "origin/main\\n"; return 0 ;;
+      merge) return 0 ;;
+      *) command git "$@" ;;
+    esac
+  }
+
+  if gom; then
+    echo "GOM_FETCH_MERGE_OK"
+  else
+    echo "GOM_FETCH_MERGE_FAIL"
+  fi
+
+  fetch_line=$(grep -n "^fetch origin$" "$_gom_log" | cut -d: -f1)
+  merge_line=$(grep -n "^merge origin/main$" "$_gom_log" | cut -d: -f1)
+  if [ -n "$fetch_line" ] && [ -n "$merge_line" ] && [ "$fetch_line" -lt "$merge_line" ]; then
+    echo "GOM_FETCH_BEFORE_MERGE_OK"
+  else
+    echo "GOM_FETCH_BEFORE_MERGE_FAIL"
+  fi
+')
+assert_match "gom fetches and merges successfully" "GOM_FETCH_MERGE_OK" "$_result"
+assert_match "gom fetches before merging" "GOM_FETCH_BEFORE_MERGE_OK" "$_result"
+
+# Test gom skips merging when fetch fails
+_result=$(_run_interactive "" '
+  echo "source '"$LOADER"'" > "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+  _gom_log="$HOME/gom-fetch-failure.log"
+  function git {
+    printf "%s\\n" "$*" >> "$_gom_log"
+    if [ "${1:-}" = "fetch" ]; then
+      return 1
+    fi
+    return 0
+  }
+
+  if gom; then
+    echo "GOM_FETCH_FAILURE_FAIL"
+  else
+    echo "GOM_FETCH_FAILURE_OK"
+  fi
+  if grep -q "^merge " "$_gom_log"; then
+    echo "GOM_MERGE_AFTER_FAILURE_FAIL"
+  else
+    echo "GOM_MERGE_AFTER_FAILURE_OK"
+  fi
+')
+assert_match "gom reports fetch failure" "GOM_FETCH_FAILURE_OK" "$_result"
+assert_match "gom skips merge after fetch failure" "GOM_MERGE_AFTER_FAILURE_OK" "$_result"
 
 # Test gch picker propagates fzf failures in non-interactive contexts
 _result=$(_run_interactive "" '

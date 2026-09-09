@@ -1,0 +1,104 @@
+---
+name: bitbucket-open-pr
+description: Open the current branch as a Bitbucket pull request. Use for natural-language requests or explicit /bitbucket-open-pr requests.
+---
+
+# Open Bitbucket pull request
+
+Use this skill only for the Bitbucket pull-request-opening stage explicitly requested by the user. Preserve earlier implementation, testing, and commit instructions, and keep the current mode's restrictions. Recognize natural-language requests and explicit `/bitbucket-open-pr` or `/skill:bitbucket-open-pr` references.
+
+Read arguments from the user's request, not prompt-template substitution. For a slash invocation, use the text after the command. For an inline reference or natural-language request, identify the arguments attached to that request. Accept only these modes:
+- omitted or `ready`: ready for review (`draft: false`)
+- `draft`: draft pull request (`draft: true`)
+- anything else: fail before doing any work
+
+Open the current branch as one Bitbucket pull request.
+
+Use only local Git commands and the Bitbucket MCP tools. Do not use `gh`, GitHub MCP, or any other forge. Keep preflight and all MCP reads read-only. Do not push, create, or otherwise mutate remote state until all checks pass. There is no preview or confirmation step. Push and create happen immediately after preflight.
+
+## Preflight
+
+Run these checks before duplicate detection:
+
+1. Require a clean worktree. `git status --porcelain=v1` must be empty, including untracked files. Do not stash, reset, commit, or amend anything to make it clean.
+2. Require a named branch from `git branch --show-current`.
+3. Never create or switch branches. Work only on the current branch.
+4. Select the push remote from the current branch's upstream when available; otherwise use `origin`. Fail if that remote does not exist.
+5. Read both fetch and push URLs. Accept only standard Bitbucket.org URLs whose host is exactly `bitbucket.org`, including HTTPS and SSH forms such as:
+   - `https://bitbucket.org/WORKSPACE/REPO.git`
+   - `git@bitbucket.org:WORKSPACE/REPO.git`
+   - `ssh://git@bitbucket.org/WORKSPACE/REPO.git`
+
+   Parse `workspace` and `repo` from the repository URL, removing one trailing `.git`. Reject every other host, including Bitbucket Server instances. Reject malformed URLs or URLs whose fetch and push repositories differ.
+6. Detect the current remote default branch without changing local refs. Prefer `git ls-remote --symref <remote> HEAD`; fall back to `refs/remotes/<remote>/HEAD` only when the remote query does not return a branch. Fail if the default branch cannot be determined.
+7. Fail if the current branch is the default branch.
+8. Use the local `refs/remotes/<remote>/<base>` ref for comparisons. Fail with a clear instruction to fetch the base branch manually if it is unavailable; do not fetch automatically.
+9. Fail when `git rev-list --count <base-ref>..HEAD` is zero. The branch must contain at least one commit not in the default branch.
+
+## Prevent duplicate PRs
+
+After `workspace`, `repo`, `base`, and `head` are known, list open pull requests on Bitbucket before continuing:
+
+```text
+bitbucket_bitbucketPullRequest({
+  action: "list",
+  workspaceId: "<workspace>",
+  repoId: "<repo>",
+  state: "OPEN",
+  q: "source.branch.name=\"<head>\""
+})
+```
+
+If this request returns `Bad Request`, retry exactly once with the normalized query above, using only `state` and `q`; do not add pagination. Stop and report the exact error if retry fails. Stop on any other request failure too. This pre-push duplicate check must succeed; never treat a failed request as no matches.
+
+If any matching pull request exists, print its URL (and title when available) and stop. Continue toward push only after a successful duplicate check. Do not push or create another pull request.
+
+## Generate PR content
+
+Inspect the current branch against the remote default branch:
+
+```bash
+git log --format=%s <base-ref>..HEAD
+git diff --stat <base-ref>...HEAD
+git diff --name-status <base-ref>...HEAD
+```
+
+Use commit subjects, diff summary, and changed paths to generate:
+
+- A concise title describing the primary change following the Conventional Commit standard.
+- A Markdown description containing:
+  - `## Summary` with up to three accurate bullets that describe the changes
+  - `## Impact` with bullet points if necessary that describes the impact, if any, of the changes in the PR
+
+No Jira or Bitbucket issue matching. Do not search for or link issues.
+
+## Push and create
+
+There is no preview, confirmation, or `question` call. Proceed directly:
+
+1. Push exactly once:
+
+   ```bash
+   git push -u <remote> HEAD
+   ```
+
+   If push fails, report the exact error and stop. Do not call the create tool or retry.
+2. Recheck for an existing open pull request with the same `state` and `q`, applying the same one-`Bad Request` retry rule and omitting pagination. If one now exists, report its URL and stop without creating a duplicate. If either request fails, report the exact error and stop. Create only after a successful post-push duplicate check.
+3. Call `bitbucket_bitbucketPullRequest` with:
+
+   ```text
+   {
+     action: "create",
+     workspaceId: "<workspace>",
+     repoId: "<repo>",
+     title: "<title>",
+     description: "<description>",
+     sourceBranch: "<head>",
+     targetBranch: "<base>",
+     draft: true|false
+   }
+   ```
+
+## Report result
+
+Print the created pull request URL, title, workspace/repository, source branch, target branch, and ready/draft state. Report exact Bitbucket MCP or Git error text on failure.

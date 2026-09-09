@@ -2,8 +2,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 IMAGE="pi-unleashed-safely:latest"
 MNT_HOST="$PWD"
 MNT_CONTAINER="$PWD"
@@ -222,6 +220,9 @@ HOST_SSH_DIR="$RESOLVED_HOME/.ssh"
 HOST_SSH_KEY="${PI_SSH_KEY_PATH:-}"
 HOST_KNOWN_HOSTS="$HOST_SSH_DIR/known_hosts"
 HOST_SSH_CONFIG="$HOST_SSH_DIR/config"
+HOST_CACHE_HOME="$RESOLVED_HOME/.cache"
+ensure_host_dir "$HOST_CACHE_HOME"
+CACHE_DOCKER_FLAGS=(-v "$HOST_CACHE_HOME:$RESOLVED_HOME/.cache")
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
 PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON="[]"
 if [[ ${#PI_NPM_INSTALL_PACKAGES[@]} -gt 0 ]]; then
@@ -231,6 +232,12 @@ fi
 ensure_host_dir "$HOST_PI_HOME"
 ensure_host_dir "$HOST_PI_JITI_CACHE"
 ensure_host_dir "$HOST_AGENT_STATUS"
+
+# Image/identity freshness cache: 24h gate on pull+build+identity regen.
+# One stamp covers all images.
+CACHE_DIR="$RESOLVED_HOME/.cache/pi-unleashed-safely"
+STAMP="$CACHE_DIR/.stamp"
+ensure_host_dir "$CACHE_DIR"
 
 # Ownership preflight: detect and repair existing root-owned state
 # in host ~/.pi before container starts.
@@ -335,11 +342,27 @@ else
   REBUILD_DOCKER_ARG=""
 fi
 
-docker pull julsemaan/code-sandbox-img:latest
-docker build $REBUILD_DOCKER_ARG -t "$IMAGE" \
-  --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" \
-  --build-arg PI_NPM_INSTALL_PACKAGES_JSON="$PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON" \
-  -f- "$SCRIPT_DIR" <<'EOF'
+# --- Image freshness gate ---
+# Warm path (FRESH=1) skips pull, build, and identity regeneration for 24h.
+# Cold/expired paths pull + build; --rebuild forces pull + --no-cache build.
+# Env/package changes take effect on next refresh (or --rebuild).
+FRESH=0
+if [[ $REBUILD -eq 0 && -f "$STAMP" && -f "$CACHE_DIR/passwd" && -f "$CACHE_DIR/group" ]] &&
+  [[ -z "$(find "$STAMP" -mmin +1440 -print -quit)" ]]; then
+  FRESH=1
+fi
+
+# Empty build context: Dockerfile comes via stdin, so nothing gets tarred/sent.
+WORK_TMPDIR="$(mktemp -d)"
+IDENTITY_CONTAINER=""
+trap 'rm -rf "$WORK_TMPDIR"; if [[ -n "$IDENTITY_CONTAINER" ]]; then docker rm -f "$IDENTITY_CONTAINER" >/dev/null 2>&1 || true; fi' EXIT
+
+if [[ $FRESH -eq 0 ]]; then
+  docker pull julsemaan/code-sandbox-img:latest
+  docker build $REBUILD_DOCKER_ARG -t "$IMAGE" \
+    --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" \
+    --build-arg PI_NPM_INSTALL_PACKAGES_JSON="$PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON" \
+    -f- "$WORK_TMPDIR" <<'EOF'
 FROM julsemaan/code-sandbox-img:latest
 
 ARG PI_NPM_PACKAGE
@@ -366,6 +389,7 @@ ENV EDITOR=vim
 
 ENTRYPOINT ["pi"]
 EOF
+fi
 
 # --- DinD companion (Docker-in-Docker) ---
 DIND_DOCKER_FLAGS=()
@@ -376,7 +400,9 @@ if [[ $DIND_ENABLED -eq 1 ]]; then
   DIND_VOLUME="pi-dind-store"
   DIND_PORT="2375"
 
-  docker pull "$DIND_IMAGE"
+  if [[ $FRESH -eq 0 ]]; then
+    docker pull "$DIND_IMAGE"
+  fi
 
   docker network create "$DIND_NETWORK" >/dev/null 2>&1 || true
 
@@ -421,28 +447,37 @@ if [[ $DIND_ENABLED -eq 1 ]]; then
   DIND_DOCKER_FLAGS+=(-e "DOCKER_HOST=tcp://$DIND_CONTAINER:$DIND_PORT")
 fi
 
-IDENTITY_TMPDIR="$(mktemp -d)"
-TMP_PASSWD="$IDENTITY_TMPDIR/passwd"
-TMP_GROUP="$IDENTITY_TMPDIR/group"
-trap 'rm -rf "$IDENTITY_TMPDIR"' EXIT
+CACHE_PASSWD="$CACHE_DIR/passwd"
+CACHE_GROUP="$CACHE_DIR/group"
 
-if ! docker run --rm --entrypoint cat "$IMAGE" /etc/passwd >"$TMP_PASSWD" ||
-  ! docker run --rm --entrypoint cat "$IMAGE" /etc/group >"$TMP_GROUP"; then
-  echo "Error: image identity files could not be prepared." >&2
-  exit 1
+if [[ $FRESH -eq 0 ]]; then
+  # docker create + cp: container never starts (no image runs on warm path).
+  IDENTITY_CONTAINER="$(docker create --entrypoint cat "$IMAGE" /etc/passwd /etc/group)"
+  if ! docker cp "$IDENTITY_CONTAINER:/etc/passwd" "$WORK_TMPDIR/passwd" ||
+    ! docker cp "$IDENTITY_CONTAINER:/etc/group" "$WORK_TMPDIR/group"; then
+    echo "Error: image identity files could not be prepared." >&2
+    exit 1
+  fi
+  docker rm -f "$IDENTITY_CONTAINER" >/dev/null 2>&1 || true
+  IDENTITY_CONTAINER=""
+
+  awk -F: -v user="$RESOLVED_USER" -v uid="$RESOLVED_UID" -v gid="$RESOLVED_GID" -v home="$RESOLVED_HOME" '
+    $1 != user && $3 != uid { print }
+    END { printf "%s:x:%s:%s:%s:%s:/bin/bash\n", user, uid, gid, user, home }
+  ' "$WORK_TMPDIR/passwd" >"$WORK_TMPDIR/passwd.tmp"
+  mv "$WORK_TMPDIR/passwd.tmp" "$CACHE_PASSWD"
+
+  awk -F: -v group_name="$RESOLVED_USER" -v gid="$RESOLVED_GID" '
+    $1 != group_name && $3 != gid { print }
+    END { printf "%s:x:%s:\n", group_name, gid }
+  ' "$WORK_TMPDIR/group" >"$WORK_TMPDIR/group.tmp"
+  mv "$WORK_TMPDIR/group.tmp" "$CACHE_GROUP"
+
+  touch "$STAMP"
+  if [[ $EUID -eq 0 ]]; then
+    chown "$RESOLVED_UID:$RESOLVED_GID" "$CACHE_PASSWD" "$CACHE_GROUP" "$STAMP"
+  fi
 fi
-
-awk -F: -v user="$RESOLVED_USER" -v uid="$RESOLVED_UID" -v gid="$RESOLVED_GID" -v home="$RESOLVED_HOME" '
-  $1 != user && $3 != uid { print }
-  END { printf "%s:x:%s:%s:%s:%s:/bin/bash\n", user, uid, gid, user, home }
-' "$TMP_PASSWD" >"$TMP_PASSWD.tmp"
-mv "$TMP_PASSWD.tmp" "$TMP_PASSWD"
-
-awk -F: -v group_name="$RESOLVED_USER" -v gid="$RESOLVED_GID" '
-  $1 != group_name && $3 != gid { print }
-  END { printf "%s:x:%s:\n", group_name, gid }
-' "$TMP_GROUP" >"$TMP_GROUP.tmp"
-mv "$TMP_GROUP.tmp" "$TMP_GROUP"
 if [[ $USE_TTY -eq 1 ]]; then
   DOCKER_TTY_FLAGS="-it"
   DOCKER_NO_TTY_ENV_FLAGS=""
@@ -555,6 +590,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${CLIPBOARD_DOCKER_FLAGS[@]}" \
   "${HERDR_DOCKER_FLAGS[@]}" \
   "${HOME_DOCKER_FLAGS[@]}" \
+  "${CACHE_DOCKER_FLAGS[@]}" \
   -e OPENCODE_API_KEY \
   -e OPENAI_API_KEY \
   -e ANTHROPIC_API_KEY \
@@ -593,8 +629,8 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e USER="$RESOLVED_USER" \
   -e LOGNAME="$RESOLVED_USER" \
   -u "$RESOLVED_UID:$RESOLVED_GID" \
-  -v "$TMP_PASSWD:/etc/passwd:ro" \
-  -v "$TMP_GROUP:/etc/group:ro" \
+  -v "$CACHE_PASSWD:/etc/passwd:ro" \
+  -v "$CACHE_GROUP:/etc/group:ro" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
   -v "$HOST_AGENT_STATUS:$CONTAINER_AGENT_STATUS" \
   "${GO_DOCKER_FLAGS[@]}" \
