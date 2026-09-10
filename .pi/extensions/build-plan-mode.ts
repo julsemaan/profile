@@ -1,7 +1,7 @@
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
-import { fuzzyFilter } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { fuzzyFilter, Text, type AutocompleteItem } from "@mariozechner/pi-tui";
+import { Type } from "typebox";
 import * as fs from "fs";
 import * as os from "node:os";
 import * as path from "path";
@@ -55,6 +55,33 @@ function getTempStateFilePath(cwd: string): string {
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv);
 const DEFAULT_NEW_SESSION_MODE = "plan";
 const DEFAULT_EXISTING_SESSION_MODE = "build";
+const AUTO_BUILD_EXECUTION_INSTRUCTIONS = "This is a plain automatic /plan-build build session. Implement and validate the plan. Do not commit, push, or open a pull request.";
+const PR_EXECUTION_INSTRUCTIONS = `This execution is authorized to implement the plan, commit the intended changes, push the branch, and open a ready-for-review pull request.
+
+1. Before changing files, check the repository status. Stop if unrelated uncommitted changes exist. Do not stash, reset, discard, or commit those changes.
+2. Determine the push remote and remote default branch. Stop on detached HEAD or ambiguous repository configuration. If the current branch is the default branch, create a descriptive feature branch before implementation. Otherwise keep the current branch.
+3. Implement the plan and run its validation. Resolve failures before committing. If blocked, report the exact blocker and do not commit, push, or open a pull request.
+4. Inspect the diff and commit only the intended changes.
+5. Read and follow the existing github-open-pr or bitbucket-open-pr skill according to the remote. Preserve its clean-worktree checks, duplicate detection, supported-host rules, push-failure handling, and one-push behavior. Open the pull request ready for review by default.
+6. Report the commit SHA and pull request URL.`;
+const AUTO_PLAN_BUILD_INSTRUCTIONS = `This is an explicitly activated /plan-build workflow. Stay in plan mode while exploring and asking questions. Do not infer completion from an ordinary response or a question. Once all required questions are answered, call finish_plan exactly once with a nonempty, self-contained plan containing decisions, files, implementation steps, and validation. The tool will start a fresh build session after this turn settles.`;
+const FINISH_PLAN_PARAMS = Type.Object({
+	plan: Type.String({ minLength: 1, description: "A nonempty, self-contained plan with decisions, files, implementation steps, and validation." }),
+});
+
+type ExecutePlanOptions = {
+	pr?: boolean;
+	automatic?: boolean;
+};
+
+type PendingAutomaticHandoff = {
+	plan: string;
+};
+
+type FinishPlanDetails = {
+	accepted: boolean;
+	plan?: string;
+};
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
 	return (
@@ -75,13 +102,13 @@ function getAssistantText(message: AssistantMessage): string {
 		.trim();
 }
 
-function getLastAssistantEntry(ctx: ExtensionContext): { id: string; text: string } | undefined {
+function getLastAssistantEntry(ctx: ExtensionContext): { id: string; text: string; stopReason: AssistantMessage["stopReason"] } | undefined {
 	const branch = ctx.sessionManager.getBranch();
 	for (let i = branch.length - 1; i >= 0; i--) {
 		const entry = branch[i];
 		if (entry.type !== "message" || !isAssistantMessage(entry.message)) continue;
 		const text = getAssistantText(entry.message);
-		if (text) return { id: entry.id, text };
+		if (text) return { id: entry.id, text, stopReason: entry.message.stopReason };
 	}
 	return undefined;
 }
@@ -260,6 +287,12 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	let fileOverrideProfile: BuiltinProfile | null = null;
 	let fileOverrideCustomData: Record<ModelAlias, AliasConfig> | null = null;
 	let fileOverrideSignature: string | null = null;
+	// Keep this workflow in memory so reloads and resumed sessions cannot replay it.
+	let automaticPlanBuildActive = false;
+	let pendingAutomaticHandoff: PendingAutomaticHandoff | undefined;
+	let automaticHandoffDispatch: PendingAutomaticHandoff | undefined;
+	let automaticHandoffTimer: ReturnType<typeof setTimeout> | undefined;
+	let automaticHandoffDispatchQueued = false;
 
 	function getModeToolNames(modeConfig?: ModeConfig): string[] {
 		if (modeConfig?.tools?.length) return modeConfig.tools;
@@ -268,6 +301,19 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	function getActiveModeConfig(): ModeConfig | undefined {
 		return modeRegistry.byName.get(mode);
+	}
+
+	function restoreModelMapFromSession(ctx: ExtensionContext) {
+		const lastState = ctx.sessionManager.getEntries()
+			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE)
+			.pop() as { data?: AppState } | undefined;
+		const savedMap = lastState?.data?.modelMap;
+		if (!savedMap) return;
+
+		for (const alias of BUILTIN_ALIASES) {
+			const saved = savedMap[alias];
+			if (saved) modelMap[alias] = { ...modelMap[alias], ...saved };
+		}
 	}
 
 	// Emit model config early so subagent tool can resolve aliases even in --no-session mode.
@@ -379,6 +425,8 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			return;
 		}
 
+		restoreModelMapFromSession(ctx);
+		cancelAutomaticPlanBuild();
 		mode = nextMode;
 		pi.setActiveTools(getModeToolNames(modeConfig));
 
@@ -586,30 +634,102 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		}));
 	}
 
+	function cancelAutomaticPlanBuild() {
+		automaticPlanBuildActive = false;
+		pendingAutomaticHandoff = undefined;
+		automaticHandoffDispatch = undefined;
+		automaticHandoffDispatchQueued = false;
+		if (automaticHandoffTimer) {
+			clearTimeout(automaticHandoffTimer);
+			automaticHandoffTimer = undefined;
+		}
+	}
+
+	function errorMessage(error: unknown): string {
+		return error instanceof Error ? error.message : String(error);
+	}
+
+	function scheduleAutomaticHandoff() {
+		if (!automaticPlanBuildActive || !pendingAutomaticHandoff || automaticHandoffDispatchQueued) return;
+
+		const pending = pendingAutomaticHandoff;
+		automaticHandoffDispatchQueued = true;
+		automaticHandoffTimer = setTimeout(() => {
+			automaticHandoffTimer = undefined;
+			automaticHandoffDispatchQueued = false;
+			if (!automaticPlanBuildActive || pendingAutomaticHandoff !== pending) return;
+
+			pendingAutomaticHandoff = undefined;
+			automaticHandoffDispatch = pending;
+			try {
+				// Commands are handled immediately when prompt expansion is enabled.
+				// Keep this outside agent_settled so session replacement is not re-entrant.
+				pi.sendUserMessage("/execute-plan", {
+					deliverAs: "followUp",
+					expandPromptTemplates: true,
+				});
+			} catch (error) {
+				automaticHandoffDispatch = undefined;
+				automaticPlanBuildActive = false;
+				activeContext?.ui.notify(`Automatic plan handoff failed: ${errorMessage(error)}`, "error");
+			}
+		}, 0);
+	}
+
 	async function executePlanHandoff(
 		plan: string,
 		args: string | undefined,
-		ctx: ExtensionContext,
+		ctx: ExtensionCommandContext,
+		options: ExecutePlanOptions = {},
 	): Promise<void> {
-		const executionPrompt = buildExecutionPrompt(plan, args);
+		const extraInstructions = options.pr
+			? [args?.trim(), PR_EXECUTION_INSTRUCTIONS].filter(Boolean).join("\n\n")
+			: options.automatic
+				? AUTO_BUILD_EXECUTION_INSTRUCTIONS
+				: args;
+		const executionPrompt = buildExecutionPrompt(plan, extraInstructions);
+		const ui = ctx.ui;
 		const parentSession = ctx.sessionManager.getSessionFile();
-		const result = await ctx.newSession({
-			parentSession,
-			setup: async (sessionManager) => {
-				sessionManager.appendCustomEntry(STATE_TYPE, {
-					mode: "build",
-					profile: getCurrentProfile(modelMap),
-					modelMap: structuredClone(modelMap),
-				});
-			},
-			withSession: async (replacementCtx) => {
-				replacementCtx.sendUserMessage(executionPrompt).catch(() => {});
-				replacementCtx.ui.notify("Started fresh build session.", "info");
-			},
-		});
+		let result: { cancelled: boolean };
+		try {
+			result = await ctx.newSession({
+				parentSession,
+				setup: async (sessionManager) => {
+					sessionManager.appendCustomEntry(STATE_TYPE, {
+						mode: "build",
+						profile: getCurrentProfile(modelMap),
+						modelMap: structuredClone(modelMap),
+					});
+				},
+				withSession: async (replacementCtx) => {
+					// newSession setup runs after session_start, so select build mode explicitly.
+					try {
+						await replacementCtx.sendUserMessage("/build", {
+							expandPromptTemplates: true,
+						});
+					} catch (error) {
+						replacementCtx.ui.notify(`Failed to select build mode: ${errorMessage(error)}`, "error");
+						return;
+					}
+					void replacementCtx.sendUserMessage(executionPrompt).catch((error) => {
+						replacementCtx.ui.notify(`Failed to start plan execution: ${errorMessage(error)}`, "error");
+					});
+					replacementCtx.ui.notify("Started fresh build session.", "info");
+				},
+			});
+		} catch (error) {
+			ui.notify(
+				`${options.automatic ? "Automatic plan handoff" : "Execute plan"} failed: ${errorMessage(error)}`,
+				"error",
+			);
+			return;
+		}
 
 		if (result.cancelled) {
-			ctx.ui.notify("Execute plan cancelled.", "info");
+			ui.notify(
+				options.automatic ? "Automatic plan handoff cancelled. No retry will be attempted." : "Execute plan cancelled.",
+				"info",
+			);
 		}
 	}
 
@@ -629,39 +749,140 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	// ── Commands ─────────────────────────────────────────────────────────
 
+	pi.registerTool({
+		name: "finish_plan",
+		label: "Finish Plan",
+		description: "Submit a nonempty, self-contained plan with decisions, files, implementation steps, and validation for an explicitly activated /plan-build workflow.",
+		promptSnippet: "Submit the completed plan for an explicitly activated /plan-build workflow",
+		promptGuidelines: [
+			"Use finish_plan only after all required questions are answered in an explicitly activated /plan-build workflow.",
+			"Include decisions, files, implementation steps, and validation in the finish_plan plan.",
+			"Do not use finish_plan to infer completion in an ordinary plan session.",
+		],
+		parameters: FINISH_PLAN_PARAMS,
+		async execute(_toolCallId, params) {
+			const plan = params.plan.trim();
+			if (!plan) {
+				return {
+					content: [{ type: "text", text: "Error: plan must be nonempty." }],
+					details: { accepted: false, plan: undefined } as FinishPlanDetails,
+				};
+			}
+
+			if (!automaticPlanBuildActive || mode !== "plan") {
+				return {
+					content: [{ type: "text", text: "Automatic plan-build is not active. Continue planning and present the plan normally." }],
+					details: { accepted: false, plan: undefined } as FinishPlanDetails,
+				};
+			}
+
+			if (pendingAutomaticHandoff || automaticHandoffDispatch) {
+				return {
+					content: [{ type: "text", text: "A plan has already been submitted for handoff." }],
+					details: { accepted: false, plan: undefined } as FinishPlanDetails,
+				};
+			}
+
+			pendingAutomaticHandoff = { plan };
+			return {
+				content: [{ type: "text", text: "Plan accepted. A fresh build session will start after this turn settles." }],
+				details: { accepted: true, plan } as FinishPlanDetails,
+				terminate: true,
+			};
+		},
+		renderCall(_args, theme) {
+			return new Text(theme.fg("toolTitle", theme.bold("finish_plan")), 0, 0);
+		},
+		renderResult(result, _options, theme) {
+			const text = result.content.find((part): part is TextContent => part.type === "text")?.text ?? "";
+			const accepted = (result.details as { accepted?: boolean } | undefined)?.accepted;
+			return new Text(theme.fg(accepted ? "success" : "warning", text), 0, 0);
+		},
+	});
+
+	pi.registerCommand("plan-build", {
+		description: "Plan the next request in read-only mode, then start a fresh build session automatically",
+		handler: async (args, ctx) => {
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("Wait for the current turn to finish before starting plan-build.", "warning");
+				return;
+			}
+
+			await applyMode("plan", ctx, false);
+			automaticPlanBuildActive = true;
+			const request = args.trim();
+			if (!request) {
+				ctx.ui.notify("Automatic plan-build enabled. Submit the next request.", "info");
+				return;
+			}
+
+			ctx.ui.notify("Automatic plan-build started.", "info");
+			pi.sendUserMessage(request);
+		},
+	});
+
+	async function finalizeAndHandoff(args: string, ctx: ExtensionCommandContext, options: ExecutePlanOptions = {}) {
+		const beforeEntry = getLastAssistantEntry(ctx);
+
+		ctx.ui.notify("Requesting final consolidated plan…", "info");
+		pi.sendUserMessage(buildFinalizePlanPrompt(args));
+
+		const started = await waitForTurnStart(ctx);
+		if (!started) {
+			ctx.ui.notify("Final plan request did not start. Handoff aborted.", "warning");
+			return;
+		}
+
+		await ctx.waitForIdle();
+
+		const afterEntry = getLastAssistantEntry(ctx);
+		if (!afterEntry) {
+			ctx.ui.notify("Assistant did not produce a final plan. Handoff aborted.", "warning");
+			return;
+		}
+
+		if (afterEntry.stopReason === "aborted" || afterEntry.stopReason === "error") {
+			ctx.ui.notify("Final plan request failed. Handoff aborted.", "warning");
+			return;
+		}
+
+		if (beforeEntry && beforeEntry.id === afterEntry.id) {
+			ctx.ui.notify("Assistant did not produce a new plan. Handoff aborted.", "warning");
+			return;
+		}
+
+		await executePlanHandoff(afterEntry.text, args, ctx, options);
+	}
+
 	pi.registerCommand("execute-plan", {
 		description: "Finalize current plan, then start fresh build session from finalized plan only",
+		handler: async (args, ctx) => {
+			const automatic = automaticHandoffDispatch;
+			if (automatic) {
+				automaticHandoffDispatch = undefined;
+				automaticPlanBuildActive = false;
+				await executePlanHandoff(automatic.plan, undefined, ctx, { automatic: true });
+				return;
+			}
+
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("Wait for the current turn to finish before executing the plan.", "warning");
+				return;
+			}
+
+			await finalizeAndHandoff(args, ctx);
+		},
+	});
+
+	pi.registerCommand("execute-plan-pr", {
+		description: "Finalize current plan, then implement, commit, push, and open a ready-for-review pull request",
 		handler: async (args, ctx) => {
 			if (!ctx.isIdle()) {
 				ctx.ui.notify("Wait for the current turn to finish before executing the plan.", "warning");
 				return;
 			}
 
-			const beforeEntry = getLastAssistantEntry(ctx);
-
-			ctx.ui.notify("Requesting final consolidated plan…", "info");
-			pi.sendUserMessage(buildFinalizePlanPrompt(args));
-
-			const started = await waitForTurnStart(ctx);
-			if (!started) {
-				ctx.ui.notify("Final plan request did not start. Handoff aborted.", "warning");
-				return;
-			}
-
-			await ctx.waitForIdle();
-
-			const afterEntry = getLastAssistantEntry(ctx);
-			if (!afterEntry) {
-				ctx.ui.notify("Assistant did not produce a final plan. Handoff aborted.", "warning");
-				return;
-			}
-
-			if (beforeEntry && beforeEntry.id === afterEntry.id) {
-				ctx.ui.notify("Assistant did not produce a new plan. Handoff aborted.", "warning");
-				return;
-			}
-
-			await executePlanHandoff(afterEntry.text, args, ctx);
+			await finalizeAndHandoff(args, ctx, { pr: true });
 		},
 	});
 
@@ -975,6 +1196,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	// ── Lifecycle handlers ──────────────────────────────────────────────
 
 	pi.on("session_start", async (event, ctx) => {
+		cancelAutomaticPlanBuild();
 		activeContext = ctx;
 
 		// Discover modes from project
@@ -1087,6 +1309,23 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		updateStatus(ctx);
 	});
 
+	pi.on("agent_end", async (event, ctx) => {
+		if (!automaticPlanBuildActive && !pendingAutomaticHandoff && !automaticHandoffDispatch) return;
+		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+		if (ctx.signal?.aborted || !lastAssistant || lastAssistant.stopReason === "aborted" || lastAssistant.stopReason === "error") {
+			cancelAutomaticPlanBuild();
+		}
+	});
+
+	pi.on("agent_settled", async () => {
+		scheduleAutomaticHandoff();
+	});
+
+	pi.on("session_shutdown", async () => {
+		cancelAutomaticPlanBuild();
+		activeContext = undefined;
+	});
+
 	pi.on("turn_start", async (_event, ctx) => {
 		await syncFileOverride(ctx);
 	});
@@ -1094,8 +1333,11 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event) => {
 		const modeConfig = getActiveModeConfig();
 		const promptSuffix = modeConfig?.systemPrompt ? `\n\n${modeConfig.systemPrompt}` : "";
+		const automaticSuffix = automaticPlanBuildActive && mode === "plan"
+			? `\n\n${AUTO_PLAN_BUILD_INSTRUCTIONS}`
+			: "";
 		return {
-			systemPrompt: event.systemPrompt + promptSuffix,
+			systemPrompt: event.systemPrompt + promptSuffix + automaticSuffix,
 		};
 	});
 

@@ -19,7 +19,8 @@ const GPT_SOL_MODEL_ID = "gpt-5.6-sol";
 const GPT_LUNA_MODEL_ID = "gpt-5.6-luna";
 const DEEPSEEK_PRO_MODEL_ID = "deepseek-v4-pro";
 const DEEPSEEK_FLASH_MODEL_ID = "deepseek-v4-flash";
-const OPENCODE_MEDIUM_MODEL_ID = "deepseek-v4-flash-free";
+const OPENCODE_LARGE_MODEL_ID = "muse-spark-1.3-contributor-free";
+const OPENCODE_MEDIUM_MODEL_ID = "muse-spark-1.3-contributor-free";
 const OPENROUTER_MEDIUM_MODEL_ID = "glm-5.3-flash";
 
 function modelRef(prefix: string, modelId: string): string {
@@ -32,10 +33,15 @@ export const MODEL_PROFILES = {
 		"custom/medium": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
 		"custom/small": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
 	},
-	openrouter: {
+	openrouterHybrid: {
 		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
 		"custom/medium": { model: modelRef("openrouter/z-ai", OPENROUTER_MEDIUM_MODEL_ID), thinkingLevel: "high" },
 		"custom/small": { model: modelRef("openrouter/openai", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
+	},
+	openrouterFull: {
+		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "xhigh" },
+		"custom/medium": { model: modelRef("openrouter/z-ai", OPENROUTER_MEDIUM_MODEL_ID), thinkingLevel: "high" },
+		"custom/small": { model: modelRef("openrouter/openai", GPT_LUNA_MODEL_ID), thinkingLevel: "medium" },
 	},
 	deep: {
 		"custom/large": { model: modelRef("deepseek", DEEPSEEK_PRO_MODEL_ID), thinkingLevel: "max" },
