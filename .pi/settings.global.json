@@ -1,0 +1,25 @@
+{
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.6-luna",
+  "enabledModels": [
+    "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
+    "openai-codex/gpt-5.4",
+    "openai-codex/gpt-5.5",
+    "openai-codex/gpt-5.6-luna",
+    "openai-codex/gpt-5.6-sol",
+    "openai-codex/gpt-5.6-terra",
+    "opencode/*-free",
+    "github-copilot/*"
+  ],
+  "compaction": {
+    "enabled": true
+  },
+  "packages": [
+    "npm:pi-web-access",
+    "npm:@earendil-works/pi-tui",
+    "npm:pi-mcp-adapter",
+    "npm:agent-status-pi",
+    "https://github.com/DietrichGebert/ponytail@v4.7.0"
+  ]
+}
