@@ -3,9 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@m
 import { fuzzyFilter, Text, type AutocompleteItem } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 import * as fs from "fs";
-import * as os from "node:os";
 import * as path from "path";
-import { createHash } from "node:crypto";
 import {
 	discoverModes,
 	type ModeConfig,
@@ -33,7 +31,7 @@ import {
 	parseProfileContent,
 	serializeBuiltinProfile,
 	serializeCustomProfile,
-	resolveStartupMap,
+	resolveInitialMap,
 } from "./lib/model-profile.js";
 
 const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
@@ -49,10 +47,6 @@ const STATE_TYPE = "build-plan-mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
 const FILE_OVERRIDE_RELPATH = "julsemaan-tmp/model-profile";
 
-function getTempStateFilePath(cwd: string): string {
-	const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 12);
-	return path.join(os.tmpdir(), `pi-model-state-${hash}.json`);
-}
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv);
 const DEFAULT_NEW_SESSION_MODE = "plan";
 const DEFAULT_EXISTING_SESSION_MODE = "build";
@@ -284,10 +278,12 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	};
 	let modelMap: ModelMap = structuredClone(DEFAULT_MODEL_MAP);
 	let activeContext: ExtensionContext | undefined;
-	let fileOverridePath: string | null = null;
-	let fileOverrideProfile: BuiltinProfile | null = null;
+	// Startup snapshot: whether a custom profile file existed at session_start.
+	// Only feeds the Alt+M cycle; mid-session file edits are ignored until /reload.
 	let fileOverrideCustomData: Record<ModelAlias, AliasConfig> | null = null;
-	let fileOverrideSignature: string | null = null;
+	// Temporary manual pick for the running process. Set by Alt+M and related
+	// commands, cleared on reload or fresh file load. Only save-model-profile writes the file.
+	let manualProfileSet = false;
 	// Keep this workflow in memory so reloads and resumed sessions cannot replay it.
 	let automaticPlanBuildActive = false;
 	let pendingAutomaticHandoff: PendingAutomaticHandoff | undefined;
@@ -304,51 +300,14 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		return modeRegistry.byName.get(mode);
 	}
 
-	function restoreModelMapFromSession(ctx: ExtensionContext) {
-		const lastState = ctx.sessionManager.getEntries()
-			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE)
-			.pop() as { data?: AppState } | undefined;
-		const savedMap = lastState?.data?.modelMap;
-		if (!savedMap) return;
-
-		for (const alias of BUILTIN_ALIASES) {
-			const saved = savedMap[alias];
-			if (saved) modelMap[alias] = { ...modelMap[alias], ...saved };
-		}
-	}
-
 	// Emit model config early so subagent tool can resolve aliases even in --no-session mode.
 	process.nextTick(() => {
 		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
 	});
 
-	function persistStateToFile(cwd: string) {
-		const filePath = getTempStateFilePath(cwd);
-		try {
-			fs.writeFileSync(filePath, JSON.stringify({ modelMap }, null, 2), "utf-8");
-		} catch {
-			// File is secondary persistence; session entries are primary
-		}
-	}
-
-	function readStateFromFile(cwd: string): Partial<Record<ModelAlias, Partial<AliasConfig>>> | null {
-		const filePath = getTempStateFilePath(cwd);
-		try {
-			if (fs.existsSync(filePath)) {
-				const content = fs.readFileSync(filePath, "utf-8");
-				const data = JSON.parse(content);
-				if (data && data.modelMap) return data.modelMap;
-			}
-		} catch {
-			// Silently ignore corrupt/inaccessible file
-		}
-		return null;
-	}
-
-	function persistState(ctx?: ExtensionContext) {
+	function persistState() {
 		const profile = getCurrentProfile(modelMap);
 		pi.appendEntry(STATE_TYPE, { mode, profile, modelMap });
-		if (ctx) persistStateToFile(ctx.cwd);
 	}
 
 	function seedModeState() {
@@ -364,6 +323,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	}
 
 	async function updateModelMap(nextModelMap: Partial<Record<ModelAlias, Partial<AliasConfig>>>, ctx: ExtensionContext, notify: string) {
+		manualProfileSet = true;
 		for (const alias of Object.keys(nextModelMap) as ModelAlias[]) {
 			const update = nextModelMap[alias];
 			if (update) {
@@ -371,7 +331,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 		}
 		emitModelConfig();
-		persistState(ctx);
+		persistState();
 		const modeConfig = getActiveModeConfig();
 		const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
 		if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
@@ -430,7 +390,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			return;
 		}
 
-		restoreModelMapFromSession(ctx);
 		cancelAutomaticPlanBuild();
 		mode = nextMode;
 		pi.setActiveTools(getModeToolNames(modeConfig));
@@ -469,7 +428,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				"info",
 			);
 		}
-		persistState(ctx);
+		seedModeState();
 	}
 
 	async function applyProfile(
@@ -478,6 +437,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		source: string,
 		notify = true,
 	) {
+		manualProfileSet = true;
 		modelMap = structuredClone(MODEL_PROFILES[profile]);
 
 		const modeConfig = getActiveModeConfig();
@@ -487,13 +447,41 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		emitModelConfig();
 		await setSessionModel(activeAlias, ctx, false);
 		updateStatus(ctx);
-		persistState(ctx);
+		persistState();
 
 		if (notify) {
 			ctx.ui.notify(
 				`${source}: ${profile}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
 				"info",
 			);
+		}
+	}
+
+	// Plain /new spins up a fresh extension instance, so in-memory picks are
+	// gone. Fall back to the previous session file's last map. Fresh startups
+	// have no previous file, so the disk profile still wins there.
+	function readPreviousSessionMap(previousSessionFile: string | undefined): Partial<ModelMap> | null {
+		if (!previousSessionFile) return null;
+		try {
+			if (!fs.existsSync(previousSessionFile)) return null;
+			const content = fs.readFileSync(previousSessionFile, "utf-8");
+			let lastMap: Partial<ModelMap> | null = null;
+			for (const line of content.split("\n")) {
+				const trimmed = line.trim();
+				if (!trimmed) continue;
+				let entry: any;
+				try {
+					entry = JSON.parse(trimmed);
+				} catch {
+					continue;
+				}
+				if (entry?.type === "custom" && entry?.customType === STATE_TYPE && entry?.data?.modelMap) {
+					lastMap = entry.data.modelMap;
+				}
+			}
+			return lastMap;
+		} catch {
+			return null;
 		}
 	}
 
@@ -530,64 +518,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			dir = parent;
 		}
 		return { profile: null, customData: null, filePath: null };
-	}
-
-	function getFileOverrideSignature(filePath: string, content: string): string {
-		return `${filePath}:${content.trim()}`;
-	}
-
-	async function syncFileOverride(ctx: ExtensionContext): Promise<boolean> {
-		const { profile: fileProfile, customData, filePath } = readFileOverride(ctx);
-
-		if (!filePath) {
-			if (fileOverridePath) {
-				fileOverridePath = null;
-				fileOverrideProfile = null;
-				fileOverrideCustomData = null;
-				fileOverrideSignature = null;
-			}
-			return false;
-		}
-
-		if (!fileProfile && !customData) {
-			return false;
-		}
-
-		// Build signature from path + content to detect changes even for custom profiles
-		let fileContent: string;
-		try {
-			fileContent = fs.readFileSync(filePath, "utf-8");
-		} catch {
-			return false;
-		}
-		const sig = getFileOverrideSignature(filePath, fileContent);
-		if (sig === fileOverrideSignature) {
-			return false;
-		}
-
-		fileOverridePath = filePath;
-		fileOverrideSignature = sig;
-		fileOverrideProfile = fileProfile;
-		fileOverrideCustomData = customData;
-
-		if (fileProfile) {
-			await applyProfile(fileProfile, ctx, `File override (${path.relative(ctx.cwd, filePath)})`);
-		} else if (customData) {
-			// Apply custom profile: set modelMap from parsed data
-			applyProfileData(modelMap, customData);
-			emitModelConfig();
-			const modeConfig = getActiveModeConfig();
-			const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
-			await setSessionModel(activeAlias, ctx, false);
-			updateStatus(ctx);
-			persistState(ctx);
-			ctx.ui.notify(
-				`File override (${path.relative(ctx.cwd, filePath)}): custom profile\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
-				"info",
-			);
-		}
-
-		return true;
 	}
 
 	const SET_MODELS_FLAGS = ["--all", "--large", "--medium", "--small"] as const;
@@ -1026,12 +956,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		description: "Show or set large/medium/small models at once. Usage: /set-models [--all provider/model [thinking]] [--large ...] [--medium ...] [--small ...]",
 		getArgumentCompletions: (prefix: string) => getSetModelsCompletions(prefix),
 		handler: async (args, ctx) => {
-			if (fileOverridePath) {
-				ctx.ui.notify(
-					`File override active (${path.relative(ctx.cwd, fileOverridePath)}). Manual profile will be overwritten on next turn. Remove the file to keep manual setting.`,
-					"warning",
-				);
-			}
 			if (!args.trim()) {
 				ctx.ui.notify(formatModelMap(), "info");
 				return;
@@ -1104,12 +1028,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.registerCommand("model-profile", {
 		description: `Show or set model alias profile (${BUILTIN_PROFILES_DISPLAY})`,
 		handler: async (args, ctx) => {
-			if (fileOverridePath) {
-				ctx.ui.notify(
-					`File override active (${path.relative(ctx.cwd, fileOverridePath)}). Manual profile will be overwritten on next turn. Remove the file to keep manual setting.`,
-					"warning",
-				);
-			}
 			const profile = args.trim().toLowerCase();
 			if (!profile) {
 				const current = getCurrentProfile(modelMap);
@@ -1183,15 +1101,10 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				return;
 			}
 
-			// 4. Refresh signature to prevent redundant reapplication
-			fileOverrideSignature = getFileOverrideSignature(targetFile, content);
-
-			// 5. Refresh cached override so Alt+M cycle picks up the profile immediately
+			// Refresh startup snapshot so Alt+M sees a newly saved custom without reload.
 			if (profile !== "custom") {
-				fileOverrideProfile = profile;
 				fileOverrideCustomData = null;
 			} else {
-				fileOverrideProfile = null;
 				fileOverrideCustomData = structuredClone(modelMap);
 			}
 
@@ -1252,7 +1165,11 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 			const result = await ctx.newSession({
 				setup: async (sessionManager) => {
-					sessionManager.appendCustomEntry(STATE_TYPE, { mode: "build" });
+					sessionManager.appendCustomEntry(STATE_TYPE, {
+						mode: "build",
+						profile: getCurrentProfile(modelMap),
+						modelMap: structuredClone(modelMap),
+					});
 				},
 				withSession: async (replacementCtx) => {
 					replacementCtx.ui.notify("Started new build session.", "info");
@@ -1277,19 +1194,13 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.registerShortcut("alt+m", {
 		description: `Cycle model profile (${BUILTIN_PROFILES_DISPLAY}${fileOverrideCustomData ? "|custom" : ""})`,
 		handler: async (ctx) => {
-			// Refresh override on every cycle so externally saved custom profiles appear
-			if (fileOverridePath) {
-				const { profile: fp, customData: cd } = readFileOverride(ctx);
-				fileOverrideProfile = fp;
-				fileOverrideCustomData = cd;
-			}
-
 			const current = getCurrentProfile(modelMap);
 			const hasCustom = fileOverrideCustomData !== null;
 			const next = getNextProfile(current, hasCustom);
 
 			if (next === "custom") {
 				// Apply saved custom profile
+				manualProfileSet = true;
 				if (fileOverrideCustomData) {
 					applyProfileData(modelMap, fileOverrideCustomData);
 				}
@@ -1298,7 +1209,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
 				await setSessionModel(activeAlias, ctx, false);
 				updateStatus(ctx);
-				persistState(ctx);
+				persistState();
 				ctx.ui.notify(
 					`Cycled profile: custom\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
 					"info",
@@ -1327,9 +1238,16 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		registerModeCommands();
 
 		const entries = ctx.sessionManager.getEntries();
-		const lastState = entries
-			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE)
-			.pop() as { data?: AppState } | undefined;
+		const stateEntries = entries
+			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE) as { data?: AppState }[];
+		const lastState = stateEntries[stateEntries.length - 1] as { data?: AppState } | undefined;
+		const lastMapEntry = [...stateEntries].reverse().find((entry) => entry.data?.modelMap);
+		const sessionMap = lastMapEntry?.data?.modelMap ?? null;
+		// Fresh instance after /new: recover the pick from the previous session file.
+		const prevSessionMap = event.reason === "new" && !sessionMap
+			? readPreviousSessionMap(event.previousSessionFile)
+			: null;
+		const effectiveSessionMap = sessionMap ?? prevSessionMap;
 
 		// Saved mode wins. No saved mode: startup/new sessions default to plan;
 		// legacy resumed/reloaded/forked sessions default to build.
@@ -1339,8 +1257,9 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			mode = "build";
 		}
 
-		// Resolve modelMap. During /reload a valid file override beats stale
-		// session/temp state; otherwise env > session > temp > file > default.
+		// Resolve modelMap once at startup. Reload resets to disk (env > file > session);
+		// otherwise keep working (env > session > file). Mid-session file edits
+		// do nothing until /reload, which re-runs session_start.
 		let envProfile: BuiltinProfile | null = null;
 		const envRaw = process.env.PI_BUILD_PLAN_MODEL_PROFILE?.trim();
 		if (envRaw) {
@@ -1355,40 +1274,35 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 		}
 
-		// File override (julsemaan-tmp/model-profile)
-		const { profile: fileProfile, customData: fileCustomData, filePath } = readFileOverride(ctx);
-		fileOverridePath = filePath;
-		fileOverrideProfile = fileProfile;
+		// File override (julsemaan-tmp/model-profile), read once.
+		const { profile: fileProfile, customData: fileCustomData } = readFileOverride(ctx);
 		fileOverrideCustomData = fileCustomData;
 
-		// Initialize signature so syncFileOverride won't re-apply an unchanged file on the first turn
-		if (filePath) {
-			try {
-				const content = fs.readFileSync(filePath, "utf-8");
-				fileOverrideSignature = getFileOverrideSignature(filePath, content);
-			} catch {
-				// File unreadable — syncFileOverride will handle on next turn
-			}
+		// /new keeps the temporary manual pick for the running process.
+		const keepManualPick = event.reason === "new" && !effectiveSessionMap && manualProfileSet;
+		if (event.reason === "reload") {
+			manualProfileSet = false;
 		}
-
-		const resolved = resolveStartupMap(
-			{
-				reason: event.reason,
-				envProfile,
-				sessionMap: lastState?.data?.modelMap ?? null,
-				tempMap: readStateFromFile(ctx.cwd),
-				fileProfile,
-				fileCustomData,
-			},
-			DEFAULT_MODEL_MAP,
-			MODEL_PROFILES,
-		);
-		modelMap = resolved.modelMap;
-
-		// Reload picked up an externally changed profile: persist it so the next
-		// reload doesn't restore the stale session state.
-		if (event.reason === "reload" && resolved.source === "file") {
-			persistState(ctx);
+		if (!keepManualPick) {
+			modelMap = resolveInitialMap(
+				{
+					reason: event.reason,
+					envProfile,
+					fileProfile,
+					fileCustomData,
+					sessionMap: effectiveSessionMap,
+				},
+				DEFAULT_MODEL_MAP,
+				MODEL_PROFILES,
+			);
+			if (!effectiveSessionMap && (fileProfile || fileCustomData)) {
+				manualProfileSet = false;
+			}
+			// Reload resets to disk: persist it so later resumes and /new
+			// see the file pick instead of the stale session pick.
+			if (event.reason === "reload" && !envProfile && (fileProfile || fileCustomData)) {
+				persistState();
+			}
 		}
 
 		emitModelConfig();
@@ -1418,7 +1332,9 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			pi.setActiveTools(pi.getAllTools().map(t => t.name));
 		}
 
-		if (!lastState && (event.reason === "startup" || event.reason === "new")) {
+		if (keepManualPick) {
+			persistState();
+		} else if (!lastState && (event.reason === "startup" || event.reason === "new")) {
 			seedModeState();
 		}
 
@@ -1440,10 +1356,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		cancelAutomaticPlanBuild();
 		activeContext = undefined;
-	});
-
-	pi.on("turn_start", async (_event, ctx) => {
-		await syncFileOverride(ctx);
 	});
 
 	pi.on("before_agent_start", async (event) => {

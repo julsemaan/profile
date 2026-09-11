@@ -20,7 +20,7 @@ import {
 	parseProfileContent,
 	serializeBuiltinProfile,
 	serializeCustomProfile,
-	resolveStartupMap,
+	resolveInitialMap,
 	validateCustomProfile,
 } from "../.pi/extensions/lib/model-profile.ts";
 
@@ -406,7 +406,7 @@ describe("applyProfileData", () => {
 	});
 });
 
-describe("resolveStartupMap", () => {
+describe("resolveInitialMap", () => {
 	const builtinMaps = MODEL_PROFILES;
 	const defaultMap = structuredClone(MODEL_PROFILES.priv);
 	const customFileData = {
@@ -414,94 +414,53 @@ describe("resolveStartupMap", () => {
 		"custom/medium": { model: "f/medium", thinkingLevel: "medium" as const },
 		"custom/small": { model: "f/small", thinkingLevel: "low" as const },
 	};
-	const staleSessionMap = {
+	const sessionMap = {
 		"custom/large": { model: "stale/large", thinkingLevel: "max" as const },
 	};
 
-	it("reload: valid file override beats session state", () => {
-		const { modelMap, source } = resolveStartupMap(
-			{ reason: "reload", sessionMap: staleSessionMap, fileProfile: "openrouterHybrid" },
+	it("reload file beats session", () => {
+		const modelMap = resolveInitialMap(
+			{ reason: "reload", fileProfile: "openrouterHybrid", sessionMap },
 			defaultMap,
 			builtinMaps,
 		);
-		assert.equal(source, "file");
-		assert.equal(modelMap["custom/large"].model, MODEL_PROFILES.openrouterHybrid["custom/large"].model);
-		assert.equal(modelMap["custom/large"].thinkingLevel, "high");
-		assert.equal(modelMap["custom/small"].model, MODEL_PROFILES.openrouterHybrid["custom/small"].model);
+		assert.deepEqual(modelMap, MODEL_PROFILES.openrouterHybrid);
 	});
 
-	it("reload: custom file override beats session state", () => {
-		const { modelMap, source } = resolveStartupMap(
-			{ reason: "reload", sessionMap: staleSessionMap, fileCustomData: customFileData },
+	it("reload env beats file", () => {
+		const modelMap = resolveInitialMap(
+			{ reason: "reload", envProfile: "deep", fileProfile: "openrouterHybrid", fileCustomData: customFileData, sessionMap },
 			defaultMap,
 			builtinMaps,
 		);
-		assert.equal(source, "file");
-		assert.deepEqual(modelMap, customFileData);
+		assert.deepEqual(modelMap, MODEL_PROFILES.deep);
 	});
 
-	it("reload: environment profile still wins over file override", () => {
-		const { modelMap, source } = resolveStartupMap(
-			{ reason: "reload", envProfile: "deep", fileProfile: "openrouterHybrid", fileCustomData: customFileData },
+	it("non reload session beats file", () => {
+		const modelMap = resolveInitialMap(
+			{ reason: "startup", fileProfile: "openrouterHybrid", fileCustomData: customFileData, sessionMap },
 			defaultMap,
 			builtinMaps,
 		);
-		assert.equal(source, "env");
-		assert.equal(modelMap["custom/large"].model, MODEL_PROFILES.deep["custom/large"].model);
-		assert.equal(modelMap["custom/small"].model, MODEL_PROFILES.deep["custom/small"].model);
-	});
-
-	it("startup: session state keeps existing precedence over file override", () => {
-		const { modelMap, source } = resolveStartupMap(
-			{ reason: "startup", sessionMap: staleSessionMap, fileProfile: "openrouterHybrid", fileCustomData: customFileData },
-			defaultMap,
-			builtinMaps,
-		);
-		assert.equal(source, "session");
 		assert.equal(modelMap["custom/large"].model, "stale/large");
 		assert.equal(modelMap["custom/medium"].model, MODEL_PROFILES.priv["custom/medium"].model);
 	});
 
-	it("startup: file override applies when no session or temp state", () => {
-		const { modelMap, source } = resolveStartupMap(
+	it("file used with no session", () => {
+		const modelMap = resolveInitialMap(
 			{ reason: "startup", fileCustomData: customFileData },
 			defaultMap,
 			builtinMaps,
 		);
-		assert.equal(source, "file");
 		assert.deepEqual(modelMap, customFileData);
 	});
 
-	it("reload: invalid file content leaves no file override (rejected by caller)", () => {
-		// readFileOverride returns null profile/customData for invalid files,
-		// so session state applies as usual.
-		const { modelMap, source } = resolveStartupMap(
-			{ reason: "reload", sessionMap: staleSessionMap, fileProfile: null, fileCustomData: null },
-			defaultMap,
-			builtinMaps,
-		);
-		assert.equal(source, "session");
-		assert.equal(modelMap["custom/large"].model, "stale/large");
-	});
-
-	it("startup: temp state used when no session state", () => {
-		const { modelMap, source } = resolveStartupMap(
-			{ reason: "startup", tempMap: { "custom/medium": { model: "t/medium" } } },
-			defaultMap,
-			builtinMaps,
-		);
-		assert.equal(source, "temp");
-		assert.equal(modelMap["custom/medium"].model, "t/medium");
-		assert.equal(modelMap["custom/large"].model, MODEL_PROFILES.priv["custom/large"].model);
-	});
-
-	it("no overrides: returns default", () => {
-		const { modelMap, source } = resolveStartupMap(
+	it("default with nothing set", () => {
+		const modelMap = resolveInitialMap(
 			{ reason: "startup" },
 			defaultMap,
 			builtinMaps,
 		);
-		assert.equal(source, "default");
 		assert.deepEqual(modelMap, defaultMap);
 	});
 });

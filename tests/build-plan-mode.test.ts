@@ -1,5 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { MODEL_PROFILES } from "../.pi/extensions/lib/model-profile.ts";
 import { loadExtensions, createExtensionRuntime } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/index.js";
 import { createEventBus } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 
@@ -433,5 +437,46 @@ describe("plan execution commands", () => {
 		assert.match(loaded.ctx.ui.notifications.join("\n"), /Started fresh build session/);
 		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /github-open-pr or bitbucket-open-pr/);
 		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /ready-for-review/);
+	});
+});
+
+describe("manual profile persistence", () => {
+	it("keeps manual pick across /new with empty entries on the same instance", async () => {
+		const loaded = await loadBuildPlanExtension();
+		await command(loaded, "model-profile")("deep", loaded.ctx);
+		loaded.ctx.ui.notifications.length = 0;
+
+		// Simulate /new: same extension instance, fresh empty session.
+		loaded.ctx.sessionManager.entries = [];
+		await handler(loaded, "session_start")({ type: "session_start", reason: "new" }, loaded.ctx);
+
+		loaded.ctx.ui.notifications.length = 0;
+		await command(loaded, "model-profile")("", loaded.ctx);
+		assert.match(loaded.ctx.ui.notifications.join("\n"), /Current profile: deep/);
+	});
+
+	it("restores the previous session pick on /new in a fresh instance", async () => {
+		const loaded = await loadBuildPlanExtension();
+		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pi-prev-session-"));
+		try {
+			const prevFile = path.join(tmp, "prev.jsonl");
+			const stamp = new Date().toISOString();
+				const lines = [
+					{ type: "custom", customType: "build-plan-mode", data: { mode: "build", profile: "deep", modelMap: structuredClone(MODEL_PROFILES.deep) }, id: "e1", parentId: null, timestamp: stamp },
+					{ type: "custom", customType: "build-plan-mode", data: { mode: "small-build" }, id: "e2", parentId: "e1", timestamp: stamp },
+				];
+				fs.writeFileSync(prevFile, lines.map((line) => JSON.stringify(line)).join("\n") + "\n");
+
+				// Fresh instance, empty new session, previous file carries the pick.
+			loaded.ctx.sessionManager.entries = [];
+			loaded.ctx.ui.notifications.length = 0;
+			await handler(loaded, "session_start")({ type: "session_start", reason: "new", previousSessionFile: prevFile }, loaded.ctx);
+
+				loaded.ctx.ui.notifications.length = 0;
+			await command(loaded, "model-profile")("", loaded.ctx);
+			assert.match(loaded.ctx.ui.notifications.join("\n"), /Current profile: deep/);
+		} finally {
+			fs.rmSync(tmp, { recursive: true, force: true });
+		}
 	});
 });
