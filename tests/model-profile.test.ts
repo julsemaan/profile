@@ -16,6 +16,7 @@ import {
 	getNextProfile,
 	isModelAlias,
 	parseModelRef,
+	parseMultiAliasArgs,
 	parseProfileContent,
 	serializeBuiltinProfile,
 	serializeCustomProfile,
@@ -419,14 +420,14 @@ describe("resolveStartupMap", () => {
 
 	it("reload: valid file override beats session state", () => {
 		const { modelMap, source } = resolveStartupMap(
-			{ reason: "reload", sessionMap: staleSessionMap, fileProfile: "openrouter" },
+			{ reason: "reload", sessionMap: staleSessionMap, fileProfile: "openrouterHybrid" },
 			defaultMap,
 			builtinMaps,
 		);
 		assert.equal(source, "file");
-		assert.equal(modelMap["custom/large"].model, MODEL_PROFILES.openrouter["custom/large"].model);
+		assert.equal(modelMap["custom/large"].model, MODEL_PROFILES.openrouterHybrid["custom/large"].model);
 		assert.equal(modelMap["custom/large"].thinkingLevel, "high");
-		assert.equal(modelMap["custom/small"].model, MODEL_PROFILES.openrouter["custom/small"].model);
+		assert.equal(modelMap["custom/small"].model, MODEL_PROFILES.openrouterHybrid["custom/small"].model);
 	});
 
 	it("reload: custom file override beats session state", () => {
@@ -441,7 +442,7 @@ describe("resolveStartupMap", () => {
 
 	it("reload: environment profile still wins over file override", () => {
 		const { modelMap, source } = resolveStartupMap(
-			{ reason: "reload", envProfile: "deep", fileProfile: "openrouter", fileCustomData: customFileData },
+			{ reason: "reload", envProfile: "deep", fileProfile: "openrouterHybrid", fileCustomData: customFileData },
 			defaultMap,
 			builtinMaps,
 		);
@@ -452,7 +453,7 @@ describe("resolveStartupMap", () => {
 
 	it("startup: session state keeps existing precedence over file override", () => {
 		const { modelMap, source } = resolveStartupMap(
-			{ reason: "startup", sessionMap: staleSessionMap, fileProfile: "openrouter", fileCustomData: customFileData },
+			{ reason: "startup", sessionMap: staleSessionMap, fileProfile: "openrouterHybrid", fileCustomData: customFileData },
 			defaultMap,
 			builtinMaps,
 		);
@@ -502,5 +503,137 @@ describe("resolveStartupMap", () => {
 		);
 		assert.equal(source, "default");
 		assert.deepEqual(modelMap, defaultMap);
+	});
+});
+
+describe("parseMultiAliasArgs", () => {
+	const LARGE = "openai-codex/gpt-5.6-sol";
+	const MEDIUM = "opencode/mimo-v2.5-free";
+	const SMALL = "deepseek/deepseek-v4-flash";
+
+	it("returns empty updates for empty input", () => {
+		assert.deepEqual(parseMultiAliasArgs(""), { ok: true, updates: {} });
+		assert.deepEqual(parseMultiAliasArgs("   "), { ok: true, updates: {} });
+	});
+
+	it("parses a single alias", () => {
+		const result = parseMultiAliasArgs(`--large ${LARGE}`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			assert.deepEqual(result.updates, { "custom/large": { model: LARGE } });
+		}
+	});
+
+	it("parses all three aliases", () => {
+		const result = parseMultiAliasArgs(`--large ${LARGE} --medium ${MEDIUM} --small ${SMALL}`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			assert.deepEqual(result.updates, {
+				"custom/large": { model: LARGE },
+				"custom/medium": { model: MEDIUM },
+				"custom/small": { model: SMALL },
+			});
+		}
+	});
+
+	it("accepts inline = forms", () => {
+		const result = parseMultiAliasArgs(`--large=${LARGE} medium=${MEDIUM}`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			assert.deepEqual(result.updates, {
+				"custom/large": { model: LARGE },
+				"custom/medium": { model: MEDIUM },
+			});
+		}
+	});
+
+	it("parses per-alias thinking levels", () => {
+		const result = parseMultiAliasArgs(`--large ${LARGE} high --medium ${MEDIUM} low --small ${SMALL}`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			assert.deepEqual(result.updates, {
+				"custom/large": { model: LARGE, thinkingLevel: "high" },
+				"custom/medium": { model: MEDIUM, thinkingLevel: "low" },
+				"custom/small": { model: SMALL },
+			});
+		}
+	});
+
+	it("parses a subset of aliases", () => {
+		const result = parseMultiAliasArgs(`--small ${SMALL} low`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			assert.deepEqual(Object.keys(result.updates), ["custom/small"]);
+			assert.deepEqual(result.updates["custom/small"], { model: SMALL, thinkingLevel: "low" });
+		}
+	});
+
+	it("lets a duplicate flag overwrite left to right", () => {
+		const result = parseMultiAliasArgs(`--large ${LARGE} --large ${MEDIUM}`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			assert.deepEqual(result.updates, { "custom/large": { model: MEDIUM } });
+		}
+	});
+
+	it("expands --all to all three aliases", () => {
+		const result = parseMultiAliasArgs(`--all ${LARGE}`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			assert.deepEqual(result.updates, {
+				"custom/large": { model: LARGE },
+				"custom/medium": { model: LARGE },
+				"custom/small": { model: LARGE },
+			});
+		}
+	});
+
+	it("applies thinking to --all", () => {
+		const result = parseMultiAliasArgs(`--all=${LARGE} high`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			for (const alias of BUILTIN_ALIASES) {
+				assert.deepEqual(result.updates[alias], { model: LARGE, thinkingLevel: "high" });
+			}
+		}
+	});
+
+	it("lets a later per-alias flag overwrite --all", () => {
+		const result = parseMultiAliasArgs(`--all ${LARGE} high --small ${SMALL} low`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			assert.deepEqual(result.updates["custom/large"], { model: LARGE, thinkingLevel: "high" });
+			assert.deepEqual(result.updates["custom/medium"], { model: LARGE, thinkingLevel: "high" });
+			assert.deepEqual(result.updates["custom/small"], { model: SMALL, thinkingLevel: "low" });
+		}
+	});
+
+	it("lets a later --all overwrite a per-alias flag", () => {
+		const result = parseMultiAliasArgs(`--small ${SMALL} low --all ${LARGE}`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			for (const alias of BUILTIN_ALIASES) {
+				assert.deepEqual(result.updates[alias], { model: LARGE });
+			}
+		}
+	});
+
+	it("rejects --all with a missing model", () => {
+		assert.equal(parseMultiAliasArgs("--all").ok, false);
+		assert.equal(parseMultiAliasArgs(`--all --small ${SMALL}`).ok, false);
+	});
+
+	it("rejects invalid model references without applying anything", () => {
+		const result = parseMultiAliasArgs(`--large ${LARGE} --medium notamodel`);
+		assert.equal(result.ok, false);
+		assert.ok(!("updates" in result));
+	});
+
+	it("rejects invalid thinking levels", () => {
+		assert.equal(parseMultiAliasArgs(`--large ${LARGE} ultra`).ok, false);
+	});
+
+	it("rejects unknown flags", () => {
+		assert.equal(parseMultiAliasArgs(`--bogus ${LARGE}`).ok, false);
 	});
 });

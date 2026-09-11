@@ -93,6 +93,91 @@ export function parseModelRef(modelRef: string): { provider: string; modelId: st
 	};
 }
 
+// ── Multi-alias args (/set-models) ─────────────────────────────────────────
+
+const MULTI_ALIAS_FLAG_RE = /^(--)?(all|large|medium|small)(=(.*))?$/i;
+const MULTI_ALIAS_USAGE = "/set-models [--all provider/model [thinking]] [--large provider/model [thinking]] [--medium ...] [--small ...]";
+
+function isMultiAliasFlagToken(token: string): boolean {
+	return MULTI_ALIAS_FLAG_RE.test(token);
+}
+
+/**
+ * Parse /set-models args. Flags are read left to right, last wins; --all
+ * expands to all three aliases at its position so a later per-alias flag
+ * overwrites just that alias. A token after a model is taken as the thinking
+ * level only when isThinkingLevel() passes. Any error aborts with no updates.
+ */
+export function parseMultiAliasArgs(raw: string): {
+	ok: true;
+	updates: PartialAliasMap;
+} | { ok: false; error: string } {
+	const tokens = raw.trim() ? raw.trim().split(/\s+/) : [];
+	const updates: PartialAliasMap = {};
+
+	const apply = (name: string, model: string, thinkingLevel?: ThinkingLevel): void => {
+		const entry: Partial<AliasConfig> = { model };
+		if (thinkingLevel) entry.thinkingLevel = thinkingLevel;
+		if (name === "all") {
+			for (const alias of BUILTIN_ALIASES) updates[alias] = { ...entry };
+		} else {
+		updates[`custom/${name}` as ModelAlias] = { ...entry };
+		}
+	};
+
+	let i = 0;
+	while (i < tokens.length) {
+		const token = tokens[i];
+		const match = MULTI_ALIAS_FLAG_RE.exec(token);
+		if (!match) {
+			if (token.startsWith("--")) {
+				return { ok: false, error: `Unknown flag "${token}". Usage: ${MULTI_ALIAS_USAGE}` };
+			}
+			return { ok: false, error: `Unexpected argument "${token}". Expected one of --all, --large, --medium, --small. Usage: ${MULTI_ALIAS_USAGE}` };
+		}
+		const name = match[2].toLowerCase();
+		const inline = match[4];
+
+		let model: string;
+		if (inline !== undefined) {
+			if (!inline.trim()) {
+				return { ok: false, error: `"${token}" is missing a model. Usage: ${MULTI_ALIAS_USAGE}` };
+			}
+		if (!parseModelRef(inline)) {
+				return { ok: false, error: `Invalid model reference: "${inline}". Expected format: provider/model` };
+			}
+		model = inline;
+		i++;
+		} else {
+			const next = tokens[i + 1];
+			if (next === undefined || isMultiAliasFlagToken(next)) {
+				return { ok: false, error: `"${token}" is missing a model. Expected provider/model. Usage: ${MULTI_ALIAS_USAGE}` };
+			}
+			if (!parseModelRef(next)) {
+				return { ok: false, error: `Invalid model reference: "${next}". Expected format: provider/model` };
+			}
+			model = next;
+			i += 2;
+		}
+
+		let thinkingLevel: ThinkingLevel | undefined;
+		const peek = tokens[i];
+		if (peek !== undefined && !isMultiAliasFlagToken(peek)) {
+			if (isThinkingLevel(peek)) {
+				thinkingLevel = peek;
+			i++;
+			} else if (!peek.startsWith("--") && !peek.includes("=") && !peek.includes("/")) {
+				return { ok: false, error: `Invalid thinking level "${peek}". Must be one of: ${VALID_THINKING_LEVELS.join(", ")}` };
+			}
+			// Otherwise leave the token for the next iteration (missing flag or unknown flag).
+		}
+
+		apply(name, model, thinkingLevel);
+	}
+
+	return { ok: true, updates };
+}
+
 export type ModelCompletionCandidate = { provider: string; id: string };
 export type ScopedModelCompletion = { model: ModelCompletionCandidate };
 

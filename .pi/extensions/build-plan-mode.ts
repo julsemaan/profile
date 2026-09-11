@@ -29,6 +29,7 @@ import {
 	isModelAlias,
 	isThinkingLevel,
 	parseModelRef,
+	parseMultiAliasArgs,
 	parseProfileContent,
 	serializeBuiltinProfile,
 	serializeCustomProfile,
@@ -358,6 +359,10 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
 	}
 
+	function formatModelMap(): string {
+		return `custom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`;
+	}
+
 	async function updateModelMap(nextModelMap: Partial<Record<ModelAlias, Partial<AliasConfig>>>, ctx: ExtensionContext, notify: string) {
 		for (const alias of Object.keys(nextModelMap) as ModelAlias[]) {
 			const update = nextModelMap[alias];
@@ -372,7 +377,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
 		updateStatus(ctx);
 		ctx.ui.notify(
-			`${notify}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
+			`${notify}\n${formatModelMap()}`,
 			"info",
 		);
 	}
@@ -583,6 +588,95 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		}
 
 		return true;
+	}
+
+	const SET_MODELS_FLAGS = ["--all", "--large", "--medium", "--small"] as const;
+
+	function setModelsFlagToken(value: string): boolean {
+		return /^(--)?(all|large|medium|small)(=.*)?$/i.test(value);
+	}
+
+	function setModelsFlagAlias(flag: string): ModelAlias {
+		const name = flag.replace(/^--/, "").split("=")[0].toLowerCase();
+		if (name === "medium") return "custom/medium";
+		if (name === "small") return "custom/small";
+		return "custom/large";
+	}
+
+	async function getSetModelsCompletions(prefix: string): Promise<AutocompleteItem[] | null> {
+		const ctx = activeContext;
+		if (!ctx) return null;
+
+		const endsWithSpace = /\s$/.test(prefix);
+		const tokens = prefix.trim() ? prefix.trim().split(/\s+/) : [];
+		const complete = endsWithSpace ? tokens : tokens.slice(0, -1);
+		const partial = endsWithSpace ? "" : (tokens[tokens.length - 1] ?? "");
+		const base = endsWithSpace
+			? (prefix.trim() ? `${prefix.trim()} ` : "")
+			: prefix.slice(0, prefix.length - partial.length);
+
+		const flagItems = (filter: string) => {
+			const norm = filter.replace(/^--?/, "").toLowerCase();
+			return SET_MODELS_FLAGS.filter((flag) => flag.slice(2).startsWith(norm))
+				.map((flag) => ({ value: `${base}${flag} `, label: flag, description: "model alias" }));
+		};
+
+		const thinkingItems = (filter: string) =>
+			VALID_THINKING_LEVELS.filter((level) => level.startsWith(filter))
+				.map((level) => ({ value: `${base}${level} `, label: level, description: "thinking level" }));
+
+		async function modelItems(filter: string, alias: ModelAlias) {
+			const currentValue = modelMap[alias].model;
+			const scopedModels = ctx.scopedModels ?? [];
+			let models;
+			if (scopedModels.length > 0) {
+				models = getModelCompletionCandidates([], scopedModels, currentValue);
+			} else {
+				await ctx.modelRegistry.refresh();
+				models = getModelCompletionCandidates(ctx.modelRegistry.getAvailable(), [], currentValue);
+			}
+			const items = models.map((model) => ({
+				id: model.id,
+				provider: model.provider,
+				label: `${model.provider}/${model.id}`,
+			}));
+			const filtered = fuzzyFilter(items, filter, (item) => `${item.id} ${item.provider}`);
+			return filtered.map((item) => ({
+				value: `${base}${item.label}`,
+				label: item.id,
+				description: item.provider,
+			}));
+		}
+
+		let flagIdx = -1;
+		for (let i = 0; i < complete.length; i++) {
+			if (setModelsFlagToken(complete[i])) flagIdx = i;
+		}
+
+		if (flagIdx === -1) {
+			if (partial.includes("/") || partial.includes("=")) return null;
+			const items = flagItems(partial);
+			return items.length > 0 ? items : null;
+		}
+
+		const flagToken = complete[flagIdx];
+		const inline = flagToken.includes("=");
+		const after = complete.length - 1 - flagIdx;
+
+		if (!inline && after === 0) {
+			const items = await modelItems(partial, setModelsFlagAlias(flagToken));
+			return items.length > 0 ? items : null;
+		}
+
+		if ((inline && after === 0) || (!inline && after === 1)) {
+			const thinking = thinkingItems(partial);
+			if (thinking.length > 0) return partial === "" ? [...thinking, ...flagItems("")] : thinking;
+			const flags = flagItems(partial);
+			return flags.length > 0 ? flags : null;
+		}
+
+		const items = flagItems(partial);
+		return items.length > 0 ? items : null;
 	}
 
 	async function getAliasArgumentCompletions(prefix: string, alias: ModelAlias): Promise<AutocompleteItem[] | null> {
@@ -912,22 +1006,50 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			if ("error" in parsed) {
 				ctx.ui.notify(parsed.error, "warning");
 				ctx.ui.notify(
-					`Usage: /large-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\nCurrent: ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})`,
+					`Usage: /large-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\n${formatModelMap()}`,
 					"info",
 				);
 				return;
 			}
 			if (!parsed.model && !parsed.thinkingLevel) {
-				ctx.ui.notify(
-					`custom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})`,
-					"info",
-				);
+				ctx.ui.notify(formatModelMap(), "info");
 				return;
 			}
 			const update: Partial<AliasConfig> = {};
 			if (parsed.model) update.model = parsed.model;
 			if (parsed.thinkingLevel) update.thinkingLevel = parsed.thinkingLevel;
 			await updateModelMap({ "custom/large": update }, ctx, "Updated model alias.");
+		},
+	});
+
+	pi.registerCommand("set-models", {
+		description: "Show or set large/medium/small models at once. Usage: /set-models [--all provider/model [thinking]] [--large ...] [--medium ...] [--small ...]",
+		getArgumentCompletions: (prefix: string) => getSetModelsCompletions(prefix),
+		handler: async (args, ctx) => {
+			if (fileOverridePath) {
+				ctx.ui.notify(
+					`File override active (${path.relative(ctx.cwd, fileOverridePath)}). Manual profile will be overwritten on next turn. Remove the file to keep manual setting.`,
+					"warning",
+				);
+			}
+			if (!args.trim()) {
+				ctx.ui.notify(formatModelMap(), "info");
+				return;
+			}
+			const parsed = parseMultiAliasArgs(args);
+			if (!parsed.ok) {
+				ctx.ui.notify(parsed.error, "warning");
+				ctx.ui.notify(
+					`Usage: /set-models [--all provider/model [thinking]] [--large ...] [--medium ...] [--small ...]\n${formatModelMap()}`,
+					"info",
+				);
+				return;
+			}
+			if (Object.keys(parsed.updates).length === 0) {
+				ctx.ui.notify(formatModelMap(), "info");
+				return;
+			}
+			await updateModelMap(parsed.updates, ctx, "Updated model aliases.");
 		},
 	});
 
@@ -939,16 +1061,13 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			if ("error" in parsed) {
 				ctx.ui.notify(parsed.error, "warning");
 				ctx.ui.notify(
-					`Usage: /medium-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\nCurrent: ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+					`Usage: /medium-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\n${formatModelMap()}`,
 					"info",
 				);
 				return;
 			}
 			if (!parsed.model && !parsed.thinkingLevel) {
-				ctx.ui.notify(
-					`custom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
-					"info",
-				);
+				ctx.ui.notify(formatModelMap(), "info");
 				return;
 			}
 			const update: Partial<AliasConfig> = {};
@@ -966,16 +1085,13 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			if ("error" in parsed) {
 				ctx.ui.notify(parsed.error, "warning");
 				ctx.ui.notify(
-					`Usage: /small-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\nCurrent: ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
+					`Usage: /small-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\n${formatModelMap()}`,
 					"info",
 				);
 				return;
 			}
 			if (!parsed.model && !parsed.thinkingLevel) {
-				ctx.ui.notify(
-					`custom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
-					"info",
-				);
+				ctx.ui.notify(formatModelMap(), "info");
 				return;
 			}
 			const update: Partial<AliasConfig> = {};
