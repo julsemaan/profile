@@ -17,13 +17,14 @@ Main session orchestrates only.
 
 Main session may:
 - parse PR URL
+- resolve a missing PR URL with the list calls in step 0 only
 - invoke subagents
 - run `git log`, `git push`, and other read-only git checks
 - aggregate results
 - print final operator report
 
 Main session must not:
-- call MCP directly for PR fetch or replies
+- call MCP directly for PR fetch, diff, comment, or replies outside the step 0 resolution
 - improvise fallback workflows if subagents fail
 - create empty commits
 - create resumable state
@@ -31,9 +32,23 @@ Main session must not:
 
 ## Flow
 
+### 0. Resolve PR URL
+
+If the request holds a PR URL, use it and continue to step 1.
+
+Else resolve from the current branch:
+
+1. Get the branch from `git branch --show-current`. Fail on detached or empty.
+2. Pick the remote from the branch upstream, else `origin`. Fail if it is missing.
+3. Read fetch and push URLs. Require the same repo and host exactly `github.com` or `bitbucket.org`. Parse owner and repo, or workspace and repo, strip one trailing `.git`, reusing the `github-open-pr` and `bitbucket-open-pr` URL rules. Head is the branch name.
+4. Look up the open PR for that head:
+   - GitHub: `github_list_pull_requests` with state open, head `owner:branch`, `perPage 100`, small fields for number, title, url, head, base.
+   - Bitbucket: `bitbucket_bitbucketPullRequest` with action list, state OPEN, query on source branch name. Keep the single retry on `Bad Request` from the `bitbucket-open-pr` skill.
+5. One match means use its URL. Zero matches means fail with no open PR for this branch. Several matches means fail listing the candidate URLs. The user re-runs with an explicit URL in those cases.
+
 ### 1. Parse and validate PR URL
 
-Parse the URL from the user's request into:
+Parse the resolved URL from step 0 into:
 - `forge`: `github` or `bitbucket`
 - `owner` or workspace
 - `repo`
@@ -52,7 +67,7 @@ Call:
 ```text
 subagent({
   agent: "pr-feedback-analyzer",
-  task: "Analyze PR URL: <actual PR URL from the user request>. Parse and fetch PR state. Return pullRequest, ciStatus, reviewerSummaryStatus, reviewerSummaryAt, and actionableItems with exact reply-routing metadata for every actionable item.",
+  task: "Analyze PR URL: <resolved PR URL from step 0>. Parse and fetch PR state. Return pullRequest, ciStatus, reviewerSummaryStatus, reviewerSummaryAt, and actionableItems with exact reply-routing metadata for every actionable item.",
   agentScope: "both"
 })
 ```
