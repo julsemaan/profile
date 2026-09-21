@@ -2,8 +2,7 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "enabledModels": [
-    "deepseek/deepseek-v4-pro",
-    "deepseek/deepseek-v4-flash",
+    "deepseek/*",
     "openai-codex/*",
     "opencode/*-free",
     "openrouter/free",

@@ -17,8 +17,8 @@ export const BUILTIN_ALIASES: readonly ModelAlias[] = ["custom/large", "custom/m
 
 const GPT_SOL_MODEL_ID = "gpt-5.6-sol";
 const GPT_LUNA_MODEL_ID = "gpt-5.6-luna";
-const DEEPSEEK_PRO_MODEL_ID = "deepseek-v4-pro";
-const DEEPSEEK_FLASH_MODEL_ID = "deepseek-v4-flash";
+const DEEPSEEK_PRO_MODEL_ID = "deepseek-flash";
+const DEEPSEEK_FLASH_MODEL_ID = "deepseek-flash";
 const OPENCODE_MEDIUM_MODEL_ID = "deepseek-v4-flash-free";
 const OPENROUTER_MEDIUM_MODEL_ID = "glm-5.3-flash";
 
