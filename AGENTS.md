@@ -135,7 +135,7 @@ Located at the repository root, the `.pi/` directory configures the pi coding ag
 - **`modes/`** — Custom modes (brainstorm).
 
 The PR feedback automation surface is now one command and three agents:
-- `/pr-feedback <PR-URL>` — one-pass orchestration
+- `/pr-feedback [<PR-URL>]` — one-pass orchestration
 - `pr-feedback-analyzer` — fetches PR state, CI, reviewer summary, and actionable items
 - `pr-feedback-reviewer` — skeptical per-item triage
 - `pr-feedback-worker` — minimal execution, mandatory in-thread reply, optional commit

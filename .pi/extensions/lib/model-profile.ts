@@ -17,10 +17,12 @@ export const BUILTIN_ALIASES: readonly ModelAlias[] = ["custom/large", "custom/m
 
 const GPT_SOL_MODEL_ID = "gpt-5.6-sol";
 const GPT_LUNA_MODEL_ID = "gpt-5.6-luna";
-const DEEPSEEK_PRO_MODEL_ID = "deepseek-flash";
-const DEEPSEEK_FLASH_MODEL_ID = "deepseek-flash";
-const OPENCODE_MEDIUM_MODEL_ID = "deepseek-v4-flash-free";
-const OPENROUTER_MEDIUM_MODEL_ID = "glm-5.3-flash";
+const DEEPSEEK_PRO_MODEL_ID = "deepseek-v4-pro";
+const DEEPSEEK_FLASH_MODEL_ID = "deepseek-v4-flash";
+const OPENCODE_LARGE_MODEL_ID = "muse-spark-1.3-contributor-free";
+const OPENCODE_MEDIUM_MODEL_ID = "muse-spark-1.3-contributor-free";
+const OPENROUTER_LARGE_MODEL_ID = "meta/muse-spark-1.3-contributor";
+const OPENROUTER_MEDIUM_MODEL_ID = "z-ai/glm-5.3-flash";
 
 function modelRef(prefix: string, modelId: string): string {
 	return `${prefix}/${modelId}`;
@@ -32,10 +34,15 @@ export const MODEL_PROFILES = {
 		"custom/medium": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
 		"custom/small": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
 	},
-	openrouter: {
+	openrouterHybrid: {
 		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
 		"custom/medium": { model: modelRef("openrouter/z-ai", OPENROUTER_MEDIUM_MODEL_ID), thinkingLevel: "high" },
 		"custom/small": { model: modelRef("openrouter/openai", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
+	},
+	openrouterFull: {
+		"custom/large": { model: modelRef("openrouter", OPENROUTER_LARGE_MODEL_ID), thinkingLevel: "xhigh" },
+		"custom/medium": { model: modelRef("openrouter", OPENROUTER_MEDIUM_MODEL_ID), thinkingLevel: "max" },
+		"custom/small": { model: modelRef("openrouter", OPENROUTER_MEDIUM_MODEL_ID), thinkingLevel: "high" },
 	},
 	deep: {
 		"custom/large": { model: modelRef("deepseek", DEEPSEEK_PRO_MODEL_ID), thinkingLevel: "max" },
@@ -85,6 +92,91 @@ export function parseModelRef(modelRef: string): { provider: string; modelId: st
 		provider: trimmed.slice(0, slashIndex),
 		modelId: trimmed.slice(slashIndex + 1),
 	};
+}
+
+// ── Multi-alias args (/set-models) ─────────────────────────────────────────
+
+const MULTI_ALIAS_FLAG_RE = /^(--)?(all|large|medium|small)(=(.*))?$/i;
+const MULTI_ALIAS_USAGE = "/set-models [--all provider/model [thinking]] [--large provider/model [thinking]] [--medium ...] [--small ...]";
+
+function isMultiAliasFlagToken(token: string): boolean {
+	return MULTI_ALIAS_FLAG_RE.test(token);
+}
+
+/**
+ * Parse /set-models args. Flags are read left to right, last wins; --all
+ * expands to all three aliases at its position so a later per-alias flag
+ * overwrites just that alias. A token after a model is taken as the thinking
+ * level only when isThinkingLevel() passes. Any error aborts with no updates.
+ */
+export function parseMultiAliasArgs(raw: string): {
+	ok: true;
+	updates: PartialAliasMap;
+} | { ok: false; error: string } {
+	const tokens = raw.trim() ? raw.trim().split(/\s+/) : [];
+	const updates: PartialAliasMap = {};
+
+	const apply = (name: string, model: string, thinkingLevel?: ThinkingLevel): void => {
+		const entry: Partial<AliasConfig> = { model };
+		if (thinkingLevel) entry.thinkingLevel = thinkingLevel;
+		if (name === "all") {
+			for (const alias of BUILTIN_ALIASES) updates[alias] = { ...entry };
+		} else {
+		updates[`custom/${name}` as ModelAlias] = { ...entry };
+		}
+	};
+
+	let i = 0;
+	while (i < tokens.length) {
+		const token = tokens[i];
+		const match = MULTI_ALIAS_FLAG_RE.exec(token);
+		if (!match) {
+			if (token.startsWith("--")) {
+				return { ok: false, error: `Unknown flag "${token}". Usage: ${MULTI_ALIAS_USAGE}` };
+			}
+			return { ok: false, error: `Unexpected argument "${token}". Expected one of --all, --large, --medium, --small. Usage: ${MULTI_ALIAS_USAGE}` };
+		}
+		const name = match[2].toLowerCase();
+		const inline = match[4];
+
+		let model: string;
+		if (inline !== undefined) {
+			if (!inline.trim()) {
+				return { ok: false, error: `"${token}" is missing a model. Usage: ${MULTI_ALIAS_USAGE}` };
+			}
+		if (!parseModelRef(inline)) {
+				return { ok: false, error: `Invalid model reference: "${inline}". Expected format: provider/model` };
+			}
+		model = inline;
+		i++;
+		} else {
+			const next = tokens[i + 1];
+			if (next === undefined || isMultiAliasFlagToken(next)) {
+				return { ok: false, error: `"${token}" is missing a model. Expected provider/model. Usage: ${MULTI_ALIAS_USAGE}` };
+			}
+			if (!parseModelRef(next)) {
+				return { ok: false, error: `Invalid model reference: "${next}". Expected format: provider/model` };
+			}
+			model = next;
+			i += 2;
+		}
+
+		let thinkingLevel: ThinkingLevel | undefined;
+		const peek = tokens[i];
+		if (peek !== undefined && !isMultiAliasFlagToken(peek)) {
+			if (isThinkingLevel(peek)) {
+				thinkingLevel = peek;
+			i++;
+			} else if (!peek.startsWith("--") && !peek.includes("=") && !peek.includes("/")) {
+				return { ok: false, error: `Invalid thinking level "${peek}". Must be one of: ${VALID_THINKING_LEVELS.join(", ")}` };
+			}
+			// Otherwise leave the token for the next iteration (missing flag or unknown flag).
+		}
+
+		apply(name, model, thinkingLevel);
+	}
+
+	return { ok: true, updates };
 }
 
 export type ModelCompletionCandidate = { provider: string; id: string };
@@ -242,77 +334,55 @@ export function applyProfileData(
 
 export type PartialAliasMap = Partial<Record<ModelAlias, Partial<AliasConfig>>>;
 
-export type StartupProfileSource = "env" | "file" | "session" | "temp" | "default";
-
-function mergeInto(map: ModelMap, patch: PartialAliasMap): void {
-	for (const alias of Object.keys(patch) as ModelAlias[]) {
-		const update = patch[alias];
-		if (update) map[alias] = { ...map[alias], ...update };
-	}
-}
-
 /**
- * Resolve the model map at session_start.
+ * Resolve the initial model map at session_start.
  *
- * Precedence during /reload (reason === "reload"):
- *   env override > file override > session state > temp state > default
- * Precedence otherwise (startup, resume, new, fork):
- *   env override > session state > temp state > file override > default
+ * On reload the file wins so edits take effect:
+ *   env > file builtin > file custom > session > default
+ * Otherwise the running or resumed pick wins:
+ *   env > session > file builtin > file custom > default
  */
-export function resolveStartupMap(
+export function resolveInitialMap(
 	input: {
 		reason: string;
 		envProfile?: BuiltinProfile | null;
-		sessionMap?: PartialAliasMap | null;
-		tempMap?: PartialAliasMap | null;
 		fileProfile?: BuiltinProfile | null;
 		fileCustomData?: Record<ModelAlias, AliasConfig> | null;
+		sessionMap?: PartialAliasMap | null;
 	},
 	defaultMap: ModelMap,
 	builtinMaps: Record<BuiltinProfile, ModelMap>,
-): { modelMap: ModelMap; source: StartupProfileSource } {
-	const { reason, envProfile, sessionMap, tempMap, fileProfile, fileCustomData } = input;
-	const fileWins = reason === "reload" && !!(fileProfile || fileCustomData);
-
-	if (envProfile) {
+): ModelMap {
+	if (input.envProfile) {
+		return structuredClone(builtinMaps[input.envProfile]);
+	}
+	if (input.reason === "reload") {
+		if (input.fileProfile) {
+			return structuredClone(builtinMaps[input.fileProfile]);
+		}
+		if (input.fileCustomData) {
+			const modelMap = structuredClone(defaultMap);
+			applyProfileData(modelMap, input.fileCustomData);
+			return modelMap;
+		}
+	}
+	if (input.sessionMap) {
 		const modelMap = structuredClone(defaultMap);
-		mergeInto(modelMap, builtinMaps[envProfile]);
-		return { modelMap, source: "env" };
+		for (const alias of Object.keys(input.sessionMap) as ModelAlias[]) {
+			const update = input.sessionMap[alias];
+			if (update) modelMap[alias] = { ...modelMap[alias], ...update };
+		}
+		return modelMap;
 	}
-
-	if (fileWins && fileProfile) {
-		return { modelMap: structuredClone(builtinMaps[fileProfile]), source: "file" };
+	if (input.fileProfile) {
+		return structuredClone(builtinMaps[input.fileProfile]);
 	}
-
-	if (fileWins && fileCustomData) {
+	if (input.fileCustomData) {
 		const modelMap = structuredClone(defaultMap);
-		applyProfileData(modelMap, fileCustomData);
-		return { modelMap, source: "file" };
+		applyProfileData(modelMap, input.fileCustomData);
+		return modelMap;
 	}
-
-	if (sessionMap) {
-		const modelMap = structuredClone(defaultMap);
-		mergeInto(modelMap, sessionMap);
-		return { modelMap, source: "session" };
-	}
-
-	if (tempMap) {
-		const modelMap = structuredClone(defaultMap);
-		mergeInto(modelMap, tempMap);
-		return { modelMap, source: "temp" };
-	}
-
-	if (fileProfile) {
-		return { modelMap: structuredClone(builtinMaps[fileProfile]), source: "file" };
-	}
-
-	if (fileCustomData) {
-		const modelMap = structuredClone(defaultMap);
-		applyProfileData(modelMap, fileCustomData);
-		return { modelMap, source: "file" };
-	}
-
-	return { modelMap: structuredClone(defaultMap), source: "default" };
+	return structuredClone(defaultMap);
 }
 
 // ── Serialization ──────────────────────────────────────────────────────────

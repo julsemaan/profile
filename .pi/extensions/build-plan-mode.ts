@@ -1,11 +1,9 @@
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
-import { fuzzyFilter } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { fuzzyFilter, Text, type AutocompleteItem } from "@mariozechner/pi-tui";
+import { Type } from "typebox";
 import * as fs from "fs";
-import * as os from "node:os";
 import * as path from "path";
-import { createHash } from "node:crypto";
 import {
 	discoverModes,
 	type ModeConfig,
@@ -29,10 +27,11 @@ import {
 	isModelAlias,
 	isThinkingLevel,
 	parseModelRef,
+	parseMultiAliasArgs,
 	parseProfileContent,
 	serializeBuiltinProfile,
 	serializeCustomProfile,
-	resolveStartupMap,
+	resolveInitialMap,
 } from "./lib/model-profile.js";
 
 const BUILTIN_PROFILES_DISPLAY = BUILTIN_PROFILES.join("|");
@@ -48,13 +47,36 @@ const STATE_TYPE = "build-plan-mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
 const FILE_OVERRIDE_RELPATH = "julsemaan-tmp/model-profile";
 
-function getTempStateFilePath(cwd: string): string {
-	const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 12);
-	return path.join(os.tmpdir(), `pi-model-state-${hash}.json`);
-}
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv);
 const DEFAULT_NEW_SESSION_MODE = "plan";
 const DEFAULT_EXISTING_SESSION_MODE = "build";
+const AUTO_BUILD_EXECUTION_INSTRUCTIONS = "This is a plain automatic /plan-build build session. Implement and validate the plan. Do not commit, push, or open a pull request.";
+const PR_EXECUTION_INSTRUCTIONS = `This execution is authorized to implement the plan, commit the intended changes, push the branch, and open a ready-for-review pull request.
+
+1. Before changing files, check the repository status. Stop if unrelated uncommitted changes exist. Do not stash, reset, discard, or commit those changes.
+2. Determine the push remote and remote default branch. Stop on detached HEAD or ambiguous repository configuration. If the current branch is the default branch, create a descriptive feature branch before implementation. Otherwise keep the current branch.
+3. Implement the plan and run its validation. Resolve failures before committing. If blocked, report the exact blocker and do not commit, push, or open a pull request.
+4. Inspect the diff and commit only the intended changes.
+5. Read and follow the existing github-open-pr or bitbucket-open-pr skill according to the remote. Preserve its clean-worktree checks, duplicate detection, supported-host rules, push-failure handling, and one-push behavior. Open the pull request ready for review by default.
+6. Report the commit SHA and pull request URL.`;
+const AUTO_PLAN_BUILD_INSTRUCTIONS = `This is an explicitly activated /plan-build workflow. Stay in plan mode while exploring and asking questions. Do not infer completion from an ordinary response or a question. Once all required questions are answered, call finish_plan exactly once with a nonempty, self-contained plan containing decisions, files, implementation steps, and validation. The tool will start a fresh build session after this turn settles.`;
+const FINISH_PLAN_PARAMS = Type.Object({
+	plan: Type.String({ minLength: 1, description: "A nonempty, self-contained plan with decisions, files, implementation steps, and validation." }),
+});
+
+type ExecutePlanOptions = {
+	pr?: boolean;
+	automatic?: boolean;
+};
+
+type PendingAutomaticHandoff = {
+	plan: string;
+};
+
+type FinishPlanDetails = {
+	accepted: boolean;
+	plan?: string;
+};
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
 	return (
@@ -75,13 +97,13 @@ function getAssistantText(message: AssistantMessage): string {
 		.trim();
 }
 
-function getLastAssistantEntry(ctx: ExtensionContext): { id: string; text: string } | undefined {
+function getLastAssistantEntry(ctx: ExtensionContext): { id: string; text: string; stopReason: AssistantMessage["stopReason"] } | undefined {
 	const branch = ctx.sessionManager.getBranch();
 	for (let i = branch.length - 1; i >= 0; i--) {
 		const entry = branch[i];
 		if (entry.type !== "message" || !isAssistantMessage(entry.message)) continue;
 		const text = getAssistantText(entry.message);
-		if (text) return { id: entry.id, text };
+		if (text) return { id: entry.id, text, stopReason: entry.message.stopReason };
 	}
 	return undefined;
 }
@@ -256,10 +278,18 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	};
 	let modelMap: ModelMap = structuredClone(DEFAULT_MODEL_MAP);
 	let activeContext: ExtensionContext | undefined;
-	let fileOverridePath: string | null = null;
-	let fileOverrideProfile: BuiltinProfile | null = null;
+	// Startup snapshot: whether a custom profile file existed at session_start.
+	// Only feeds the Alt+M cycle; mid-session file edits are ignored until /reload.
 	let fileOverrideCustomData: Record<ModelAlias, AliasConfig> | null = null;
-	let fileOverrideSignature: string | null = null;
+	// Temporary manual pick for the running process. Set by Alt+M and related
+	// commands, cleared on reload or fresh file load. Only save-model-profile writes the file.
+	let manualProfileSet = false;
+	// Keep this workflow in memory so reloads and resumed sessions cannot replay it.
+	let automaticPlanBuildActive = false;
+	let pendingAutomaticHandoff: PendingAutomaticHandoff | undefined;
+	let automaticHandoffDispatch: PendingAutomaticHandoff | undefined;
+	let automaticHandoffTimer: ReturnType<typeof setTimeout> | undefined;
+	let automaticHandoffDispatchQueued = false;
 
 	function getModeToolNames(modeConfig?: ModeConfig): string[] {
 		if (modeConfig?.tools?.length) return modeConfig.tools;
@@ -275,33 +305,9 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
 	});
 
-	function persistStateToFile(cwd: string) {
-		const filePath = getTempStateFilePath(cwd);
-		try {
-			fs.writeFileSync(filePath, JSON.stringify({ modelMap }, null, 2), "utf-8");
-		} catch {
-			// File is secondary persistence; session entries are primary
-		}
-	}
-
-	function readStateFromFile(cwd: string): Partial<Record<ModelAlias, Partial<AliasConfig>>> | null {
-		const filePath = getTempStateFilePath(cwd);
-		try {
-			if (fs.existsSync(filePath)) {
-				const content = fs.readFileSync(filePath, "utf-8");
-				const data = JSON.parse(content);
-				if (data && data.modelMap) return data.modelMap;
-			}
-		} catch {
-			// Silently ignore corrupt/inaccessible file
-		}
-		return null;
-	}
-
-	function persistState(ctx?: ExtensionContext) {
+	function persistState() {
 		const profile = getCurrentProfile(modelMap);
 		pi.appendEntry(STATE_TYPE, { mode, profile, modelMap });
-		if (ctx) persistStateToFile(ctx.cwd);
 	}
 
 	function seedModeState() {
@@ -312,7 +318,12 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		pi.events.emit(MODEL_CONFIG_EVENT, { ...modelMap });
 	}
 
+	function formatModelMap(): string {
+		return `custom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`;
+	}
+
 	async function updateModelMap(nextModelMap: Partial<Record<ModelAlias, Partial<AliasConfig>>>, ctx: ExtensionContext, notify: string) {
+		manualProfileSet = true;
 		for (const alias of Object.keys(nextModelMap) as ModelAlias[]) {
 			const update = nextModelMap[alias];
 			if (update) {
@@ -320,13 +331,13 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 		}
 		emitModelConfig();
-		persistState(ctx);
+		persistState();
 		const modeConfig = getActiveModeConfig();
 		const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
 		if (nextModelMap[activeAlias]) await setSessionModel(activeAlias, ctx);
 		updateStatus(ctx);
 		ctx.ui.notify(
-			`${notify}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
+			`${notify}\n${formatModelMap()}`,
 			"info",
 		);
 	}
@@ -379,6 +390,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			return;
 		}
 
+		cancelAutomaticPlanBuild();
 		mode = nextMode;
 		pi.setActiveTools(getModeToolNames(modeConfig));
 
@@ -416,7 +428,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				"info",
 			);
 		}
-		persistState(ctx);
+		seedModeState();
 	}
 
 	async function applyProfile(
@@ -425,6 +437,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		source: string,
 		notify = true,
 	) {
+		manualProfileSet = true;
 		modelMap = structuredClone(MODEL_PROFILES[profile]);
 
 		const modeConfig = getActiveModeConfig();
@@ -434,13 +447,41 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		emitModelConfig();
 		await setSessionModel(activeAlias, ctx, false);
 		updateStatus(ctx);
-		persistState(ctx);
+		persistState();
 
 		if (notify) {
 			ctx.ui.notify(
 				`${source}: ${profile}\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
 				"info",
 			);
+		}
+	}
+
+	// Plain /new spins up a fresh extension instance, so in-memory picks are
+	// gone. Fall back to the previous session file's last map. Fresh startups
+	// have no previous file, so the disk profile still wins there.
+	function readPreviousSessionMap(previousSessionFile: string | undefined): Partial<ModelMap> | null {
+		if (!previousSessionFile) return null;
+		try {
+			if (!fs.existsSync(previousSessionFile)) return null;
+			const content = fs.readFileSync(previousSessionFile, "utf-8");
+			let lastMap: Partial<ModelMap> | null = null;
+			for (const line of content.split("\n")) {
+				const trimmed = line.trim();
+				if (!trimmed) continue;
+				let entry: any;
+				try {
+					entry = JSON.parse(trimmed);
+				} catch {
+					continue;
+				}
+				if (entry?.type === "custom" && entry?.customType === STATE_TYPE && entry?.data?.modelMap) {
+					lastMap = entry.data.modelMap;
+				}
+			}
+			return lastMap;
+		} catch {
+			return null;
 		}
 	}
 
@@ -479,62 +520,93 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		return { profile: null, customData: null, filePath: null };
 	}
 
-	function getFileOverrideSignature(filePath: string, content: string): string {
-		return `${filePath}:${content.trim()}`;
+	const SET_MODELS_FLAGS = ["--all", "--large", "--medium", "--small"] as const;
+
+	function setModelsFlagToken(value: string): boolean {
+		return /^(--)?(all|large|medium|small)(=.*)?$/i.test(value);
 	}
 
-	async function syncFileOverride(ctx: ExtensionContext): Promise<boolean> {
-		const { profile: fileProfile, customData, filePath } = readFileOverride(ctx);
+	function setModelsFlagAlias(flag: string): ModelAlias {
+		const name = flag.replace(/^--/, "").split("=")[0].toLowerCase();
+		if (name === "medium") return "custom/medium";
+		if (name === "small") return "custom/small";
+		return "custom/large";
+	}
 
-		if (!filePath) {
-			if (fileOverridePath) {
-				fileOverridePath = null;
-				fileOverrideProfile = null;
-				fileOverrideCustomData = null;
-				fileOverrideSignature = null;
+	async function getSetModelsCompletions(prefix: string): Promise<AutocompleteItem[] | null> {
+		const ctx = activeContext;
+		if (!ctx) return null;
+
+		const endsWithSpace = /\s$/.test(prefix);
+		const tokens = prefix.trim() ? prefix.trim().split(/\s+/) : [];
+		const complete = endsWithSpace ? tokens : tokens.slice(0, -1);
+		const partial = endsWithSpace ? "" : (tokens[tokens.length - 1] ?? "");
+		const base = endsWithSpace
+			? (prefix.trim() ? `${prefix.trim()} ` : "")
+			: prefix.slice(0, prefix.length - partial.length);
+
+		const flagItems = (filter: string) => {
+			const norm = filter.replace(/^--?/, "").toLowerCase();
+			return SET_MODELS_FLAGS.filter((flag) => flag.slice(2).startsWith(norm))
+				.map((flag) => ({ value: `${base}${flag} `, label: flag, description: "model alias" }));
+		};
+
+		const thinkingItems = (filter: string) =>
+			VALID_THINKING_LEVELS.filter((level) => level.startsWith(filter))
+				.map((level) => ({ value: `${base}${level} `, label: level, description: "thinking level" }));
+
+		async function modelItems(filter: string, alias: ModelAlias) {
+			const currentValue = modelMap[alias].model;
+			const scopedModels = ctx.scopedModels ?? [];
+			let models;
+			if (scopedModels.length > 0) {
+				models = getModelCompletionCandidates([], scopedModels, currentValue);
+			} else {
+				await ctx.modelRegistry.refresh();
+				models = getModelCompletionCandidates(ctx.modelRegistry.getAvailable(), [], currentValue);
 			}
-			return false;
+			const items = models.map((model) => ({
+				id: model.id,
+				provider: model.provider,
+				label: `${model.provider}/${model.id}`,
+			}));
+			const filtered = fuzzyFilter(items, filter, (item) => `${item.id} ${item.provider}`);
+			return filtered.map((item) => ({
+				value: `${base}${item.label}`,
+				label: item.id,
+				description: item.provider,
+			}));
 		}
 
-		if (!fileProfile && !customData) {
-			return false;
+		let flagIdx = -1;
+		for (let i = 0; i < complete.length; i++) {
+			if (setModelsFlagToken(complete[i])) flagIdx = i;
 		}
 
-		// Build signature from path + content to detect changes even for custom profiles
-		let fileContent: string;
-		try {
-			fileContent = fs.readFileSync(filePath, "utf-8");
-		} catch {
-			return false;
-		}
-		const sig = getFileOverrideSignature(filePath, fileContent);
-		if (sig === fileOverrideSignature) {
-			return false;
+		if (flagIdx === -1) {
+			if (partial.includes("/") || partial.includes("=")) return null;
+			const items = flagItems(partial);
+			return items.length > 0 ? items : null;
 		}
 
-		fileOverridePath = filePath;
-		fileOverrideSignature = sig;
-		fileOverrideProfile = fileProfile;
-		fileOverrideCustomData = customData;
+		const flagToken = complete[flagIdx];
+		const inline = flagToken.includes("=");
+		const after = complete.length - 1 - flagIdx;
 
-		if (fileProfile) {
-			await applyProfile(fileProfile, ctx, `File override (${path.relative(ctx.cwd, filePath)})`);
-		} else if (customData) {
-			// Apply custom profile: set modelMap from parsed data
-			applyProfileData(modelMap, customData);
-			emitModelConfig();
-			const modeConfig = getActiveModeConfig();
-			const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
-			await setSessionModel(activeAlias, ctx, false);
-			updateStatus(ctx);
-			persistState(ctx);
-			ctx.ui.notify(
-				`File override (${path.relative(ctx.cwd, filePath)}): custom profile\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
-				"info",
-			);
+		if (!inline && after === 0) {
+			const items = await modelItems(partial, setModelsFlagAlias(flagToken));
+			return items.length > 0 ? items : null;
 		}
 
-		return true;
+		if ((inline && after === 0) || (!inline && after === 1)) {
+			const thinking = thinkingItems(partial);
+			if (thinking.length > 0) return partial === "" ? [...thinking, ...flagItems("")] : thinking;
+			const flags = flagItems(partial);
+			return flags.length > 0 ? flags : null;
+		}
+
+		const items = flagItems(partial);
+		return items.length > 0 ? items : null;
 	}
 
 	async function getAliasArgumentCompletions(prefix: string, alias: ModelAlias): Promise<AutocompleteItem[] | null> {
@@ -586,30 +658,102 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		}));
 	}
 
+	function cancelAutomaticPlanBuild() {
+		automaticPlanBuildActive = false;
+		pendingAutomaticHandoff = undefined;
+		automaticHandoffDispatch = undefined;
+		automaticHandoffDispatchQueued = false;
+		if (automaticHandoffTimer) {
+			clearTimeout(automaticHandoffTimer);
+			automaticHandoffTimer = undefined;
+		}
+	}
+
+	function errorMessage(error: unknown): string {
+		return error instanceof Error ? error.message : String(error);
+	}
+
+	function scheduleAutomaticHandoff() {
+		if (!automaticPlanBuildActive || !pendingAutomaticHandoff || automaticHandoffDispatchQueued) return;
+
+		const pending = pendingAutomaticHandoff;
+		automaticHandoffDispatchQueued = true;
+		automaticHandoffTimer = setTimeout(() => {
+			automaticHandoffTimer = undefined;
+			automaticHandoffDispatchQueued = false;
+			if (!automaticPlanBuildActive || pendingAutomaticHandoff !== pending) return;
+
+			pendingAutomaticHandoff = undefined;
+			automaticHandoffDispatch = pending;
+			try {
+				// Commands are handled immediately when prompt expansion is enabled.
+				// Keep this outside agent_settled so session replacement is not re-entrant.
+				pi.sendUserMessage("/execute-plan", {
+					deliverAs: "followUp",
+					expandPromptTemplates: true,
+				});
+			} catch (error) {
+				automaticHandoffDispatch = undefined;
+				automaticPlanBuildActive = false;
+				activeContext?.ui.notify(`Automatic plan handoff failed: ${errorMessage(error)}`, "error");
+			}
+		}, 0);
+	}
+
 	async function executePlanHandoff(
 		plan: string,
 		args: string | undefined,
-		ctx: ExtensionContext,
+		ctx: ExtensionCommandContext,
+		options: ExecutePlanOptions = {},
 	): Promise<void> {
-		const executionPrompt = buildExecutionPrompt(plan, args);
+		const extraInstructions = options.pr
+			? [args?.trim(), PR_EXECUTION_INSTRUCTIONS].filter(Boolean).join("\n\n")
+			: options.automatic
+				? AUTO_BUILD_EXECUTION_INSTRUCTIONS
+				: args;
+		const executionPrompt = buildExecutionPrompt(plan, extraInstructions);
+		const ui = ctx.ui;
 		const parentSession = ctx.sessionManager.getSessionFile();
-		const result = await ctx.newSession({
-			parentSession,
-			setup: async (sessionManager) => {
-				sessionManager.appendCustomEntry(STATE_TYPE, {
-					mode: "build",
-					profile: getCurrentProfile(modelMap),
-					modelMap: structuredClone(modelMap),
-				});
-			},
-			withSession: async (replacementCtx) => {
-				replacementCtx.sendUserMessage(executionPrompt).catch(() => {});
-				replacementCtx.ui.notify("Started fresh build session.", "info");
-			},
-		});
+		let result: { cancelled: boolean };
+		try {
+			result = await ctx.newSession({
+				parentSession,
+				setup: async (sessionManager) => {
+					sessionManager.appendCustomEntry(STATE_TYPE, {
+						mode: "build",
+						profile: getCurrentProfile(modelMap),
+						modelMap: structuredClone(modelMap),
+					});
+				},
+				withSession: async (replacementCtx) => {
+					// newSession setup runs after session_start, so select build mode explicitly.
+					try {
+						await replacementCtx.sendUserMessage("/build", {
+							expandPromptTemplates: true,
+						});
+					} catch (error) {
+						replacementCtx.ui.notify(`Failed to select build mode: ${errorMessage(error)}`, "error");
+						return;
+					}
+					void replacementCtx.sendUserMessage(executionPrompt).catch((error) => {
+						replacementCtx.ui.notify(`Failed to start plan execution: ${errorMessage(error)}`, "error");
+					});
+					replacementCtx.ui.notify("Started fresh build session.", "info");
+				},
+			});
+		} catch (error) {
+			ui.notify(
+				`${options.automatic ? "Automatic plan handoff" : "Execute plan"} failed: ${errorMessage(error)}`,
+				"error",
+			);
+			return;
+		}
 
 		if (result.cancelled) {
-			ctx.ui.notify("Execute plan cancelled.", "info");
+			ui.notify(
+				options.automatic ? "Automatic plan handoff cancelled. No retry will be attempted." : "Execute plan cancelled.",
+				"info",
+			);
 		}
 	}
 
@@ -629,39 +773,140 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	// ── Commands ─────────────────────────────────────────────────────────
 
+	pi.registerTool({
+		name: "finish_plan",
+		label: "Finish Plan",
+		description: "Submit a nonempty, self-contained plan with decisions, files, implementation steps, and validation for an explicitly activated /plan-build workflow.",
+		promptSnippet: "Submit the completed plan for an explicitly activated /plan-build workflow",
+		promptGuidelines: [
+			"Use finish_plan only after all required questions are answered in an explicitly activated /plan-build workflow.",
+			"Include decisions, files, implementation steps, and validation in the finish_plan plan.",
+			"Do not use finish_plan to infer completion in an ordinary plan session.",
+		],
+		parameters: FINISH_PLAN_PARAMS,
+		async execute(_toolCallId, params) {
+			const plan = params.plan.trim();
+			if (!plan) {
+				return {
+					content: [{ type: "text", text: "Error: plan must be nonempty." }],
+					details: { accepted: false, plan: undefined } as FinishPlanDetails,
+				};
+			}
+
+			if (!automaticPlanBuildActive || mode !== "plan") {
+				return {
+					content: [{ type: "text", text: "Automatic plan-build is not active. Continue planning and present the plan normally." }],
+					details: { accepted: false, plan: undefined } as FinishPlanDetails,
+				};
+			}
+
+			if (pendingAutomaticHandoff || automaticHandoffDispatch) {
+				return {
+					content: [{ type: "text", text: "A plan has already been submitted for handoff." }],
+					details: { accepted: false, plan: undefined } as FinishPlanDetails,
+				};
+			}
+
+			pendingAutomaticHandoff = { plan };
+			return {
+				content: [{ type: "text", text: "Plan accepted. A fresh build session will start after this turn settles." }],
+				details: { accepted: true, plan } as FinishPlanDetails,
+				terminate: true,
+			};
+		},
+		renderCall(_args, theme) {
+			return new Text(theme.fg("toolTitle", theme.bold("finish_plan")), 0, 0);
+		},
+		renderResult(result, _options, theme) {
+			const text = result.content.find((part): part is TextContent => part.type === "text")?.text ?? "";
+			const accepted = (result.details as { accepted?: boolean } | undefined)?.accepted;
+			return new Text(theme.fg(accepted ? "success" : "warning", text), 0, 0);
+		},
+	});
+
+	pi.registerCommand("plan-build", {
+		description: "Plan the next request in read-only mode, then start a fresh build session automatically",
+		handler: async (args, ctx) => {
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("Wait for the current turn to finish before starting plan-build.", "warning");
+				return;
+			}
+
+			await applyMode("plan", ctx, false);
+			automaticPlanBuildActive = true;
+			const request = args.trim();
+			if (!request) {
+				ctx.ui.notify("Automatic plan-build enabled. Submit the next request.", "info");
+				return;
+			}
+
+			ctx.ui.notify("Automatic plan-build started.", "info");
+			pi.sendUserMessage(request);
+		},
+	});
+
+	async function finalizeAndHandoff(args: string, ctx: ExtensionCommandContext, options: ExecutePlanOptions = {}) {
+		const beforeEntry = getLastAssistantEntry(ctx);
+
+		ctx.ui.notify("Requesting final consolidated plan…", "info");
+		pi.sendUserMessage(buildFinalizePlanPrompt(args));
+
+		const started = await waitForTurnStart(ctx);
+		if (!started) {
+			ctx.ui.notify("Final plan request did not start. Handoff aborted.", "warning");
+			return;
+		}
+
+		await ctx.waitForIdle();
+
+		const afterEntry = getLastAssistantEntry(ctx);
+		if (!afterEntry) {
+			ctx.ui.notify("Assistant did not produce a final plan. Handoff aborted.", "warning");
+			return;
+		}
+
+		if (afterEntry.stopReason === "aborted" || afterEntry.stopReason === "error") {
+			ctx.ui.notify("Final plan request failed. Handoff aborted.", "warning");
+			return;
+		}
+
+		if (beforeEntry && beforeEntry.id === afterEntry.id) {
+			ctx.ui.notify("Assistant did not produce a new plan. Handoff aborted.", "warning");
+			return;
+		}
+
+		await executePlanHandoff(afterEntry.text, args, ctx, options);
+	}
+
 	pi.registerCommand("execute-plan", {
 		description: "Finalize current plan, then start fresh build session from finalized plan only",
+		handler: async (args, ctx) => {
+			const automatic = automaticHandoffDispatch;
+			if (automatic) {
+				automaticHandoffDispatch = undefined;
+				automaticPlanBuildActive = false;
+				await executePlanHandoff(automatic.plan, undefined, ctx, { automatic: true });
+				return;
+			}
+
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("Wait for the current turn to finish before executing the plan.", "warning");
+				return;
+			}
+
+			await finalizeAndHandoff(args, ctx);
+		},
+	});
+
+	pi.registerCommand("execute-plan-pr", {
+		description: "Finalize current plan, then implement, commit, push, and open a ready-for-review pull request",
 		handler: async (args, ctx) => {
 			if (!ctx.isIdle()) {
 				ctx.ui.notify("Wait for the current turn to finish before executing the plan.", "warning");
 				return;
 			}
 
-			const beforeEntry = getLastAssistantEntry(ctx);
-
-			ctx.ui.notify("Requesting final consolidated plan…", "info");
-			pi.sendUserMessage(buildFinalizePlanPrompt(args));
-
-			const started = await waitForTurnStart(ctx);
-			if (!started) {
-				ctx.ui.notify("Final plan request did not start. Handoff aborted.", "warning");
-				return;
-			}
-
-			await ctx.waitForIdle();
-
-			const afterEntry = getLastAssistantEntry(ctx);
-			if (!afterEntry) {
-				ctx.ui.notify("Assistant did not produce a final plan. Handoff aborted.", "warning");
-				return;
-			}
-
-			if (beforeEntry && beforeEntry.id === afterEntry.id) {
-				ctx.ui.notify("Assistant did not produce a new plan. Handoff aborted.", "warning");
-				return;
-			}
-
-			await executePlanHandoff(afterEntry.text, args, ctx);
+			await finalizeAndHandoff(args, ctx, { pr: true });
 		},
 	});
 
@@ -691,22 +936,44 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			if ("error" in parsed) {
 				ctx.ui.notify(parsed.error, "warning");
 				ctx.ui.notify(
-					`Usage: /large-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\nCurrent: ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})`,
+					`Usage: /large-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\n${formatModelMap()}`,
 					"info",
 				);
 				return;
 			}
 			if (!parsed.model && !parsed.thinkingLevel) {
-				ctx.ui.notify(
-					`custom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})`,
-					"info",
-				);
+				ctx.ui.notify(formatModelMap(), "info");
 				return;
 			}
 			const update: Partial<AliasConfig> = {};
 			if (parsed.model) update.model = parsed.model;
 			if (parsed.thinkingLevel) update.thinkingLevel = parsed.thinkingLevel;
 			await updateModelMap({ "custom/large": update }, ctx, "Updated model alias.");
+		},
+	});
+
+	pi.registerCommand("set-models", {
+		description: "Show or set large/medium/small models at once. Usage: /set-models [--all provider/model [thinking]] [--large ...] [--medium ...] [--small ...]",
+		getArgumentCompletions: (prefix: string) => getSetModelsCompletions(prefix),
+		handler: async (args, ctx) => {
+			if (!args.trim()) {
+				ctx.ui.notify(formatModelMap(), "info");
+				return;
+			}
+			const parsed = parseMultiAliasArgs(args);
+			if (!parsed.ok) {
+				ctx.ui.notify(parsed.error, "warning");
+				ctx.ui.notify(
+					`Usage: /set-models [--all provider/model [thinking]] [--large ...] [--medium ...] [--small ...]\n${formatModelMap()}`,
+					"info",
+				);
+				return;
+			}
+			if (Object.keys(parsed.updates).length === 0) {
+				ctx.ui.notify(formatModelMap(), "info");
+				return;
+			}
+			await updateModelMap(parsed.updates, ctx, "Updated model aliases.");
 		},
 	});
 
@@ -718,16 +985,13 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			if ("error" in parsed) {
 				ctx.ui.notify(parsed.error, "warning");
 				ctx.ui.notify(
-					`Usage: /medium-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\nCurrent: ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
+					`Usage: /medium-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\n${formatModelMap()}`,
 					"info",
 				);
 				return;
 			}
 			if (!parsed.model && !parsed.thinkingLevel) {
-				ctx.ui.notify(
-					`custom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})`,
-					"info",
-				);
+				ctx.ui.notify(formatModelMap(), "info");
 				return;
 			}
 			const update: Partial<AliasConfig> = {};
@@ -745,16 +1009,13 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			if ("error" in parsed) {
 				ctx.ui.notify(parsed.error, "warning");
 				ctx.ui.notify(
-					`Usage: /small-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\nCurrent: ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
+					`Usage: /small-model [provider/model] [${THINKING_LEVELS_DISPLAY}]\n${formatModelMap()}`,
 					"info",
 				);
 				return;
 			}
 			if (!parsed.model && !parsed.thinkingLevel) {
-				ctx.ui.notify(
-					`custom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
-					"info",
-				);
+				ctx.ui.notify(formatModelMap(), "info");
 				return;
 			}
 			const update: Partial<AliasConfig> = {};
@@ -767,12 +1028,6 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.registerCommand("model-profile", {
 		description: `Show or set model alias profile (${BUILTIN_PROFILES_DISPLAY})`,
 		handler: async (args, ctx) => {
-			if (fileOverridePath) {
-				ctx.ui.notify(
-					`File override active (${path.relative(ctx.cwd, fileOverridePath)}). Manual profile will be overwritten on next turn. Remove the file to keep manual setting.`,
-					"warning",
-				);
-			}
 			const profile = args.trim().toLowerCase();
 			if (!profile) {
 				const current = getCurrentProfile(modelMap);
@@ -846,15 +1101,10 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				return;
 			}
 
-			// 4. Refresh signature to prevent redundant reapplication
-			fileOverrideSignature = getFileOverrideSignature(targetFile, content);
-
-			// 5. Refresh cached override so Alt+M cycle picks up the profile immediately
+			// Refresh startup snapshot so Alt+M sees a newly saved custom without reload.
 			if (profile !== "custom") {
-				fileOverrideProfile = profile;
 				fileOverrideCustomData = null;
 			} else {
-				fileOverrideProfile = null;
 				fileOverrideCustomData = structuredClone(modelMap);
 			}
 
@@ -915,7 +1165,11 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 			const result = await ctx.newSession({
 				setup: async (sessionManager) => {
-					sessionManager.appendCustomEntry(STATE_TYPE, { mode: "build" });
+					sessionManager.appendCustomEntry(STATE_TYPE, {
+						mode: "build",
+						profile: getCurrentProfile(modelMap),
+						modelMap: structuredClone(modelMap),
+					});
 				},
 				withSession: async (replacementCtx) => {
 					replacementCtx.ui.notify("Started new build session.", "info");
@@ -940,19 +1194,13 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	pi.registerShortcut("alt+m", {
 		description: `Cycle model profile (${BUILTIN_PROFILES_DISPLAY}${fileOverrideCustomData ? "|custom" : ""})`,
 		handler: async (ctx) => {
-			// Refresh override on every cycle so externally saved custom profiles appear
-			if (fileOverridePath) {
-				const { profile: fp, customData: cd } = readFileOverride(ctx);
-				fileOverrideProfile = fp;
-				fileOverrideCustomData = cd;
-			}
-
 			const current = getCurrentProfile(modelMap);
 			const hasCustom = fileOverrideCustomData !== null;
 			const next = getNextProfile(current, hasCustom);
 
 			if (next === "custom") {
 				// Apply saved custom profile
+				manualProfileSet = true;
 				if (fileOverrideCustomData) {
 					applyProfileData(modelMap, fileOverrideCustomData);
 				}
@@ -961,7 +1209,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 				const activeAlias = modeConfig ? getActiveAlias(modeConfig) : "custom/medium";
 				await setSessionModel(activeAlias, ctx, false);
 				updateStatus(ctx);
-				persistState(ctx);
+				persistState();
 				ctx.ui.notify(
 					`Cycled profile: custom\ncustom/large -> ${modelMap["custom/large"].model} (thinking: ${modelMap["custom/large"].thinkingLevel})\ncustom/medium -> ${modelMap["custom/medium"].model} (thinking: ${modelMap["custom/medium"].thinkingLevel})\ncustom/small -> ${modelMap["custom/small"].model} (thinking: ${modelMap["custom/small"].thinkingLevel})`,
 					"info",
@@ -975,6 +1223,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	// ── Lifecycle handlers ──────────────────────────────────────────────
 
 	pi.on("session_start", async (event, ctx) => {
+		cancelAutomaticPlanBuild();
 		activeContext = ctx;
 
 		// Discover modes from project
@@ -989,9 +1238,16 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 		registerModeCommands();
 
 		const entries = ctx.sessionManager.getEntries();
-		const lastState = entries
-			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE)
-			.pop() as { data?: AppState } | undefined;
+		const stateEntries = entries
+			.filter((entry: { type: string; customType?: string }) => entry.type === "custom" && entry.customType === STATE_TYPE) as { data?: AppState }[];
+		const lastState = stateEntries[stateEntries.length - 1] as { data?: AppState } | undefined;
+		const lastMapEntry = [...stateEntries].reverse().find((entry) => entry.data?.modelMap);
+		const sessionMap = lastMapEntry?.data?.modelMap ?? null;
+		// Fresh instance after /new: recover the pick from the previous session file.
+		const prevSessionMap = event.reason === "new" && !sessionMap
+			? readPreviousSessionMap(event.previousSessionFile)
+			: null;
+		const effectiveSessionMap = sessionMap ?? prevSessionMap;
 
 		// Saved mode wins. No saved mode: startup/new sessions default to plan;
 		// legacy resumed/reloaded/forked sessions default to build.
@@ -1001,8 +1257,9 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			mode = "build";
 		}
 
-		// Resolve modelMap. During /reload a valid file override beats stale
-		// session/temp state; otherwise env > session > temp > file > default.
+		// Resolve modelMap once at startup. Reload resets to disk (env > file > session);
+		// otherwise keep working (env > session > file). Mid-session file edits
+		// do nothing until /reload, which re-runs session_start.
 		let envProfile: BuiltinProfile | null = null;
 		const envRaw = process.env.PI_BUILD_PLAN_MODEL_PROFILE?.trim();
 		if (envRaw) {
@@ -1017,40 +1274,35 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			}
 		}
 
-		// File override (julsemaan-tmp/model-profile)
-		const { profile: fileProfile, customData: fileCustomData, filePath } = readFileOverride(ctx);
-		fileOverridePath = filePath;
-		fileOverrideProfile = fileProfile;
+		// File override (julsemaan-tmp/model-profile), read once.
+		const { profile: fileProfile, customData: fileCustomData } = readFileOverride(ctx);
 		fileOverrideCustomData = fileCustomData;
 
-		// Initialize signature so syncFileOverride won't re-apply an unchanged file on the first turn
-		if (filePath) {
-			try {
-				const content = fs.readFileSync(filePath, "utf-8");
-				fileOverrideSignature = getFileOverrideSignature(filePath, content);
-			} catch {
-				// File unreadable — syncFileOverride will handle on next turn
-			}
+		// /new keeps the temporary manual pick for the running process.
+		const keepManualPick = event.reason === "new" && !effectiveSessionMap && manualProfileSet;
+		if (event.reason === "reload") {
+			manualProfileSet = false;
 		}
-
-		const resolved = resolveStartupMap(
-			{
-				reason: event.reason,
-				envProfile,
-				sessionMap: lastState?.data?.modelMap ?? null,
-				tempMap: readStateFromFile(ctx.cwd),
-				fileProfile,
-				fileCustomData,
-			},
-			DEFAULT_MODEL_MAP,
-			MODEL_PROFILES,
-		);
-		modelMap = resolved.modelMap;
-
-		// Reload picked up an externally changed profile: persist it so the next
-		// reload doesn't restore the stale session state.
-		if (event.reason === "reload" && resolved.source === "file") {
-			persistState(ctx);
+		if (!keepManualPick) {
+			modelMap = resolveInitialMap(
+				{
+					reason: event.reason,
+					envProfile,
+					fileProfile,
+					fileCustomData,
+					sessionMap: effectiveSessionMap,
+				},
+				DEFAULT_MODEL_MAP,
+				MODEL_PROFILES,
+			);
+			if (!effectiveSessionMap && (fileProfile || fileCustomData)) {
+				manualProfileSet = false;
+			}
+			// Reload resets to disk: persist it so later resumes and /new
+			// see the file pick instead of the stale session pick.
+			if (event.reason === "reload" && !envProfile && (fileProfile || fileCustomData)) {
+				persistState();
+			}
 		}
 
 		emitModelConfig();
@@ -1080,22 +1332,40 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			pi.setActiveTools(pi.getAllTools().map(t => t.name));
 		}
 
-		if (!lastState && (event.reason === "startup" || event.reason === "new")) {
+		if (keepManualPick) {
+			persistState();
+		} else if (!lastState && (event.reason === "startup" || event.reason === "new")) {
 			seedModeState();
 		}
 
 		updateStatus(ctx);
 	});
 
-	pi.on("turn_start", async (_event, ctx) => {
-		await syncFileOverride(ctx);
+	pi.on("agent_end", async (event, ctx) => {
+		if (!automaticPlanBuildActive && !pendingAutomaticHandoff && !automaticHandoffDispatch) return;
+		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+		if (ctx.signal?.aborted || !lastAssistant || lastAssistant.stopReason === "aborted" || lastAssistant.stopReason === "error") {
+			cancelAutomaticPlanBuild();
+		}
+	});
+
+	pi.on("agent_settled", async () => {
+		scheduleAutomaticHandoff();
+	});
+
+	pi.on("session_shutdown", async () => {
+		cancelAutomaticPlanBuild();
+		activeContext = undefined;
 	});
 
 	pi.on("before_agent_start", async (event) => {
 		const modeConfig = getActiveModeConfig();
 		const promptSuffix = modeConfig?.systemPrompt ? `\n\n${modeConfig.systemPrompt}` : "";
+		const automaticSuffix = automaticPlanBuildActive && mode === "plan"
+			? `\n\n${AUTO_PLAN_BUILD_INSTRUCTIONS}`
+			: "";
 		return {
-			systemPrompt: event.systemPrompt + promptSuffix,
+			systemPrompt: event.systemPrompt + promptSuffix + automaticSuffix,
 		};
 	});
 

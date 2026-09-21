@@ -7,7 +7,8 @@
     "opencode/*-free",
     "openrouter/free",
     "openrouter/z-ai/glm-5.3-flash",
-    "openrouter/deepseek/deepseek-v4-flash-0731",
+    "openrouter/deepseek/*",
+    "openrouter/meta/*-contributor",
     "github-copilot/*"
   ],
   "compaction": {
