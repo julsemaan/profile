@@ -32,6 +32,7 @@ function gpoh {
   git pull --no-rebase origin "$branch"
 }
 add_alias gs 'git status'
+add_alias gtagv 'git tag -l --sort=-version:refname'
 add_alias sbrc 'source ~/.bashrc'
 
 # gch: git checkout with fzf branch picker when no args given

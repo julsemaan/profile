@@ -119,6 +119,7 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   # Check key aliases
   alias gpush >/dev/null 2>&1 && echo "__AL_gpush__"
   alias gs >/dev/null 2>&1 && echo "__AL_gs__"
+  alias gtagv >/dev/null 2>&1 && echo "__AL_gtagv__"
   alias grh >/dev/null 2>&1 && echo "__AL_grh__"
   alias gfo >/dev/null 2>&1 && echo "__AL_gfo__"
   ! alias gpoh >/dev/null 2>&1 && echo "__NO_AL_gpoh__"
@@ -161,6 +162,7 @@ assert_match "jprofile_path_prepend exists" "__FN_jprofile_path_prepend__" "$_re
 
 assert_match "gpush alias" "__AL_gpush__" "$_result"
 assert_match "gs alias" "__AL_gs__" "$_result"
+assert_match "gtagv alias" "__AL_gtagv__" "$_result"
 assert_match "grh alias" "__AL_grh__" "$_result"
 assert_match "gfo alias" "__AL_gfo__" "$_result"
 assert_match "gpoh has no alias" "__NO_AL_gpoh__" "$_result"
