@@ -133,6 +133,7 @@ Located at the repository root, the `.pi/` directory configures the pi coding ag
   `model-test-worker`).
 - **`prompts/`** — Prompt templates (`pr-feedback`, `fix-lint`, `model-test`).
 - **`modes/`** — Custom modes (brainstorm).
+- **`AGENTS.md`** — Global agent context, synced to `~/.pi/agent/AGENTS.md`.
 
 The PR feedback automation surface is now one command and three agents:
 - `/pr-feedback [<PR-URL>]` — one-pass orchestration

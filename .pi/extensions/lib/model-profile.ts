@@ -1,7 +1,7 @@
 /**
  * Model-profile codec — parse, validate, and serialize model profiles.
  *
- * Built-in profiles are bare names (case-insensitive): opencode, openrouter, deep, priv, and copilotPriv.
+ * Built-in profiles are bare names (case-insensitive): openrouter, deep, priv, and copilotPriv.
  * Custom profiles are JSON with all configured alias keys.
  */
 
@@ -19,8 +19,6 @@ const GPT_SOL_MODEL_ID = "gpt-5.6-sol";
 const GPT_LUNA_MODEL_ID = "gpt-5.6-luna";
 const DEEPSEEK_PRO_MODEL_ID = "deepseek-flash";
 const DEEPSEEK_FLASH_MODEL_ID = "deepseek-flash";
-const OPENCODE_LARGE_MODEL_ID = "muse-spark-1.3-contributor-free";
-const OPENCODE_MEDIUM_MODEL_ID = "muse-spark-1.3-contributor-free";
 const OPENROUTER_LARGE_MODEL_ID = "meta/muse-spark-1.3-contributor";
 const OPENROUTER_MEDIUM_MODEL_ID = "z-ai/glm-5.3-flash";
 
@@ -29,11 +27,6 @@ function modelRef(prefix: string, modelId: string): string {
 }
 
 export const MODEL_PROFILES = {
-	opencode: {
-		"custom/large": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
-		"custom/medium": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
-		"custom/small": { model: modelRef("opencode", OPENCODE_MEDIUM_MODEL_ID), thinkingLevel: "max" },
-	},
 	openrouterHybrid: {
 		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
 		"custom/medium": { model: modelRef("openrouter/z-ai", OPENROUTER_MEDIUM_MODEL_ID), thinkingLevel: "high" },
