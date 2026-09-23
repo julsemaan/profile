@@ -15,8 +15,8 @@ export type ModelMap = Record<ModelAlias, AliasConfig>;
 
 export const BUILTIN_ALIASES: readonly ModelAlias[] = ["custom/large", "custom/medium", "custom/small"];
 
-const GPT_SOL_MODEL_ID = "gpt-5.6-sol";
-const GPT_LUNA_MODEL_ID = "gpt-5.6-luna";
+const GPT_SOL_MODEL_ID = "gpt-6-sol";
+const GPT_LUNA_MODEL_ID = "gpt-6-luna";
 const DEEPSEEK_PRO_MODEL_ID = "deepseek-flash";
 const DEEPSEEK_FLASH_MODEL_ID = "deepseek-flash";
 const OPENROUTER_LARGE_MODEL_ID = "meta/muse-spark-1.3-contributor";
