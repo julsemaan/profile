@@ -18,6 +18,7 @@ run_check "smoke tests" bash tests/bashrc-smoke.sh
 run_check "tmux-equalize-row" bash tests/tmux-equalize-row-test.sh
 run_check "gwt" bash tests/gwt-test.sh
 run_check "pi-unleashed-safely" bash tests/pi-unleashed-safely-test.sh
+run_check "pi config" bash tests/pi-config-test.sh
 
 if command -v shellcheck >/dev/null 2>&1; then
   run_check "shellcheck" shellcheck -x profile/.bashrc_append profile/gwt profile/bashrc.d/*.bash profile/pi-unleashed-safely.sh tests/bashrc-smoke.sh tests/gwt-test.sh tests/pi-unleashed-safely-test.sh tests/lib/assert.sh

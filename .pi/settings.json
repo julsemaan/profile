@@ -1,11 +1,12 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.5",
+  "defaultModel": "gpt-6-luna",
   "enabledModels": [
     "deepseek/*",
     "openai-codex/*",
     "opencode/*-free",
     "openrouter/free",
+    "openrouter/openai/gpt-6-luna",
     "openrouter/z-ai/glm-5.3-flash",
     "openrouter/deepseek/*",
     "openrouter/meta/*-contributor",
