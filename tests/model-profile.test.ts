@@ -204,9 +204,9 @@ describe("validateCustomProfile", () => {
 
 describe("parseProfileContent", () => {
 	it("parses a bare built-in name", () => {
-		const result = parseProfileContent("opencode");
+		const result = parseProfileContent("priv");
 		assert.equal(result.type, "builtin");
-		if (result.type === "builtin") assert.equal(result.profile, "opencode");
+		if (result.type === "builtin") assert.equal(result.profile, "priv");
 	});
 
 	it("parses case-insensitive built-in name", () => {

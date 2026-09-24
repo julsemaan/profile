@@ -1,11 +1,3 @@
 {
-  "providers": {
-    "deepseek": {
-      "modelOverrides": {
-        "deepseek-v4-pro": {
-          "contextWindow": 272000
-        }
-      }
-    }
-  }
+  "providers": {}
 }

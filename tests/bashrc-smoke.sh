@@ -112,13 +112,15 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   declare -F gcoto-commit-with-model >/dev/null && echo "__FN_gcoto_commit_with_model__"
   declare -F gcoto-openai >/dev/null && echo "__FN_gcoto_openai__"
   declare -F gcoto-deepseek >/dev/null && echo "__FN_gcoto_deepseek__"
-  declare -F gcoto-free >/dev/null && echo "__FN_gcoto_free__"
+  declare -F gcoto-openrouter >/dev/null && echo "__FN_gcoto_openrouter__"
+  ! declare -F gcoto-free >/dev/null && echo "__NO_FN_gcoto_free__"
   declare -F add_alias >/dev/null && echo "__FN_add_alias__"
   declare -F jprofile_path_prepend >/dev/null && echo "__FN_jprofile_path_prepend__"
 
   # Check key aliases
   alias gpush >/dev/null 2>&1 && echo "__AL_gpush__"
   alias gs >/dev/null 2>&1 && echo "__AL_gs__"
+  alias gtagv >/dev/null 2>&1 && echo "__AL_gtagv__"
   alias grh >/dev/null 2>&1 && echo "__AL_grh__"
   alias gfo >/dev/null 2>&1 && echo "__AL_gfo__"
   ! alias gpoh >/dev/null 2>&1 && echo "__NO_AL_gpoh__"
@@ -155,12 +157,14 @@ assert_match "gacp exists" "__FN_gacp__" "$_result"
 assert_match "gcoto-commit-with-model exists" "__FN_gcoto_commit_with_model__" "$_result"
 assert_match "gcoto-openai exists" "__FN_gcoto_openai__" "$_result"
 assert_match "gcoto-deepseek exists" "__FN_gcoto_deepseek__" "$_result"
-assert_match "gcoto-free exists" "__FN_gcoto_free__" "$_result"
+assert_match "gcoto-openrouter exists" "__FN_gcoto_openrouter__" "$_result"
+assert_match "gcoto-free is removed" "__NO_FN_gcoto_free__" "$_result"
 assert_match "add_alias exists" "__FN_add_alias__" "$_result"
 assert_match "jprofile_path_prepend exists" "__FN_jprofile_path_prepend__" "$_result"
 
 assert_match "gpush alias" "__AL_gpush__" "$_result"
 assert_match "gs alias" "__AL_gs__" "$_result"
+assert_match "gtagv alias" "__AL_gtagv__" "$_result"
 assert_match "grh alias" "__AL_grh__" "$_result"
 assert_match "gfo alias" "__AL_gfo__" "$_result"
 assert_match "gpoh has no alias" "__NO_AL_gpoh__" "$_result"
@@ -574,7 +578,7 @@ echo ""
 echo "=== Scenario 5: gcoto-model tty single-key selection ==="
 
 _result=$(_run_gcoto_model_tty '1')
-assert_match "gcoto-model selects openai on single keypress" "__MODEL=openai-codex/gpt-5.6-luna__" "$_result"
+assert_match "gcoto-model selects openai on single keypress" "__MODEL=openai-codex/gpt-6-luna__" "$_result"
 assert_match "gcoto-model interactive success exits zero" "__RC=0__" "$_result"
 
 _result=$(_run_interactive "" '
@@ -583,12 +587,24 @@ _result=$(_run_interactive "" '
   gcoto-model openai
   echo "__MODEL=${_GCOTO_MODEL:-<unset>}__"
 ')
-assert_match "gcoto-model openai argument selects openai" "__MODEL=openai-codex/gpt-5.6-luna__" "$_result"
+assert_match "gcoto-model openai argument selects openai" "__MODEL=openai-codex/gpt-6-luna__" "$_result"
 
 _result=$(_run_gcoto_model_tty 'x2')
 assert_match "gcoto-model invalid key reports error" "Invalid choice" "$_result"
-assert_match "gcoto-model retries until valid key" "__MODEL=deepseek/deepseek-v4-flash__" "$_result"
+assert_match "gcoto-model retries until valid key" "__MODEL=deepseek/deepseek-flash__" "$_result"
 assert_match "gcoto-model invalid then valid exits zero" "__RC=0__" "$_result"
+
+_result=$(_run_gcoto_model_tty '3')
+assert_match "gcoto-model selects openrouter on single keypress" "__MODEL=openrouter/openai/gpt-6-luna__" "$_result"
+assert_match "gcoto-model openrouter keypress exits zero" "__RC=0__" "$_result"
+
+_result=$(_run_interactive "" '
+  echo "source '"$LOADER"'" > "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+  gcoto-model openrouter
+  echo "__MODEL=${_GCOTO_MODEL:-<unset>}__"
+')
+assert_match "gcoto-model openrouter argument selects openrouter" "__MODEL=openrouter/openai/gpt-6-luna__" "$_result"
 
 # ---------------------------------------------------------------------------
 # Scenario 6 - gcoto-model shows current model when pre-set
@@ -598,11 +614,11 @@ echo "=== Scenario 6: gcoto-model shows current model when pre-set ==="
 
 _result=$(_run_gcoto_model_tty '2' 'openai-codex/gpt-5.4-mini')
 assert_match "gcoto-model displays current model line" "Current model: openai-codex/gpt-5.4-mini" "$_result"
-assert_match "gcoto-model selection still updates model" "__MODEL=deepseek/deepseek-v4-flash__" "$_result"
+assert_match "gcoto-model selection still updates model" "__MODEL=deepseek/deepseek-flash__" "$_result"
 assert_match "gcoto-model selection exits zero" "__RC=0__" "$_result"
 
 _result=$(_run_gcoto_model_tty '1')
-assert_match "gcoto-model with no initial model selects openai" "__MODEL=openai-codex/gpt-5.6-luna__" "$_result"
+assert_match "gcoto-model with no initial model selects openai" "__MODEL=openai-codex/gpt-6-luna__" "$_result"
 assert_not_match "gcoto-model no initial model omits Current line" "Current model:" "$_result"
 
 # ---------------------------------------------------------------------------

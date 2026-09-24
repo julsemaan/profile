@@ -76,19 +76,19 @@ function gcoto-commit-with-model {
 }
 
 function gcoto-openai {
-  gcoto-commit-with-model openai-codex/gpt-5.4-mini
+  gcoto-commit-with-model openai-codex/gpt-6-luna
 }
 
 function gcoto-deepseek {
-  gcoto-commit-with-model deepseek/deepseek-v4-flash
+  gcoto-commit-with-model deepseek/deepseek-flash
 }
 
-function gcoto-free {
-  gcoto-commit-with-model opencode/mimo-v2.5-free
+function gcoto-openrouter {
+  gcoto-commit-with-model openrouter/openai/gpt-6-luna
 }
 
 # gcoto-model: model selection helper (cached per session via _GCOTO_MODEL)
-# Usage: gcoto-model [openai|deepseek|free|current|unset]
+# Usage: gcoto-model [openai|deepseek|openrouter|current|unset]
 # shellcheck disable=SC2120
 function gcoto-model {
   case "${1:-}" in
@@ -101,9 +101,9 @@ function gcoto-model {
       echo "Current model: $_GCOTO_MODEL"
     fi
     echo "Select AI model for commit messages:"
-    echo "  1) openai (gpt-5.6-luna)"
-    echo "  2) deepseek (v4-flash)"
-    echo "  3) free (mimo-v2.5)"
+    echo "  1) openai (gpt-6-luna)"
+    echo "  2) deepseek (flash)"
+    echo "  3) openrouter (gpt-6-luna)"
     echo "  q) cancel"
     while true; do
       printf "Model (1-3): "
@@ -114,15 +114,15 @@ function gcoto-model {
       echo
       case $REPLY in
       1)
-        _GCOTO_MODEL="openai-codex/gpt-5.6-luna"
+        _GCOTO_MODEL="openai-codex/gpt-6-luna"
         break
         ;;
       2)
-        _GCOTO_MODEL="deepseek/deepseek-v4-flash"
+        _GCOTO_MODEL="deepseek/deepseek-flash"
         break
         ;;
       3)
-        _GCOTO_MODEL="opencode/mimo-v2.5-free"
+        _GCOTO_MODEL="openrouter/openai/gpt-6-luna"
         break
         ;;
       q | Q)
@@ -132,13 +132,13 @@ function gcoto-model {
       esac
     done
     ;;
-  openai) _GCOTO_MODEL="openai-codex/gpt-5.6-luna" ;;
-  deepseek) _GCOTO_MODEL="deepseek/deepseek-v4-flash" ;;
-  free) _GCOTO_MODEL="opencode/mimo-v2.5-free" ;;
+  openai) _GCOTO_MODEL="openai-codex/gpt-6-luna" ;;
+  deepseek) _GCOTO_MODEL="deepseek/deepseek-flash" ;;
+  openrouter) _GCOTO_MODEL="openrouter/openai/gpt-6-luna" ;;
   current) echo "${_GCOTO_MODEL:-<unset>}" ;;
   unset) unset _GCOTO_MODEL ;;
   *)
-    echo "gcoto-model: unknown option '$1' - use openai, deepseek, free, current, or unset" >&2
+    echo "gcoto-model: unknown option '$1' - use openai, deepseek, openrouter, current, or unset" >&2
     return 1
     ;;
   esac

@@ -123,11 +123,14 @@ of `-v`, so host paths containing `:` (e.g. gvfs sftp mounts) work correctly.
 
 Located at the repository root, the `.pi/` directory configures the pi coding agent:
 
-- **`settings.json`** — Default provider/model (`openai-codex/gpt-5.5`), enabled models, compaction, and `packages` array for managed pi packages.
-- **`models.json`** — Provider overrides (e.g., DeepSeek context window).
+- **`settings.json`** — Default provider/model (`openai-codex/gpt-6-luna`), enabled models, compaction, and `packages` array for managed pi packages. `install` deploys this file to `~/.pi/agent/settings.json`.
+- **`models.json`** — Provider overrides; keep the file shaped as `{"providers": {}}` because pi rejects an empty object. The context window cap lives in the extension below.
 - **`mcp.json`** — MCP server definitions (Context7 docs, Playwright, GitHub MCP, Bitbucket MCP).
 - **`extensions/`** — Custom pi extensions (todo tracking,
-  build-plan mode, question asking, subagent delegation, modes switcher).
+  build-plan mode, question asking, subagent delegation, modes switcher,
+  context window cap). The cap clamps every model's context window to 272K so
+  requests stay in the standard-context pricing tier; that is why a 1M model
+  reports 272K in the footer and `/model`.
 - **`agents/`** — Custom agent definitions (`pr-feedback-analyzer`,
   `pr-feedback-reviewer`, `pr-feedback-worker`, `model-test-orchestrator`,
   `model-test-worker`).
