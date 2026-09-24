@@ -22,7 +22,7 @@ Use only local Git commands and the GitHub MCP tools. Do not use `gh`, Bitbucket
 
 Run these checks before issue matching:
 
-1. Require a clean worktree. `git status --porcelain=v1` must be empty, including untracked files. Do not stash, reset, commit, or amend anything to make it clean.
+1. Require a clean worktree. `git status --porcelain=v1` must be empty, including untracked files. Commit and push changes before proceeding.
 2. Require a named branch from `git branch --show-current`.
 3. Select the push remote from the current branch's upstream when available; otherwise use `origin`. Fail if that remote does not exist.
 4. Read both fetch and push URLs. Accept only standard GitHub.com URLs whose host is exactly `github.com`, including HTTPS and SSH forms such as:

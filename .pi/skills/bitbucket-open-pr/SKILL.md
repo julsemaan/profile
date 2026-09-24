@@ -22,7 +22,7 @@ Use only local Git commands and the Bitbucket MCP tools. Do not use `gh`, GitHub
 
 Run these checks before duplicate detection:
 
-1. Require a clean worktree. `git status --porcelain=v1` must be empty, including untracked files. Do not stash, reset, commit, or amend anything to make it clean.
+1. Require a clean worktree. `git status --porcelain=v1` must be empty, including untracked files. Commit and push changes before proceeding.
 2. Require a named branch from `git branch --show-current`.
 3. Never create or switch branches. Work only on the current branch.
 4. Select the push remote from the current branch's upstream when available; otherwise use `origin`. Fail if that remote does not exist.

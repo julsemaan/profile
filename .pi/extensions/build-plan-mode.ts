@@ -50,7 +50,7 @@ const FILE_OVERRIDE_RELPATH = "julsemaan-tmp/model-profile";
 const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv);
 const DEFAULT_NEW_SESSION_MODE = "plan";
 const DEFAULT_EXISTING_SESSION_MODE = "build";
-const AUTO_BUILD_EXECUTION_INSTRUCTIONS = "This is a plain automatic /plan-build build session. Implement and validate the plan. Do not commit, push, or open a pull request.";
+const AUTO_BUILD_EXECUTION_INSTRUCTIONS = "This is a plain automatic /plan-build build session. Implement and validate the plan.";
 const PR_EXECUTION_INSTRUCTIONS = `This execution is authorized to implement the plan, commit the intended changes, push the branch, and open a ready-for-review pull request.
 
 1. Before changing files, check the repository status. Stop if unrelated uncommitted changes exist. Do not stash, reset, discard, or commit those changes.
