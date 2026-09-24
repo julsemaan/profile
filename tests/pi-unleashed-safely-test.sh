@@ -95,6 +95,31 @@ assert_contains "custom prompt remains forwarded to Pi" "$run_args" "$tmp_dir/cu
 assert_contains "--dev masks host extensions" "$run_args" "$home/.pi/agent/extensions:rw,exec,uid=$(id -u),gid=$(id -g)"
 assert_contains "--dev masks host prompts" "$run_args" "$home/.pi/agent/prompts:rw,exec,uid=$(id -u),gid=$(id -g)"
 assert_contains "--dev masks host skills" "$run_args" "$home/.pi/agent/skills:rw,exec,uid=$(id -u),gid=$(id -g)"
+assert_contains "gwt is mounted read-only" "$run_args" "type=bind,src=$REPO_ROOT/profile/gwt,dst=/usr/local/bin/gwt,readonly"
+assert_contains "primary mount is passed to gwt" "$run_args" "GWT_MOUNT_ROOT=$REPO_ROOT"
+
+no_gwt_wrapper_dir="$tmp_dir/no-gwt-wrapper"
+no_gwt_wrapper="$no_gwt_wrapper_dir/pi-unleashed-safely.sh"
+mkdir -p "$no_gwt_wrapper_dir"
+cp "$REPO_ROOT/profile/pi-unleashed-safely.sh" "$no_gwt_wrapper"
+chmod +x "$no_gwt_wrapper"
+rm -f "$docker_command_log"
+if (
+  cd "$REPO_ROOT"
+  env -u SUDO_UID -u SUDO_GID -u SUDO_USER \
+    HOME="$home" PATH="$stub_dir:/usr/bin:/bin" DOCKER_COMMAND_LOG="$docker_command_log" \
+    bash "$no_gwt_wrapper" --no-tty
+) >/dev/null 2>"$tmp_dir/no-gwt-wrapper.stderr"; then
+  test_fail "missing sibling gwt fails before Docker launches" "wrapper unexpectedly succeeded"
+else
+  test_pass "missing sibling gwt fails before Docker launches"
+fi
+assert_contains "missing gwt error names the sibling executable" "$(<"$tmp_dir/no-gwt-wrapper.stderr")" "$no_gwt_wrapper_dir/gwt"
+if [[ ! -e "$docker_command_log" ]]; then
+  test_pass "missing sibling gwt does not invoke Docker"
+else
+  test_fail "missing sibling gwt does not invoke Docker" "Docker was invoked"
+fi
 
 rm "$unslop_prompt"
 rm -f "$docker_command_log"
