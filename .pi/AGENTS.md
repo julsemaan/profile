@@ -15,3 +15,8 @@ When writing documentation, keep a balanced level of detail. I feel agents often
 ## Worktrees
 
 Before any worktree operation, load the `gwt` skill. Use `gwt` instead of direct `git worktree` commands. If `gwt` reports a mount or safety failure, report it and do not bypass the check with raw Git, force options, reset, or manual deletion.
+
+## Commit messages
+
+When you write commit messages for me, write a one-line commit message following the Conventional Commits standard.
+
