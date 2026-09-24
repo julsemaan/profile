@@ -14,6 +14,8 @@ Read arguments from the user's request, not prompt-template substitution. For a 
 
 Open the current branch as one GitHub pull request.
 
+Always print pull request links as full URLs, never as bare numbers like `PR #123`.
+
 Use only local Git commands and the GitHub MCP tools. Do not use `gh`, Bitbucket MCP, or any other forge. Keep preflight and all MCP reads read-only. Do not push, create, or otherwise mutate remote state until all preflight, duplicate-detection, issue-matching, and content-generation checks pass.
 
 ## Preflight
