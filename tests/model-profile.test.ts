@@ -55,6 +55,19 @@ describe("isModelAlias", () => {
 });
 
 describe("MODEL_PROFILES", () => {
+	it("defines priv2 and keeps its small model identical to priv", () => {
+		assert.equal(findBuiltinProfile("priv2"), "priv2");
+		assert.deepEqual(MODEL_PROFILES.priv2["custom/large"], {
+			model: "openai-codex/gpt-6.1-sol",
+			thinkingLevel: "high",
+		});
+		assert.deepEqual(MODEL_PROFILES.priv2["custom/medium"], {
+			model: "openai-codex/gpt-6.1-sol",
+			thinkingLevel: "medium",
+		});
+		assert.deepEqual(MODEL_PROFILES.priv2["custom/small"], MODEL_PROFILES.priv["custom/small"]);
+	});
+
 	it("contains every alias with a valid model reference", () => {
 		for (const profile of BUILTIN_PROFILES) {
 			const modelMap = MODEL_PROFILES[profile];
