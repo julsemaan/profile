@@ -111,61 +111,176 @@ function __add_new_branch_worktree {
   git config --local push.autoSetupRemote true || __die "failed to enable automatic push setup"
 }
 
+function __canonical_path {
+  local path="$1" parent base
+
+  if [ -d "$path" ]; then
+    (cd -- "$path" && pwd -P)
+    return
+  fi
+
+  parent="$(dirname "$path")" || return 1
+  parent="$(cd -- "$parent" && pwd -P)" || return 1
+  base="$(basename "$path")"
+  printf '%s/%s\n' "$parent" "$base"
+}
+
+function __assert_path_in_mount {
+  local path="$1" root_path target_path
+
+  [ -n "${GWT_MOUNT_ROOT:-}" ] || return 0
+  [ -d "$GWT_MOUNT_ROOT" ] || __die "GWT_MOUNT_ROOT is not a directory: $GWT_MOUNT_ROOT"
+
+  root_path="$(__canonical_path "$GWT_MOUNT_ROOT")" || __die "cannot resolve GWT_MOUNT_ROOT: $GWT_MOUNT_ROOT"
+  target_path="$(__canonical_path "$path")" || __die "cannot resolve worktree path: $path"
+
+  if [ "$root_path" = "/" ]; then
+    return 0
+  fi
+
+  case "$target_path" in
+  "$root_path" | "$root_path"/*) ;;
+  *) __die "worktree path is outside GWT_MOUNT_ROOT: $target_path (root: $root_path)" ;;
+  esac
+}
+
+function __assert_registered_worktrees_in_mount {
+  [ -n "${GWT_MOUNT_ROOT:-}" ] || return 0
+
+  local path
+  while IFS=$'\t' read -r path _; do
+    [ -n "$path" ] || continue
+    __assert_path_in_mount "$path"
+  done < <(__each)
+}
+
+function __validate_branch_name {
+  local branch_name="$1"
+  [ -n "$branch_name" ] || __die "branch name cannot be empty"
+  git check-ref-format --branch "$branch_name" >/dev/null 2>&1 || __die "invalid branch name: $branch_name"
+}
+
+function __validate_source_selector {
+  local selected="$1" validate_remote="${2:-0}"
+  local remote branch_name
+
+  case "$selected" in
+  local/*)
+    branch_name="${selected#local/}"
+    __validate_branch_name "$branch_name"
+    git show-ref --verify --quiet "refs/heads/$branch_name" || __die "local branch '$branch_name' does not exist"
+    ;;
+  */*)
+    remote="${selected%%/*}"
+    branch_name="${selected#*/}"
+    [ "$branch_name" != "HEAD" ] || __die "remote HEAD is not a branch; choose a remote branch"
+    __validate_branch_name "$branch_name"
+    git remote get-url "$remote" >/dev/null 2>&1 || __die "remote '$remote' does not exist"
+    if [ "$validate_remote" -eq 1 ]; then
+      git ls-remote --exit-code "$remote" "refs/heads/$branch_name" >/dev/null 2>&1 ||
+        __die "remote branch '$remote/$branch_name' does not exist"
+    fi
+    ;;
+  *)
+    __die "source must be local/<branch> or <remote>/<branch>"
+    ;;
+  esac
+}
+
+function __validate_fetched_source {
+  local selected="$1"
+  case "$selected" in
+  local/*)
+    git show-ref --verify --quiet "refs/heads/${selected#local/}" ||
+      __die "local branch '${selected#local/}' does not exist"
+    ;;
+  */*)
+    git show-ref --verify --quiet "refs/remotes/${selected%%/*}/${selected#*/}" ||
+      __die "remote branch '$selected' was not fetched"
+    ;;
+  esac
+}
+
 function cmd_create {
   local repo_root
   repo_root="$(__repo_root)" || __die "not inside git repo"
 
-  command -v fzf >/dev/null 2>&1 || __die "fzf is required for interactive create"
+  local interactive=1 selected requested_name=""
+  if [ "$#" -gt 2 ]; then
+    __die "usage: gwt create <local/branch|remote/branch> [worktree-name]"
+  elif [ "$#" -gt 0 ]; then
+    interactive=0
+    selected="$1"
+    requested_name="${2:-}"
+    __validate_source_selector "$selected" 1
+  else
+    command -v fzf >/dev/null 2>&1 || __die "fzf is required for interactive create"
+  fi
 
   local remotes=()
   while IFS= read -r remote; do
     [ -n "$remote" ] && remotes+=("$remote")
   done < <(git remote 2>/dev/null | sort)
 
-  if [ "${#remotes[@]}" -gt 0 ]; then
-    echo "Fetching all remotes..." >&2
-    git fetch --all --prune || __die "git fetch failed"
-  fi
-
   local primary_branch=""
   if [ "${#remotes[@]}" -gt 0 ]; then
     primary_branch="$(__primary_branch)" || primary_branch=""
   fi
 
-  local branch_lines=()
-  while IFS= read -r line; do
-    [ -n "$line" ] && branch_lines+=("$line")
-  done < <(
-    {
-      git for-each-ref --format='local/%(refname:short)' refs/heads 2>/dev/null
-      if [ "${#remotes[@]}" -gt 0 ]; then
-        for remote in "${remotes[@]}"; do
-          git for-each-ref --format='%(refname:short)' "refs/remotes/${remote}" 2>/dev/null
-        done
+  if [ "$interactive" -eq 1 ]; then
+    if [ "${#remotes[@]}" -gt 0 ]; then
+      echo "Fetching all remotes..." >&2
+      git fetch --all --prune >/dev/null || __die "git fetch failed"
+      primary_branch="$(__primary_branch)" || primary_branch=""
+    fi
+
+    local branch_lines=()
+    while IFS= read -r line; do
+      [ -n "$line" ] && branch_lines+=("$line")
+    done < <(
+      {
+        git for-each-ref --format='local/%(refname:short)' refs/heads 2>/dev/null
+        if [ "${#remotes[@]}" -gt 0 ]; then
+          for remote in "${remotes[@]}"; do
+            git for-each-ref --format='%(refname:short)' "refs/remotes/${remote}" 2>/dev/null
+          done
+        fi
+      } | grep -v '/HEAD$' | sort -u
+    )
+
+    [ "${#branch_lines[@]}" -gt 0 ] || __die "no branches found"
+
+    selected="$(
+      printf '%s\n' "${branch_lines[@]}" | fzf --height=40% --reverse --prompt='Select branch> '
+    )" || return 0
+
+    [ -n "$selected" ] || return 0
+
+    echo "" >&2
+    local default_name
+    default_name="$(__default_wt_name "$selected")"
+    read -r -p "Worktree name (default: $default_name): " requested_name </dev/tty
+    requested_name="${requested_name:-$default_name}"
+  else
+    if [[ "$selected" == */* && "$selected" != local/* ]]; then
+      if [ "${#remotes[@]}" -eq 0 ]; then
+        __die "remote source '$selected' requires a configured remote"
       fi
-    } | grep -v '/HEAD$' | sort -u
-  )
+      echo "Fetching all remotes..." >&2
+      git fetch --all --prune >/dev/null || __die "git fetch failed"
+      primary_branch="$(__primary_branch)" || primary_branch=""
+    fi
+    __validate_fetched_source "$selected"
+    requested_name="${requested_name:-$(__default_wt_name "$selected")}"
+  fi
 
-  [ "${#branch_lines[@]}" -gt 0 ] || __die "no branches found"
-
-  local selected
-  selected="$(
-    printf '%s\n' "${branch_lines[@]}" | fzf --height=40% --reverse --prompt='Select branch> '
-  )" || return 0
-
-  [ -n "$selected" ] || return 0
-
-  echo "" >&2
-  local wt_name
-  local default_name
-  default_name="$(__default_wt_name "$selected")"
-  read -r -p "Worktree name (default: $default_name): " wt_name </dev/tty
-  wt_name="${wt_name:-$default_name}"
+  __validate_branch_name "$requested_name"
 
   local wt_path
-  wt_path="$(__compute_wt_path "$repo_root" "$wt_name")"
+  wt_path="$(__compute_wt_path "$repo_root" "$requested_name")"
+  __assert_path_in_mount "$wt_path"
 
-  if [ -e "$wt_path" ]; then
+  if [ -e "$wt_path" ] || [ -L "$wt_path" ]; then
     __die "target path already exists: $wt_path"
   fi
 
@@ -173,13 +288,13 @@ function cmd_create {
   local/*)
     local branch_name="${selected#local/}"
     if [ "$branch_name" = "$primary_branch" ] && [ -n "$primary_branch" ]; then
-      echo "Creating worktree with new branch '$wt_name' from $primary_branch..." >&2
-      __add_new_branch_worktree "$wt_name" "$wt_path" "origin/$primary_branch" origin
-    elif git show-ref --verify --quiet "refs/heads/$branch_name" 2>/dev/null; then
+      git show-ref --verify --quiet "refs/remotes/origin/$primary_branch" ||
+        __die "primary branch 'origin/$primary_branch' does not exist"
+      echo "Creating worktree with new branch '$requested_name' from $primary_branch..." >&2
+      __add_new_branch_worktree "$requested_name" "$wt_path" "origin/$primary_branch" origin
+    else
       echo "Creating worktree on local branch '$branch_name'..." >&2
       git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
-    else
-      __die "local branch '$branch_name' does not exist"
     fi
     ;;
   */*)
@@ -188,8 +303,8 @@ function cmd_create {
     local remote_ref="${remote}/${branch_name}"
 
     if [ -n "$primary_branch" ] && [ "$branch_name" = "$primary_branch" ] && [ "$remote" = "origin" ]; then
-      echo "Creating worktree with new branch '$wt_name' from $primary_branch..." >&2
-      __add_new_branch_worktree "$wt_name" "$wt_path" "origin/$primary_branch" "$remote"
+      echo "Creating worktree with new branch '$requested_name' from $primary_branch..." >&2
+      __add_new_branch_worktree "$requested_name" "$wt_path" "origin/$primary_branch" "$remote"
     elif ! git show-ref --verify --quiet "refs/heads/$branch_name" 2>/dev/null; then
       echo "Creating tracking branch '$branch_name' from '$remote_ref'..." >&2
       git branch --quiet --track "$branch_name" "$remote_ref" || __die "failed to create tracking branch"
@@ -202,6 +317,15 @@ function cmd_create {
       if [ "$local_commit" = "$remote_commit" ]; then
         echo "Creating worktree on existing branch '$branch_name'..." >&2
         git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
+      elif [ "$interactive" -eq 0 ]; then
+        if [ "$requested_name" = "$branch_name" ]; then
+          __die "local branch '$branch_name' diverges from '$remote_ref'; choose a different worktree name instead of resetting it"
+        fi
+        if git show-ref --verify --quiet "refs/heads/$requested_name" 2>/dev/null; then
+          __die "local branch '$requested_name' already exists; choose a different worktree name"
+        fi
+        echo "Creating new branch '$requested_name' from '$remote_ref' without resetting '$branch_name'..." >&2
+        __add_new_branch_worktree "$requested_name" "$wt_path" "$remote_ref" "$remote"
       else
         echo "" >&2
         echo "Local branch '$branch_name' diverges from '$remote_ref'" >&2
@@ -218,24 +342,17 @@ function cmd_create {
           git branch -f "$branch_name" "$remote_ref" || __die "failed to reset branch"
           git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
         else
-          if git show-ref --verify --quiet "refs/heads/$wt_name" 2>/dev/null; then
-            __die "local branch '$wt_name' already exists (from worktree name)"
+          if git show-ref --verify --quiet "refs/heads/$requested_name" 2>/dev/null; then
+            __die "local branch '$requested_name' already exists (from worktree name)"
           fi
-          echo "Creating new branch '$wt_name' from '$branch_name'..." >&2
-          __add_new_branch_worktree "$wt_name" "$wt_path" "$remote_ref" "$remote"
+          echo "Creating new branch '$requested_name' from '$branch_name'..." >&2
+          __add_new_branch_worktree "$requested_name" "$wt_path" "$remote_ref" "$remote"
         fi
       fi
     fi
     ;;
   *)
-    local branch_name="$selected"
-    if [ -n "$primary_branch" ] && [ "$branch_name" = "$primary_branch" ]; then
-      echo "Creating worktree with new branch '$wt_name' from $primary_branch..." >&2
-      __add_new_branch_worktree "$wt_name" "$wt_path" "origin/$primary_branch" origin
-    else
-      echo "Creating worktree on local branch '$branch_name'..." >&2
-      git worktree add "$wt_path" "$branch_name" >/dev/null || __die "worktree create failed"
-    fi
+    __die "source must be local/<branch> or <remote>/<branch>"
     ;;
   esac
 
@@ -300,6 +417,7 @@ function cmd_rm {
   fi
 
   [ -n "$path" ] || __die "worktree not found"
+  __assert_path_in_mount "$path"
 
   [ "$path" != "$main_path" ] || __die "refusing to remove main worktree"
   [ "$path" != "$current_path" ] || __die "refusing to remove current worktree"
@@ -316,6 +434,7 @@ function cmd_rm {
 function cmd_prune {
   local repo_root
   repo_root="$(__repo_root)" || __die "not inside git repo"
+  __assert_registered_worktrees_in_mount
   git worktree prune "$@"
 }
 
@@ -330,19 +449,20 @@ shift
 
 case "$cmd" in
 create)
-  cmd_create
+  cmd_create "$@"
   ;;
 list)
-  cmd_list
+  cmd_list "$@"
   ;;
 rm)
-  cmd_rm "${@:-}"
+  [ "$#" -le 1 ] || __die "usage: gwt rm <branch-or-path>"
+  cmd_rm "$@"
   ;;
 prune)
   cmd_prune "$@"
   ;;
 *)
-  echo "usage: gwt [create|list|rm [branch-or-path]|prune]" >&2
+  echo "usage: gwt [create [local/branch|remote/branch [worktree-name]]|list|rm [branch-or-path]|prune]" >&2
   echo "  (default: interactive create)" >&2
   exit 1
   ;;

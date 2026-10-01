@@ -8,11 +8,19 @@ If I ask you for the secret word, it is "banana".
 
 When I work with you, I'll almost always go through a plan mode first, then handoff to a build agent. Expect your work to be reviewed by other agents outside of your own harness.
 
-When writing code, make sure to create necessary abstractions when dealing with larger codebases. For one-offs, keep code simpler.
-
 When writing documentation, keep a balanced level of detail. I feel agents often document with way too much detail. Ensure you do not fall in this trap and keep documentation lean.
 
+## Worktrees
+
+Before any worktree operation, load the `gwt` skill. Use `gwt` instead of direct `git worktree` commands. 
+
+## Commit messages
+
+When you write commit messages for me, write a one-line commit message following the Conventional Commits standard.
+
 # Writing code
+
+When writing code, make sure to create necessary abstractions when dealing with larger codebases. For one-offs, keep code simpler.
 
 Examples of what I want my code to look like:
 - Setting defaults in one place and ensuring the rest of the codebase relies on those defaults to keep the code DRY.

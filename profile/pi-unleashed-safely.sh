@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+GWT_EXECUTABLE="$SCRIPT_DIR/gwt"
+
 IMAGE="pi-unleashed-safely:latest"
 MNT_HOST="$PWD"
 MNT_CONTAINER="$PWD"
@@ -160,6 +163,12 @@ while [[ $# -gt 0 ]]; do
     ;;
   esac
 done
+
+if [[ ! -x "$GWT_EXECUTABLE" ]]; then
+  echo "Error: gwt executable is missing or not executable beside this wrapper: $GWT_EXECUTABLE" >&2
+  exit 1
+fi
+GWT_DOCKER_FLAGS=(--mount "type=bind,src=$GWT_EXECUTABLE,dst=/usr/local/bin/gwt,readonly")
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Error: docker is required but not found in PATH." >&2
@@ -623,6 +632,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e PI_STARTUP_BENCHMARK \
   -e JITI_FS_CACHE="$CONTAINER_HOME/.pi/cache/jiti" \
   -e TMPDIR="$CONTAINER_HOME/.pi/cache" \
+  -e "GWT_MOUNT_ROOT=$MNT_CONTAINER" \
   -e PI_BUILD_PLAN_MODEL_PROFILE="$MODEL_PROFILE" \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \
@@ -636,6 +646,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${GO_DOCKER_FLAGS[@]}" \
   "${SSH_DOCKER_FLAGS[@]}" \
   "${DIND_DOCKER_FLAGS[@]}" \
+  "${GWT_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
   --mount "type=bind,src=$MNT_HOST,dst=$MNT_CONTAINER" -w "$WORKDIR" \
   "${EXTRA_MOUNT_FLAGS[@]}" \
