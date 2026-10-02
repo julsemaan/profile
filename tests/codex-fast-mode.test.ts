@@ -110,38 +110,38 @@ describe("codexFastMode extension", () => {
 			ctx,
 		);
 
-		assert.equal(statuses.at(-1), "⚡ Codex fast");
+		assert.equal(statuses.at(-1), "⚡ fast");
 	});
 
 	it("keeps /fast on across /new without a persisted session", async () => {
 		const first = await loadFastModeExtension();
 		await first.extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "startup" }, first.ctx);
 		await first.extension.commands.get("fast")?.handler("on", first.ctx);
-		assert.equal(first.statuses.at(-1), "⚡ Codex fast");
+		assert.equal(first.statuses.at(-1), "⚡ fast");
 
 		// Fresh instance after /new: the previous session never persisted an entry.
 		const next = await loadFastModeExtension();
 		await next.extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "new" }, next.ctx);
-		assert.equal(next.statuses.at(-1), "⚡ Codex fast");
+		assert.equal(next.statuses.at(-1), "⚡ fast");
 	});
 
 	it("ignores a seeded process file on startup", async () => {
 		writeProcessState("fast-mode", true);
 		const { extension, statuses, ctx } = await loadFastModeExtension();
 		await extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "startup" }, ctx);
-		assert.equal(statuses.at(-1), "○ Codex standard");
+		assert.equal(statuses.at(-1), "○ standard");
 	});
 
 	it("starts standard on a fresh startup", async () => {
 		const { extension, statuses, ctx } = await loadFastModeExtension();
 		await extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "startup" }, ctx);
-		assert.equal(statuses.at(-1), "○ Codex standard");
+		assert.equal(statuses.at(-1), "○ standard");
 	});
 
 	it("restores from session entries on resume", async () => {
 		const { extension, entries, statuses, ctx } = await loadFastModeExtension();
 		entries.push({ type: "custom", customType: "codex-fast-mode", data: { enabled: true } });
 		await extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "resume" }, ctx);
-		assert.equal(statuses.at(-1), "⚡ Codex fast");
+		assert.equal(statuses.at(-1), "⚡ fast");
 	});
 });

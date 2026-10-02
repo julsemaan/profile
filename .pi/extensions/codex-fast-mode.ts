@@ -47,8 +47,8 @@ export default function codexFastMode(pi: ExtensionAPI) {
 	const updateStatus = (ctx: ExtensionContext) => {
 		const status = supportsCodexFastMode(ctx.model)
 			? enabled
-				? "⚡ Codex fast"
-				: "○ Codex standard"
+				? "⚡ fast"
+				: "○ standard"
 			: undefined;
 		ctx.ui.setStatus(STATUS_KEY, status);
 	};
