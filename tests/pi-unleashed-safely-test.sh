@@ -16,6 +16,8 @@ ssh_dir="$home/.ssh"
 stub_dir="$tmp_dir/bin"
 docker_run_log="$tmp_dir/docker-run.log"
 docker_command_log="$tmp_dir/docker-command.log"
+go_env_log="$tmp_dir/go-env.log"
+go_stub_root="$tmp_dir/go-stub"
 key="$ssh_dir/id_rsa_git"
 known_hosts="$ssh_dir/known_hosts"
 config="$ssh_dir/config"
@@ -69,6 +71,23 @@ esac
 STUB
 chmod +x "$stub_dir/docker"
 
+cat >"$stub_dir/go" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "$*" >>"$GO_ENV_LOG"
+
+printf '%s\n' \
+  "$GO_STUB_ROOT/gopath" \
+  "$GO_STUB_ROOT/gomodcache" \
+  "$GO_STUB_ROOT/gocache" \
+  "$GO_STUB_ROOT/goprivate" \
+  "$GO_STUB_ROOT/gonoproxy" \
+  "$GO_STUB_ROOT/gonosumdb" \
+  "$GO_STUB_ROOT/govcs"
+STUB
+chmod +x "$stub_dir/go"
+
 function run_wrapper {
   (
     cd "$REPO_ROOT"
@@ -76,6 +95,8 @@ function run_wrapper {
     export PATH="$stub_dir:/usr/bin:/bin"
     export DOCKER_RUN_LOG="$docker_run_log"
     export DOCKER_COMMAND_LOG="$docker_command_log"
+    export GO_ENV_LOG="$go_env_log"
+    export GO_STUB_ROOT="$go_stub_root"
     export PI_SSH_KEY_PATH="$key"
     unset SUDO_UID SUDO_GID SUDO_USER GOFLAGS GOMODCACHE GOCACHE GOPATH
     unset TMUX DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR HERDR_SOCKET_PATH
@@ -209,6 +230,15 @@ PI_TIMING=1 PI_STARTUP_BENCHMARK=1 run_wrapper
 run_args=$(<"$docker_run_log")
 assert_contains "PI_TIMING reaches the container" "$run_args" "PI_TIMING"
 assert_contains "PI_STARTUP_BENCHMARK reaches the container" "$run_args" "PI_STARTUP_BENCHMARK"
+
+# --- Go cache discovery tests ---
+rm -f "$go_env_log"
+run_wrapper
+run_args=$(<"$docker_run_log")
+assert_eq "go env is invoked once per wrapper run" "1" "$(wc -l <"$go_env_log" | tr -d ' ')"
+assert_contains "GOMODCACHE is bind-mounted read-write" "$run_args" "$go_stub_root/gomodcache:$go_stub_root/gomodcache:rw"
+assert_contains "GOCACHE is bind-mounted read-write" "$run_args" "$go_stub_root/gocache:$go_stub_root/gocache:rw"
+assert_contains "GOPATH is forwarded to the container" "$run_args" $'-e\nGOPATH'
 
 # --- .gitconfig forwarding tests ---
 gitconfig="$home/.gitconfig"

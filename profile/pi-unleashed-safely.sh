@@ -16,6 +16,17 @@ HIDE_HOME_PI_EXTENSIONS=0
 MODEL_PROFILE=""
 DIND_ENABLED=0
 
+# Opt-in phase timing: PI_UNLEASHED_TIMING=1 prints per-phase ms to stderr.
+TIMING_ENABLED="${PI_UNLEASHED_TIMING:-0}"
+TIMING_LAST="${EPOCHREALTIME:-0}"
+TIMING_LAST="${TIMING_LAST/./}"
+function phase {
+  [[ "$TIMING_ENABLED" == "1" && -n "${EPOCHREALTIME:-}" ]] || return 0
+  local now="${EPOCHREALTIME/./}"
+  printf 'pi-timing %-24s %5dms\n' "$1" "$(((now - TIMING_LAST) / 1000))" >&2
+  TIMING_LAST="$now"
+}
+
 # Extra npm packages to install into image.
 PI_NPM_INSTALL_PACKAGES=("pi-web-access" "@earendil-works/pi-tui" "pi-mcp-adapter" "agent-status-pi")
 
@@ -56,6 +67,11 @@ Arguments:
 Environment:
   PI_NPM_PACKAGE        NPM package name to install for the CLI.
                         Defaults to "@mariozechner/pi-coding-agent".
+  PI_TIMING             Pi's own per-extension startup timing. Forwarded
+                        into the container.
+  PI_STARTUP_BENCHMARK  Pi's full startup benchmark. Requires a TTY.
+                        PI_TIMING=1 PI_STARTUP_BENCHMARK=1 ./pi-unleashed-safely.sh
+  PI_UNLEASHED_TIMING   Print per-phase wrapper timings (ms) to stderr.
   PI_SSH_KEY_PATH       Opt-in host SSH private key path. When valid, Git
                         explicitly uses mounted key with IdentitiesOnly=yes
                         and mounted host ~/.ssh/known_hosts for strict
@@ -163,6 +179,7 @@ while [[ $# -gt 0 ]]; do
     ;;
   esac
 done
+phase prologue
 
 if [[ ! -x "$GWT_EXECUTABLE" ]]; then
   echo "Error: gwt executable is missing or not executable beside this wrapper: $GWT_EXECUTABLE" >&2
@@ -264,6 +281,7 @@ if [[ -d "$HOST_PI_HOME" ]]; then
     fi
   fi
 fi
+phase ownership-scan
 
 # Go cache discovery for private module reuse in container builds.
 # Discovers host Go paths, creates cache dirs, and builds bind-mount flags.
@@ -271,18 +289,22 @@ fi
 # already-downloaded module files.
 GO_DOCKER_FLAGS=()
 if command -v go >/dev/null 2>&1; then
-  HOST_GOMODCACHE=$(go env GOMODCACHE 2>/dev/null || true)
-  HOST_GOCACHE=$(go env GOCACHE 2>/dev/null || true)
+  # One go env spawn for all variables; the indexes below follow GO_ENV_VARS order.
+  GO_ENV_VARS=(GOPATH GOMODCACHE GOCACHE GOPRIVATE GONOPROXY GONOSUMDB GOVCS)
+  mapfile -t GO_ENV_VALUES < <(go env "${GO_ENV_VARS[@]}" 2>/dev/null || true)
+
+  HOST_GOMODCACHE="${GO_ENV_VALUES[1]:-}"
+  HOST_GOCACHE="${GO_ENV_VALUES[2]:-}"
 
   [[ -n "$HOST_GOMODCACHE" ]] && mkdir -p "$HOST_GOMODCACHE" && GO_DOCKER_FLAGS+=(-v "$HOST_GOMODCACHE:$HOST_GOMODCACHE:rw")
   [[ -n "$HOST_GOCACHE" ]] && mkdir -p "$HOST_GOCACHE" && GO_DOCKER_FLAGS+=(-v "$HOST_GOCACHE:$HOST_GOCACHE:rw")
 
   # Forward Go env vars (only if set on host)
-  for go_env in GOPATH GOMODCACHE GOCACHE GOPRIVATE GONOPROXY GONOSUMDB GOVCS; do
-    val=$(go env "$go_env" 2>/dev/null || true)
-    [[ -n "$val" ]] && GO_DOCKER_FLAGS+=(-e "$go_env")
+  for i in 0 3 4 5 6; do
+    [[ -n "${GO_ENV_VALUES[$i]:-}" ]] && GO_DOCKER_FLAGS+=(-e "${GO_ENV_VARS[$i]}")
   done
 fi
+phase go-caches
 
 # GOFLAGS: default to -mod=readonly unless host overrides
 GOFLAGS_VALUE="${GOFLAGS:--mod=readonly}"
@@ -399,6 +421,7 @@ ENV EDITOR=vim
 ENTRYPOINT ["pi"]
 EOF
 fi
+phase image-gate
 
 # --- DinD companion (Docker-in-Docker) ---
 DIND_DOCKER_FLAGS=()
@@ -487,6 +510,7 @@ if [[ $FRESH -eq 0 ]]; then
     chown "$RESOLVED_UID:$RESOLVED_GID" "$CACHE_PASSWD" "$CACHE_GROUP" "$STAMP"
   fi
 fi
+phase identity-cache
 if [[ $USE_TTY -eq 1 ]]; then
   DOCKER_TTY_FLAGS="-it"
   DOCKER_NO_TTY_ENV_FLAGS=""
@@ -592,6 +616,7 @@ if [[ -n "${WAYLAND_DISPLAY:-}" && -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME
 fi
 
 # Jiti's current env parser treats JITI_FS_CACHE as a boolean, so TMPDIR selects its persistent cache root.
+phase run-assembly
 # shellcheck disable=SC2086 # word-splitting intentional: multi-flag string
 docker run --rm $DOCKER_TTY_FLAGS \
   $DOCKER_NO_TTY_ENV_FLAGS \
@@ -654,3 +679,4 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "$IMAGE" \
   --extension "$CONTAINER_HOME/.pi/agent/always-on-unslop.ts" \
   "${PI_ARGS[@]}"
+phase container
