@@ -1,14 +1,11 @@
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import {
 	applyFastMode,
 	readFastModeFromEntries,
-	readFastModeFromSessionFile,
 	supportsCodexFastMode,
 } from "../.pi/extensions/codex-fast-mode.ts";
+import { clearProcessState, writeProcessState } from "../.pi/extensions/lib/process-state.ts";
 import { loadExtensions, createExtensionRuntime } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/index.js";
 import { createEventBus } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 
@@ -65,32 +62,6 @@ describe("readFastModeFromEntries", () => {
 	});
 });
 
-describe("readFastModeFromSessionFile", () => {
-	it("parses JSONL and skips malformed lines", () => {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-fast-mode-"));
-		const file = path.join(dir, "session.jsonl");
-		fs.writeFileSync(
-			file,
-			[
-				"{ not json",
-				JSON.stringify({ type: "custom", customType: "codex-fast-mode", data: { enabled: true } }),
-				"",
-				JSON.stringify({ type: "custom", customType: "codex-fast-mode", data: { enabled: false } }),
-			].join("\n"),
-		);
-		try {
-			assert.equal(readFastModeFromSessionFile(file), false);
-		} finally {
-			fs.rmSync(dir, { recursive: true, force: true });
-		}
-	});
-
-	it("returns undefined for undefined and missing paths", () => {
-		assert.equal(readFastModeFromSessionFile(undefined), undefined);
-		assert.equal(readFastModeFromSessionFile("/tmp/does-not-exist-codex-fast-mode.jsonl"), undefined);
-	});
-});
-
 type MockContext = {
 	model: { provider: string; api: string };
 	ui: {
@@ -128,30 +99,37 @@ async function loadFastModeExtension() {
 }
 
 describe("codexFastMode extension", () => {
-	it("restores fast mode from the previous session on /new", async () => {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-fast-mode-"));
-		const previousSessionFile = path.join(dir, "previous.jsonl");
-		fs.writeFileSync(
-			previousSessionFile,
-			JSON.stringify({ type: "custom", customType: "codex-fast-mode", data: { enabled: true } }),
+	beforeEach(() => clearProcessState("fast-mode"));
+	after(() => clearProcessState("fast-mode"));
+
+	it("reads the process state on /new", async () => {
+		writeProcessState("fast-mode", true);
+		const { extension, statuses, ctx } = await loadFastModeExtension();
+		await extension.handlers.get("session_start")?.[0](
+			{ type: "session_start", reason: "new" },
+			ctx,
 		);
-		try {
-			const { extension, entries, statuses, ctx } = await loadFastModeExtension();
-			await extension.handlers.get("session_start")?.[0](
-				{ type: "session_start", reason: "new", previousSessionFile },
-				ctx,
-			);
 
-			assert.equal(statuses.at(-1), "⚡ Codex fast");
-			assert.deepEqual(entries, [{ type: "custom", customType: "codex-fast-mode", data: { enabled: true } }]);
+		assert.equal(statuses.at(-1), "⚡ Codex fast");
+	});
 
-			await extension.commands.get("fast")?.handler("off", ctx);
+	it("keeps /fast on across /new without a persisted session", async () => {
+		const first = await loadFastModeExtension();
+		await first.extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "startup" }, first.ctx);
+		await first.extension.commands.get("fast")?.handler("on", first.ctx);
+		assert.equal(first.statuses.at(-1), "⚡ Codex fast");
 
-			assert.equal(statuses.at(-1), "○ Codex standard");
-			assert.deepEqual(entries.at(-1), { type: "custom", customType: "codex-fast-mode", data: { enabled: false } });
-		} finally {
-			fs.rmSync(dir, { recursive: true, force: true });
-		}
+		// Fresh instance after /new: the previous session never persisted an entry.
+		const next = await loadFastModeExtension();
+		await next.extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "new" }, next.ctx);
+		assert.equal(next.statuses.at(-1), "⚡ Codex fast");
+	});
+
+	it("ignores a seeded process file on startup", async () => {
+		writeProcessState("fast-mode", true);
+		const { extension, statuses, ctx } = await loadFastModeExtension();
+		await extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "startup" }, ctx);
+		assert.equal(statuses.at(-1), "○ Codex standard");
 	});
 
 	it("starts standard on a fresh startup", async () => {

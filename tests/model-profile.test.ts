@@ -459,6 +459,56 @@ describe("resolveInitialMap", () => {
 		assert.equal(modelMap["custom/medium"].model, MODEL_PROFILES.priv["custom/medium"].model);
 	});
 
+	const processMap = {
+		"custom/large": { model: "process/large", thinkingLevel: "xhigh" as const },
+	};
+
+	it("process map applies on new", () => {
+		const modelMap = resolveInitialMap(
+			{ reason: "new", processMap },
+			defaultMap,
+			builtinMaps,
+		);
+		assert.equal(modelMap["custom/large"].model, "process/large");
+		assert.equal(modelMap["custom/medium"].model, MODEL_PROFILES.priv["custom/medium"].model);
+	});
+
+	it("session map beats process map", () => {
+		const modelMap = resolveInitialMap(
+			{ reason: "new", sessionMap, processMap },
+			defaultMap,
+			builtinMaps,
+		);
+		assert.equal(modelMap["custom/large"].model, "stale/large");
+	});
+
+	it("process map beats file override on new", () => {
+		const modelMap = resolveInitialMap(
+			{ reason: "new", fileProfile: "openrouterHybrid", processMap },
+			defaultMap,
+			builtinMaps,
+		);
+		assert.equal(modelMap["custom/large"].model, "process/large");
+	});
+
+	it("startup ignores process map", () => {
+		const modelMap = resolveInitialMap(
+			{ reason: "startup", processMap },
+			defaultMap,
+			builtinMaps,
+		);
+		assert.deepEqual(modelMap, defaultMap);
+	});
+
+	it("env beats process map", () => {
+		const modelMap = resolveInitialMap(
+			{ reason: "new", envProfile: "deep", processMap },
+			defaultMap,
+			builtinMaps,
+		);
+		assert.deepEqual(modelMap, MODEL_PROFILES.deep);
+	});
+
 	it("file used with no session", () => {
 		const modelMap = resolveInitialMap(
 			{ reason: "startup", fileCustomData: customFileData },

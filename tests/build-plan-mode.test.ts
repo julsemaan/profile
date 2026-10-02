@@ -1,9 +1,7 @@
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import { MODEL_PROFILES } from "../.pi/extensions/lib/model-profile.ts";
+import { clearProcessState, writeProcessState } from "../.pi/extensions/lib/process-state.ts";
 import { loadExtensions, createExtensionRuntime } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/index.js";
 import { createEventBus } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 
@@ -131,7 +129,7 @@ function makeContext(): MockContext {
 	return ctx;
 }
 
-async function loadBuildPlanExtension(): Promise<Loaded> {
+async function loadBuildPlanExtension(options: { skipSessionStart?: boolean } = {}): Promise<Loaded> {
 	const runtime = createExtensionRuntime();
 	const ctx = makeContext();
 	const sent: SentMessage[] = [];
@@ -165,7 +163,9 @@ async function loadBuildPlanExtension(): Promise<Loaded> {
 
 	const sessionStart = extension.handlers.get("session_start")?.[0];
 	assert.ok(sessionStart);
-	await sessionStart({ type: "session_start", reason: "startup" }, ctx);
+	if (!options.skipSessionStart) {
+		await sessionStart({ type: "session_start", reason: "startup" }, ctx);
+	}
 
 	runtime.sendUserMessage = (content: any, options?: any) => {
 		sent.push({ content, options });
@@ -245,7 +245,7 @@ describe("automatic plan-build workflow", () => {
 		await waitForTimers();
 		assert.equal(loaded.ctx.newSessionCalls.length, 1);
 		assert.equal(loaded.ctx.newSessionCalls[0]?.parentSession, "/tmp/plan-session.jsonl");
-		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /Do not commit, push, or open a pull request/);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /This is a plain automatic \/plan-build build session/);
 	});
 
 	it("does not retry a cancelled automatic session replacement", async () => {
@@ -440,43 +440,53 @@ describe("plan execution commands", () => {
 	});
 });
 
-describe("manual profile persistence", () => {
-	it("keeps manual pick across /new with empty entries on the same instance", async () => {
-		const loaded = await loadBuildPlanExtension();
-		await command(loaded, "model-profile")("deep", loaded.ctx);
-		loaded.ctx.ui.notifications.length = 0;
+describe("model profile process state", () => {
+	beforeEach(() => clearProcessState("model-profile"));
+	after(() => clearProcessState("model-profile"));
 
-		// Simulate /new: same extension instance, fresh empty session.
-		loaded.ctx.sessionManager.entries = [];
+	it("keeps a manual pick across /new when the previous session is not persisted", async () => {
+		const loaded = await loadBuildPlanExtension({ skipSessionStart: true });
 		await handler(loaded, "session_start")({ type: "session_start", reason: "new" }, loaded.ctx);
+		await command(loaded, "model-profile")("openrouterHybrid", loaded.ctx);
 
+		// /new runs in a fresh instance and cannot see the previous entries.
+		const next = await loadBuildPlanExtension({ skipSessionStart: true });
+		await handler(next, "session_start")({ type: "session_start", reason: "new" }, next.ctx);
+
+		next.ctx.ui.notifications.length = 0;
+		await command(next, "model-profile")("", next.ctx);
+		assert.match(next.ctx.ui.notifications.join("\n"), /Current profile: openrouterHybrid/);
+	});
+
+	it("keeps a manual pick across consecutive /new", async () => {
+		const first = await loadBuildPlanExtension({ skipSessionStart: true });
+		await handler(first, "session_start")({ type: "session_start", reason: "new" }, first.ctx);
+		await command(first, "model-profile")("openrouterHybrid", first.ctx);
+
+		for (let i = 0; i < 2; i++) {
+			const next = await loadBuildPlanExtension({ skipSessionStart: true });
+			await handler(next, "session_start")({ type: "session_start", reason: "new" }, next.ctx);
+			next.ctx.ui.notifications.length = 0;
+			await command(next, "model-profile")("", next.ctx);
+			assert.match(next.ctx.ui.notifications.join("\n"), /Current profile: openrouterHybrid/);
+		}
+	});
+
+	it("ignores a seeded process file on startup", async () => {
+		writeProcessState("model-profile", MODEL_PROFILES.openrouterHybrid);
+		const loaded = await loadBuildPlanExtension();
 		loaded.ctx.ui.notifications.length = 0;
 		await command(loaded, "model-profile")("", loaded.ctx);
 		assert.match(loaded.ctx.ui.notifications.join("\n"), /Current profile: deep/);
 	});
 
-	it("restores the previous session pick on /new in a fresh instance", async () => {
-		const loaded = await loadBuildPlanExtension();
-		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pi-prev-session-"));
-		try {
-			const prevFile = path.join(tmp, "prev.jsonl");
-			const stamp = new Date().toISOString();
-				const lines = [
-					{ type: "custom", customType: "build-plan-mode", data: { mode: "build", profile: "deep", modelMap: structuredClone(MODEL_PROFILES.deep) }, id: "e1", parentId: null, timestamp: stamp },
-					{ type: "custom", customType: "build-plan-mode", data: { mode: "small-build" }, id: "e2", parentId: "e1", timestamp: stamp },
-				];
-				fs.writeFileSync(prevFile, lines.map((line) => JSON.stringify(line)).join("\n") + "\n");
+	it("records the resolved map in the new session", async () => {
+		const loaded = await loadBuildPlanExtension({ skipSessionStart: true });
+		await handler(loaded, "session_start")({ type: "session_start", reason: "new" }, loaded.ctx);
 
-				// Fresh instance, empty new session, previous file carries the pick.
-			loaded.ctx.sessionManager.entries = [];
-			loaded.ctx.ui.notifications.length = 0;
-			await handler(loaded, "session_start")({ type: "session_start", reason: "new", previousSessionFile: prevFile }, loaded.ctx);
-
-				loaded.ctx.ui.notifications.length = 0;
-			await command(loaded, "model-profile")("", loaded.ctx);
-			assert.match(loaded.ctx.ui.notifications.join("\n"), /Current profile: deep/);
-		} finally {
-			fs.rmSync(tmp, { recursive: true, force: true });
-		}
+		const state = loaded.ctx.sessionManager.entries
+			.filter((entry: any) => entry.customType === "build-plan-mode")
+			.at(-1);
+		assert.deepEqual(state?.data?.modelMap, MODEL_PROFILES.deep);
 	});
 });

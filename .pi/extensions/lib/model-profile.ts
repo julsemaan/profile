@@ -338,7 +338,7 @@ export type PartialAliasMap = Partial<Record<ModelAlias, Partial<AliasConfig>>>;
  * On reload the file wins so edits take effect:
  *   env > file builtin > file custom > session > default
  * Otherwise the running or resumed pick wins:
- *   env > session > file builtin > file custom > default
+ *   env > session > process (new only) > file builtin > file custom > default
  */
 export function resolveInitialMap(
 	input: {
@@ -347,6 +347,7 @@ export function resolveInitialMap(
 		fileProfile?: BuiltinProfile | null;
 		fileCustomData?: Record<ModelAlias, AliasConfig> | null;
 		sessionMap?: PartialAliasMap | null;
+		processMap?: PartialAliasMap | null;
 	},
 	defaultMap: ModelMap,
 	builtinMaps: Record<BuiltinProfile, ModelMap>,
@@ -368,6 +369,14 @@ export function resolveInitialMap(
 		const modelMap = structuredClone(defaultMap);
 		for (const alias of Object.keys(input.sessionMap) as ModelAlias[]) {
 			const update = input.sessionMap[alias];
+			if (update) modelMap[alias] = { ...modelMap[alias], ...update };
+		}
+		return modelMap;
+	}
+	if (input.reason === "new" && input.processMap) {
+		const modelMap = structuredClone(defaultMap);
+		for (const alias of Object.keys(input.processMap) as ModelAlias[]) {
+			const update = input.processMap[alias];
 			if (update) modelMap[alias] = { ...modelMap[alias], ...update };
 		}
 		return modelMap;

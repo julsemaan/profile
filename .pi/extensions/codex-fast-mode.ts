@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import * as fs from "node:fs";
+// Direct-imported by tests under Node, so this specifier keeps the .ts extension.
+import { clearProcessState, readProcessState, writeProcessState } from "./lib/process-state.ts";
 
 const FAST_MODE_SERVICE_TIER = "priority";
 const STATUS_KEY = "codex-fast-mode";
@@ -38,25 +39,6 @@ export function readFastModeFromEntries(entries: readonly FastModeEntry[]): bool
 	return enabled;
 }
 
-export function readFastModeFromSessionFile(filePath: string | undefined): boolean | undefined {
-	if (!filePath) return undefined;
-	try {
-		const entries: FastModeEntry[] = [];
-		for (const line of fs.readFileSync(filePath, "utf-8").split("\n")) {
-			const trimmed = line.trim();
-			if (!trimmed) continue;
-			try {
-				entries.push(JSON.parse(trimmed) as FastModeEntry);
-			} catch {
-				// skip malformed line
-			}
-		}
-		return readFastModeFromEntries(entries);
-	} catch {
-		return undefined;
-	}
-}
-
 // Fast mode is off by default and stored in the session so /new keeps the setting,
 // mirroring the build-plan model profile.
 export default function codexFastMode(pi: ExtensionAPI) {
@@ -82,13 +64,13 @@ export default function codexFastMode(pi: ExtensionAPI) {
 		if (fromSession !== undefined) {
 			enabled = fromSession;
 		} else if (event.reason === "new") {
-			const fromPrevious = readFastModeFromSessionFile(event.previousSessionFile);
-			if (fromPrevious !== undefined) enabled = fromPrevious;
-			// No persisted entry: keep the running value on a same-instance /new.
+			enabled = readProcessState<boolean>("fast-mode") ?? false;
+			// No persisted entry: record the recovered value in the new session.
 			if (enabled) pi.appendEntry(STATE_TYPE, { enabled: true });
 		} else {
 			enabled = false;
 		}
+		writeProcessState("fast-mode", enabled);
 		updateStatus(ctx);
 	});
 
@@ -118,8 +100,13 @@ export default function codexFastMode(pi: ExtensionAPI) {
 
 			enabled = action === "on";
 			pi.appendEntry(STATE_TYPE, { enabled });
+			writeProcessState("fast-mode", enabled);
 			updateStatus(ctx);
 			ctx.ui.notify(describeStatus(ctx), "info");
 		},
+	});
+
+	pi.on("session_shutdown", (event) => {
+		if (event.reason === "quit") clearProcessState("fast-mode");
 	});
 }
