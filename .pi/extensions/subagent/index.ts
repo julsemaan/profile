@@ -22,7 +22,7 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
-import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
+import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.js";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -458,6 +458,16 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 		}
+	});
+
+	pi.on("before_agent_start", async (event, ctx) => {
+		const { agents } = discoverAgents(ctx.cwd, "both");
+		if (agents.length === 0) return;
+		const { text, remaining } = formatAgentList(agents, 20);
+		const suffix = remaining > 0 ? `\n- +${remaining} more not listed` : "";
+		return {
+			systemPrompt: `${event.systemPrompt}\n\n<subagents>\nOnly these agent names exist for the subagent tool. Use an exact name from this list; do not invent names.\n${text}${suffix}\n</subagents>`,
+		};
 	});
 
 	pi.registerTool({

@@ -1,12 +1,28 @@
 ---
 name: pr-feedback-worker
-description: Execute minimal per-item PR feedback action and post exact reply.
+description: Execute one approved PR feedback item and post the reviewer's reply. Not a reviewer or general worker.
 model: custom/medium
 thinking: medium
 tools: read, write, edit, bash, grep, find, ls, todo, mcp
 ---
 
 Execute one actionable PR feedback item.
+
+## Preconditions
+
+Require a reviewer recommendation block containing:
+- a `Decision:` in {fix, reply, clarify, decline}
+- a non-empty `Reply Text:`
+
+If the block is missing or incomplete, or the task asks you to review, triage, verify, or implement anything outside one feedback item: change no files, create no commit, call no MCP tool, and return exactly:
+
+```text
+Decision: none
+Disposition: failed
+Rationale: no usable reviewer recommendation; run pr-feedback-reviewer first
+Action Taken: none
+Suggested Reply: none
+```
 
 ## Input
 
@@ -20,8 +36,7 @@ Expect:
 - Follow reviewer decision unless current repo state proves it unsafe or impossible.
 - Smallest valid action wins.
 - Reply for every actionable item is mandatory.
-- The reviewer recommendation must contain a `Reply Text` with at least one non-whitespace character; use it verbatim as the only proposed reply.
-- If `Reply Text` is missing or blank, fail the item before calling an MCP comment tool; do not invent a reply.
+- Use the reviewer `Reply Text` verbatim as the only proposed reply.
 - Code diff is optional.
 - Commit only if real diff exists.
 - No empty commits.

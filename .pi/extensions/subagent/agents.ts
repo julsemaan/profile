@@ -128,7 +128,7 @@ export function formatAgentList(agents: AgentConfig[], maxItems: number): { text
 	const listed = agents.slice(0, maxItems);
 	const remaining = agents.length - listed.length;
 	return {
-		text: listed.map((a) => `${a.name} (${a.source}): ${a.description}`).join("; "),
+		text: listed.map((a) => `- ${a.name} (${a.source}): ${a.description}`).join("\n"),
 		remaining,
 	};
 }

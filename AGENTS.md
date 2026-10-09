@@ -131,7 +131,8 @@ Located at the repository root, the `.pi/` directory configures the pi coding ag
   context window cap). The cap clamps every model's context window to 272K so
   requests stay in the standard-context pricing tier; that is why a 1M model
   reports 272K in the footer and `/model`.
-- **`agents/`** — Custom agent definitions (`pr-feedback-analyzer`,
+- **`agents/`** — Custom agent definitions (`code-reviewer`, `security-auditor`,
+  `test-engineer`, `web-performance-auditor`, `worker`, `pr-feedback-analyzer`,
   `pr-feedback-reviewer`, `pr-feedback-worker`, `model-test-orchestrator`,
   `model-test-worker`).
 - **`prompts/`** — Prompt templates (`pr-feedback`, `fix-lint`, `model-test`).
@@ -142,7 +143,7 @@ The PR feedback automation surface is now one command and three agents:
 - `/pr-feedback [<PR-URL>]` — one-pass orchestration
 - `pr-feedback-analyzer` — fetches PR state, CI, reviewer summary, and actionable items
 - `pr-feedback-reviewer` — skeptical per-item triage
-- `pr-feedback-worker` — minimal execution, mandatory in-thread reply, optional commit
+- `pr-feedback-worker` — executes only the decision produced by pr-feedback-reviewer, mandatory in-thread reply, optional commit
 - **`TODO.md`** — Known issues (e.g., multiline copy/paste in pi).
 
 ### Important
