@@ -44,11 +44,6 @@ export const MODEL_PROFILES = {
 	},
 	priv: {
 		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
-		"custom/medium": { model: modelRef("openai-codex", GPT_LUNA_MODEL_ID), thinkingLevel: "max" },
-		"custom/small": { model: modelRef("openai-codex", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
-	},
-	priv2: {
-		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
 		"custom/medium": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "medium" },
 		"custom/small": { model: modelRef("openai-codex", GPT_LUNA_MODEL_ID), thinkingLevel: "high" },
 	},
