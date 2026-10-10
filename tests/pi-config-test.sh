@@ -10,6 +10,7 @@ source "$SCRIPT_DIR/lib/assert.sh"
 
 settings_json="$REPO_ROOT/.pi/settings.json"
 models_json="$REPO_ROOT/.pi/models.json"
+mcp_json="$REPO_ROOT/.pi/mcp.json"
 legacy_global_json="$REPO_ROOT/.pi/settings.global.json"
 install_file="$REPO_ROOT/install"
 
@@ -93,6 +94,29 @@ elif command -v jq >/dev/null 2>&1; then
   fi
 else
   test_fail "models.json schema check" "no parser available (node, python3, jq)"
+fi
+
+# 7. mcp.json parses as JSON and disables GitHub write-form deferral
+if command -v node >/dev/null 2>&1; then
+  if node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if(c.mcpServers?.github?.headers?.['X-MCP-Features']!=='mcp_apps_disable_form_deferral') process.exit(1)" "$mcp_json" 2>/dev/null; then
+    test_pass ".pi/mcp.json disables GitHub write-form deferral (node)"
+  else
+    test_fail ".pi/mcp.json disables GitHub write-form deferral (node)" "invalid JSON or unexpected GitHub header"
+  fi
+elif command -v python3 >/dev/null 2>&1; then
+  if python3 -c "import json,sys; c=json.load(open(sys.argv[1])); assert c['mcpServers']['github']['headers']['X-MCP-Features'] == 'mcp_apps_disable_form_deferral'" "$mcp_json" 2>/dev/null; then
+    test_pass ".pi/mcp.json disables GitHub write-form deferral (python3)"
+  else
+    test_fail ".pi/mcp.json disables GitHub write-form deferral (python3)" "invalid JSON or unexpected GitHub header"
+  fi
+elif command -v jq >/dev/null 2>&1; then
+  if jq -e '.mcpServers.github.headers["X-MCP-Features"] == "mcp_apps_disable_form_deferral"' "$mcp_json" >/dev/null 2>&1; then
+    test_pass ".pi/mcp.json disables GitHub write-form deferral (jq)"
+  else
+    test_fail ".pi/mcp.json disables GitHub write-form deferral (jq)" "invalid JSON or unexpected GitHub header"
+  fi
+else
+  test_fail "mcp.json GitHub header check" "no parser available (node, python3, jq)"
 fi
 
 test_summary

@@ -649,6 +649,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e GH_TOKEN \
   -e BRAVE_API_KEY \
   -e GH_MCP_TOKEN \
+  -e MCP_UI_VIEWER=none \
   -e BB_MCP_TOKEN \
   "${GIT_CONFIG_DOCKER_FLAGS[@]}" \
   "${GITIGNORE_DOCKER_FLAGS[@]}" \

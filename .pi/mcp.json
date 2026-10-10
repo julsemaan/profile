@@ -7,6 +7,9 @@
       "url": "https://api.githubcopilot.com/mcp/",
       "auth": "bearer",
       "bearerTokenEnv": "GH_MCP_TOKEN",
+      "headers": {
+        "X-MCP-Features": "mcp_apps_disable_form_deferral"
+      },
       "lifecycle": "lazy"
     },
     "bitbucket": {
