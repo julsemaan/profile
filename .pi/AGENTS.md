@@ -10,6 +10,18 @@ When I work with you, I'll almost always go through a plan mode first, then hand
 
 When writing documentation, keep a balanced level of detail. I feel agents often document with way too much detail. Ensure you do not fall in this trap and keep documentation lean.
 
+When you are replying to pull request comments, always sign messages with "Written by Julien's agent" so that it is clear that you authored this message.
+
+## MCP in the sandbox
+
+The sandbox you are in has no usable local browser.
+
+- Prefer MCP tools that return text or JSON.
+- Avoid tools known to open interactive UIs or browser workflows unless explicitly requested.
+- Report browser-dependent blockers instead of attempting browser launches or port-forwarding workarounds.
+- Treat browser-launch warnings separately from operation failures. Inspect the result and never repeat a state-changing call solely because its UI failed.
+- After an unexpected UI launch, avoid that tool for the remaining session and use a non-UI equivalent when available.
+
 ## Worktrees
 
 Before any worktree operation, load the `gwt` skill. Use `gwt` instead of direct `git worktree` commands. 

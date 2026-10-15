@@ -10,6 +10,7 @@ source "$SCRIPT_DIR/lib/assert.sh"
 
 settings_json="$REPO_ROOT/.pi/settings.json"
 models_json="$REPO_ROOT/.pi/models.json"
+mcp_json="$REPO_ROOT/.pi/mcp.json"
 legacy_global_json="$REPO_ROOT/.pi/settings.global.json"
 install_file="$REPO_ROOT/install"
 
@@ -93,6 +94,29 @@ elif command -v jq >/dev/null 2>&1; then
   fi
 else
   test_fail "models.json schema check" "no parser available (node, python3, jq)"
+fi
+
+# 7. mcp.json uses portable token headers and disables GitHub write-form deferral
+if command -v node >/dev/null 2>&1; then
+  if node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); const g=c.mcpServers?.github; if(g?.headers?.['X-MCP-Features']!=='mcp_apps_disable_form_deferral'||g.headers.Authorization!=='Bearer \$env:GH_MCP_TOKEN'||'auth' in g||'bearerTokenEnv' in g) process.exit(1)" "$mcp_json" 2>/dev/null; then
+    test_pass ".pi/mcp.json uses compatible GitHub auth and feature headers (node)"
+  else
+    test_fail ".pi/mcp.json uses compatible GitHub auth and feature headers (node)" "invalid JSON or incompatible GitHub auth or headers"
+  fi
+elif command -v python3 >/dev/null 2>&1; then
+  if python3 -c "import json,sys; c=json.load(open(sys.argv[1])); g=c['mcpServers']['github']; assert g['headers']['X-MCP-Features'] == 'mcp_apps_disable_form_deferral'; assert g['headers']['Authorization'] == 'Bearer \$env:GH_MCP_TOKEN'; assert 'auth' not in g and 'bearerTokenEnv' not in g" "$mcp_json" 2>/dev/null; then
+    test_pass ".pi/mcp.json uses compatible GitHub auth and feature headers (python3)"
+  else
+    test_fail ".pi/mcp.json uses compatible GitHub auth and feature headers (python3)" "invalid JSON or incompatible GitHub auth or headers"
+  fi
+elif command -v jq >/dev/null 2>&1; then
+  if jq -e '.mcpServers.github | .headers["X-MCP-Features"] == "mcp_apps_disable_form_deferral" and .headers.Authorization == "Bearer $env:GH_MCP_TOKEN" and (has("auth") | not) and (has("bearerTokenEnv") | not)' "$mcp_json" >/dev/null 2>&1; then
+    test_pass ".pi/mcp.json uses compatible GitHub auth and feature headers (jq)"
+  else
+    test_fail ".pi/mcp.json uses compatible GitHub auth and feature headers (jq)" "invalid JSON or incompatible GitHub auth or headers"
+  fi
+else
+  test_fail "mcp.json GitHub header check" "no parser available (node, python3, jq)"
 fi
 
 test_summary

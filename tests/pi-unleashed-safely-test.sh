@@ -118,6 +118,7 @@ assert_contains "--dev masks host prompts" "$run_args" "$home/.pi/agent/prompts:
 assert_contains "--dev masks host skills" "$run_args" "$home/.pi/agent/skills:rw,exec,uid=$(id -u),gid=$(id -g)"
 assert_contains "gwt is mounted read-only" "$run_args" "type=bind,src=$REPO_ROOT/profile/gwt,dst=/usr/local/bin/gwt,readonly"
 assert_contains "primary mount is passed to gwt" "$run_args" "GWT_MOUNT_ROOT=$REPO_ROOT"
+assert_contains "MCP browser launches are disabled" "$run_args" $'-e\nMCP_UI_VIEWER=none\n'
 
 no_gwt_wrapper_dir="$tmp_dir/no-gwt-wrapper"
 no_gwt_wrapper="$no_gwt_wrapper_dir/pi-unleashed-safely.sh"
