@@ -10,7 +10,7 @@ When I work with you, I'll almost always go through a plan mode first, then hand
 
 When writing documentation, keep a balanced level of detail. I feel agents often document with way too much detail. Ensure you do not fall in this trap and keep documentation lean.
 
-When you are replying to pull request comments, always sign messages with "Written by Julien's agent" so that it is clear that you authored this message.
+When you are writing pull request comments, always sign messages with "Written by Julien's agent" so that it is clear that you authored this message.
 
 ## MCP in the sandbox
 
