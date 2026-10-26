@@ -1,16 +1,15 @@
 ---
 name: bitbucket-open-pr
-description: Open the current branch as a Bitbucket pull request. Use for natural-language requests or explicit /bitbucket-open-pr requests.
+description: Open the current branch as a Bitbucket pull request, optionally keyed to a Jira ticket. Use for natural-language requests or explicit /bitbucket-open-pr requests.
 ---
 
 # Open Bitbucket pull request
 
 Use this skill only for the Bitbucket pull-request-opening stage explicitly requested by the user. Preserve earlier implementation, testing, and commit instructions, and keep the current mode's restrictions. Recognize natural-language requests and explicit `/bitbucket-open-pr` or `/skill:bitbucket-open-pr` references.
 
-Read arguments from the user's request, not prompt-template substitution. For a slash invocation, use the text after the command. For an inline reference or natural-language request, identify the arguments attached to that request. Accept only these modes:
-- omitted or `ready`: ready for review (`draft: false`)
-- `draft`: draft pull request (`draft: true`)
-- anything else: fail before doing any work
+Read arguments from the user's request, not prompt-template substitution. For a slash invocation, use the text after the command. For an inline reference or natural-language request, identify the arguments attached to that request.
+
+The only accepted argument is an optional Jira ticket: nothing, a bare key such as `XY-1234`, or a Jira browse URL such as `https://WORKSPACE.atlassian.net/browse/XY-1234`. Extract one key matching `[A-Z][A-Z0-9]+-\d+` and keep it for the title. Fail before doing any work when the argument yields no matching key, yields more than one distinct key, or is anything else.
 
 Open the current branch as one Bitbucket pull request.
 
@@ -26,10 +25,12 @@ Run these checks before duplicate detection:
 2. Require a named branch from `git branch --show-current`.
 3. Never create or switch branches. Work only on the current branch.
 4. Select the push remote from the current branch's upstream when available; otherwise use `origin`. Fail if that remote does not exist.
-5. Read both fetch and push URLs. Accept only standard Bitbucket.org URLs whose host is exactly `bitbucket.org`, including HTTPS and SSH forms such as:
+5. Read both fetch and push URLs. Accept only standard Bitbucket.org URLs whose host is `bitbucket.org` or `ssh.bitbucket.org`, including HTTPS and SSH forms such as:
    - `https://bitbucket.org/WORKSPACE/REPO.git`
    - `git@bitbucket.org:WORKSPACE/REPO.git`
    - `ssh://git@bitbucket.org/WORKSPACE/REPO.git`
+   - `git@ssh.bitbucket.org:WORKSPACE/REPO.git`
+   - `ssh://git@ssh.bitbucket.org:443/WORKSPACE/REPO.git`
 
    Parse `workspace` and `repo` from the repository URL, removing one trailing `.git`. Reject every other host, including Bitbucket Server instances. Reject malformed URLs or URLs whose fetch and push repositories differ.
 6. Detect the current remote default branch without changing local refs. Prefer `git ls-remote --symref <remote> HEAD`; fall back to `refs/remotes/<remote>/HEAD` only when the remote query does not return a branch. Fail if the default branch cannot be determined.
@@ -67,12 +68,12 @@ git diff --name-status <base-ref>...HEAD
 
 Use commit subjects, diff summary, and changed paths to generate:
 
-- A concise title describing the primary change following the Conventional Commit standard.
+- A concise title describing the primary change following the Conventional Commit standard. Prefix it with the Jira key when one was supplied, as in `XY-1234: feat(auth): rotate tokens`. With no key, use the commit title alone.
 - A Markdown description containing:
   - `## Summary` with up to three accurate bullets that describe the changes
   - `## Impact` with bullet points if necessary that describes the impact, if any, of the changes in the PR
 
-No Jira or Bitbucket issue matching. Do not search for or link issues.
+The key in the title is the only Jira linkage. Bitbucket builds the issue link from it, so do not search for issues or add links and references to the description.
 
 ## Push and create
 
@@ -96,11 +97,10 @@ There is no preview, confirmation, or `question` call. Proceed directly:
      title: "<title>",
      description: "<description>",
      sourceBranch: "<head>",
-     targetBranch: "<base>",
-     draft: true|false
+     targetBranch: "<base>"
    }
    ```
 
 ## Report result
 
-Print the created pull request URL, title, workspace/repository, source branch, target branch, and ready/draft state. Report exact Bitbucket MCP or Git error text on failure.
+Print the created pull request URL, title, workspace/repository, source branch, target branch, and the Jira key or `none`. Report exact Bitbucket MCP or Git error text on failure.

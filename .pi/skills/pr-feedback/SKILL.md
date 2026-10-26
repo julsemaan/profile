@@ -40,7 +40,7 @@ Else resolve from the current branch:
 
 1. Get the branch from `git branch --show-current`. Fail on detached or empty.
 2. Pick the remote from the branch upstream, else `origin`. Fail if it is missing.
-3. Read fetch and push URLs. Require the same repo and host exactly `github.com` or `bitbucket.org`. Parse owner and repo, or workspace and repo, strip one trailing `.git`, reusing the `github-open-pr` and `bitbucket-open-pr` URL rules. Head is the branch name.
+3. Read fetch and push URLs. Require the same repo and a host allowed by the matching open-pr skill (`github.com`; `bitbucket.org` or `ssh.bitbucket.org`). Parse owner and repo, or workspace and repo, strip one trailing `.git`, reusing the `github-open-pr` and `bitbucket-open-pr` URL rules. Head is the branch name.
 4. Look up the open PR for that head:
    - GitHub: `github_list_pull_requests` with state open, head `owner:branch`, `perPage 100`, small fields for number, title, url, head, base.
    - Bitbucket: `bitbucket_bitbucketPullRequest` with action list, state OPEN, query on source branch name. Keep the single retry on `Bad Request` from the `bitbucket-open-pr` skill.

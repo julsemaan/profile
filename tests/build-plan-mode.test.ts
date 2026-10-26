@@ -436,7 +436,7 @@ describe("plan execution commands", () => {
 		assert.equal(loaded.ctx.newSessionCalls.length, 1);
 		assert.match(loaded.ctx.ui.notifications.join("\n"), /Started fresh build session/);
 		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /github-open-pr or bitbucket-open-pr/);
-		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /ready-for-review/);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /open a pull request/);
 	});
 });
 
