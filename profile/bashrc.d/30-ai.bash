@@ -157,8 +157,17 @@ function gcoto {
   gcoto-commit-with-model "$_GCOTO_MODEL"
 }
 
-# --- gacoto (add + gcoto shortcut) ---
-alias gacoto='git add . && gcoto'
+# --- gacoto (add + confirm + gcoto) ---
+function gacoto {
+  git add .
+  git diff --cached --stat
+  echo
+  read -p "Commit staged changes? [y/N] " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    gcoto
+  fi
+}
 
 # --- gacp (add-commit-push, depends on gcoto and gpush/gaireview from 20-git.bash) ---
 function gacp {

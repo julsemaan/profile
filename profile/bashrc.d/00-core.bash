@@ -82,6 +82,20 @@ function jprofile_path_prepend {
   esac
 }
 
+# Restart a command forever, 5s after each exit. Ctrl-C stops it.
+# Usage: stayin-alive make port-forward STACK=grafana LOCAL_PORT=19090
+function stayin-alive {
+  if [ $# -eq 0 ]; then
+    echo "usage: stayin-alive <command> [args...]" >&2
+    return 2
+  fi
+
+  while true; do
+    "$@"
+    sleep 5
+  done
+}
+
 # --- Prompt ---
 # parse_git_dirty and parse_git_branch are defined in 20-git.bash
 PS1="\$(history -a)\u\[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;196m\]@\H\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] [\w] \$(parse_git_branch) \n\[$(tput bold)\]\\$\[$(tput sgr0)\] \[$(tput sgr0)\]"
