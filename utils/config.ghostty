@@ -6,8 +6,6 @@ theme = Catppuccin Macchiato
 term = xterm-256color
 async-backend = epoll
 
-keybind = ctrl+home=csi:H
-keybind = ctrl+end=csi:F
 keybind = ctrl+alt+left=csi:1;5D
 keybind = ctrl+alt+right=csi:1;5C
 keybind = alt+home=csi:1;5D
