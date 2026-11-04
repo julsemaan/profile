@@ -19,7 +19,7 @@
     "npm:pi-web-access",
     "npm:@earendil-works/pi-tui",
     "npm:pi-mcp-adapter",
-    "npm:agent-status-pi",
+    "npm:agent-status-pi@0.1.33",
     "https://github.com/DietrichGebert/ponytail@v4.7.0"
   ]
 }
