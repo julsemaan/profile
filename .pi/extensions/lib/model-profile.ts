@@ -89,7 +89,7 @@ export function parseModelRef(modelRef: string): { provider: string; modelId: st
 
 // ── Multi-alias args (/set-models) ─────────────────────────────────────────
 
-const MULTI_ALIAS_FLAG_RE = /^(--)?(all|large|medium|small)(=(.*))?$/i;
+const MULTI_ALIAS_FLAG_RE = /^(--)(all|large|medium|small)(=(.*))?$/i;
 const MULTI_ALIAS_USAGE = "/set-models [--all provider/model [thinking]] [--large provider/model [thinking]] [--medium ...] [--small ...]";
 
 function isMultiAliasFlagToken(token: string): boolean {
@@ -97,10 +97,13 @@ function isMultiAliasFlagToken(token: string): boolean {
 }
 
 /**
- * Parse /set-models args. Flags are read left to right, last wins; --all
- * expands to all three aliases at its position so a later per-alias flag
- * overwrites just that alias. A token after a model is taken as the thinking
- * level only when isThinkingLevel() passes. Any error aborts with no updates.
+ * Parse /set-models args. Flags require the -- prefix, so "medium" after a
+ * model is a thinking level, never a flag. Flags are read left to right, last
+ * wins; --all expands to all three aliases at its position so a later
+ * per-alias flag overwrites just that alias. A token after a model is taken as
+ * the thinking level only when isThinkingLevel() passes, and
+ * isMultiAliasFlagToken() is true only for --prefixed flags. Any error aborts
+ * with no updates.
  */
 export function parseMultiAliasArgs(raw: string): {
 	ok: true;

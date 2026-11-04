@@ -561,7 +561,7 @@ describe("parseMultiAliasArgs", () => {
 	});
 
 	it("accepts inline = forms", () => {
-		const result = parseMultiAliasArgs(`--large=${LARGE} medium=${MEDIUM}`);
+		const result = parseMultiAliasArgs(`--large=${LARGE} --medium=${MEDIUM}`);
 		assert.equal(result.ok, true);
 		if (result.ok) {
 			assert.deepEqual(result.updates, {
@@ -579,6 +579,27 @@ describe("parseMultiAliasArgs", () => {
 				"custom/large": { model: LARGE, thinkingLevel: "high" },
 				"custom/medium": { model: MEDIUM, thinkingLevel: "low" },
 				"custom/small": { model: SMALL },
+			});
+		}
+	});
+
+	it("parses a thinking level after --all", () => {
+		const result = parseMultiAliasArgs(`--all ${LARGE} medium`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			for (const alias of BUILTIN_ALIASES) {
+				assert.deepEqual(result.updates[alias], { model: LARGE, thinkingLevel: "medium" });
+			}
+		}
+	});
+
+	it("parses a thinking level followed by another flag", () => {
+		const result = parseMultiAliasArgs(`--large ${LARGE} medium --medium ${MEDIUM} low`);
+		assert.equal(result.ok, true);
+		if (result.ok) {
+			assert.deepEqual(result.updates, {
+				"custom/large": { model: LARGE, thinkingLevel: "medium" },
+				"custom/medium": { model: MEDIUM, thinkingLevel: "low" },
 			});
 		}
 	});
@@ -659,5 +680,10 @@ describe("parseMultiAliasArgs", () => {
 
 	it("rejects unknown flags", () => {
 		assert.equal(parseMultiAliasArgs(`--bogus ${LARGE}`).ok, false);
+	});
+
+	it("rejects flags without the -- prefix", () => {
+		assert.equal(parseMultiAliasArgs(`large ${LARGE}`).ok, false);
+		assert.equal(parseMultiAliasArgs(`medium=${MEDIUM}`).ok, false);
 	});
 });

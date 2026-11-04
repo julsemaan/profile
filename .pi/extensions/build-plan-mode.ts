@@ -492,7 +492,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	const SET_MODELS_FLAGS = ["--all", "--large", "--medium", "--small"] as const;
 
 	function setModelsFlagToken(value: string): boolean {
-		return /^(--)?(all|large|medium|small)(=.*)?$/i.test(value);
+		return /^--(all|large|medium|small)(=.*)?$/i.test(value);
 	}
 
 	function setModelsFlagAlias(flag: string): ModelAlias {
