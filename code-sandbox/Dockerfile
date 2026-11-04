@@ -50,6 +50,19 @@ ln -sf /usr/local/go/bin/go /usr/local/bin/go; \
 ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
 '
 
+# Headless Chromium for agent browser tooling (Playwright MCP). Browsers live
+# outside $HOME because the sandbox mounts an ephemeral home directory, and the
+# headless shell is skipped because MCP launches the Chrome for Testing build.
+ARG PLAYWRIGHT_MCP_VERSION=0.0.84
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN /bin/bash -euo pipefail -c '\
+npm i -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}"; \
+mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"; \
+chmod 777 "$PLAYWRIGHT_BROWSERS_PATH"; \
+playwright-mcp install-browser --with-deps --no-shell chromium; \
+rm -rf /var/lib/apt/lists/* \
+'
+
 RUN /bin/bash -euo pipefail -c '\
 ARCH="$(dpkg --print-architecture)"; \
 case "$ARCH" in \

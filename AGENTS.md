@@ -105,7 +105,8 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
 From `code-sandbox/Dockerfile`:
 - Based on `node:25-bookworm`
 - Includes: Go, kubectl, Helm, ripgrep, Python 3 (with `python` alias via `python-is-python3`),
-  `shellcheck`, `shfmt` (pinned), vim, tmux, clipboard utilities (xclip, xsel, wl-clipboard)
+  `shellcheck`, `shfmt` (pinned), vim, tmux, clipboard utilities (xclip, xsel, wl-clipboard),
+  headless Chromium with Playwright MCP (browsers in `/opt/ms-playwright`, outside the ephemeral home)
 - Published via GitHub Actions on push (see `.github/workflows/docker.yml`)
 
 ### Wrapper Scripts

@@ -14,13 +14,11 @@ When you are writing pull request comments, always sign messages with "Written b
 
 ## MCP in the sandbox
 
-The sandbox you are in has no usable local browser.
+The sandbox has a headless Chromium behind the `playwright` MCP server. Use it to verify pages you build, take screenshots, and read DOM, console, or network output. Search the `mcp` tool for its tools when they are not loaded yet.
 
+- Headed browsers and local GUI apps are unavailable. Don't launch one or work around it with port forwarding.
 - Prefer MCP tools that return text or JSON.
-- Avoid tools known to open interactive UIs or browser workflows unless explicitly requested.
-- Report browser-dependent blockers instead of attempting browser launches or port-forwarding workarounds.
 - Treat browser-launch warnings separately from operation failures. Inspect the result and never repeat a state-changing call solely because its UI failed.
-- After an unexpected UI launch, avoid that tool for the remaining session and use a non-UI equivalent when available.
 
 ## Worktrees
 

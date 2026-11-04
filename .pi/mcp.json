@@ -14,6 +14,20 @@
         "Authorization": "Basic $env:BB_MCP_TOKEN"
       },
       "lifecycle": "lazy"
+    },
+    "playwright": {
+      "command": "playwright-mcp",
+      "args": [
+        "--headless",
+        "--no-sandbox",
+        "--browser",
+        "chromium",
+        "--isolated",
+        "--output-dir",
+        "/tmp/playwright-mcp"
+      ],
+      "lifecycle": "lazy-keep-alive",
+      "description": "Headless Chromium for browsing: navigate, click, type, take screenshots, and read DOM, console, and network output."
     }
   }
 }
