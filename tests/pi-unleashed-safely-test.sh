@@ -251,6 +251,9 @@ run_wrapper
 run_args=$(<"$docker_run_log")
 assert_contains ".gitconfig mounted read-only" "$run_args" "$gitconfig:$home/.gitconfig:ro"
 assert_contains "host .cache bind-mounted (jiti compile cache persists)" "$run_args" "$home/.cache:$home/.cache"
+assert_contains "host .claude bind-mounted for pi-claude-bridge" "$run_args" "$home/.claude:$home/.claude"
+assert_contains "CLAUDE_CONFIG_DIR points at the mounted .claude dir" "$run_args" $'-e\nCLAUDE_CONFIG_DIR='"$home/.claude"
+assert_contains "Claude can skip permissions as root inside the sandbox" "$run_args" $'-e\nIS_SANDBOX=1'
 
 rm "$gitconfig"
 run_wrapper

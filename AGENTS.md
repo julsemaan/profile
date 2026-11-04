@@ -84,8 +84,9 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
 - Each wrapper script builds (or reuses) a Docker image on top of `julsemaan/code-sandbox-img:latest`.
 - The container runs the AI agent with **read/write access only to the mounted working directory**.
 - The container has **no access to the host system** beyond the mounted paths — no ability to modify
-  system config or install packages globally. Sensitive host-file access is blocked except for one
-  pi-specific read-only SSH exception described below.
+  system config or install packages globally. Sensitive host-file access is blocked apart from two
+  exceptions: the opt-in read-only SSH key mount, and the read-write `~/.claude` mount used by
+  `pi-claude-bridge`.
 - The agent's home directory is a **tmpfs** (ephemeral), so no state persists on the host.
 - Selected host paths are explicitly bind-mounted for persistence (e.g., pi's `~/.pi`, opencode's
   config/cache/data). `pi-unleashed-safely` can opt into read-only SSH file mounts only when

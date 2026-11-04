@@ -59,6 +59,10 @@ Arguments:
                       Installed /usr/local/etc/.gitignore (from
                       profile/.gitignore) is mounted read-only as the
                       container's global gitignore.
+  Claude config       Host ~/.claude is mounted read-write and CLAUDE_CONFIG_DIR
+                      points at it, so pi-claude-bridge logins and sessions
+                      persist across runs. This means the sandbox can read and
+                      modify your Claude credentials and hooks.
   --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
                       on a private network. Sets DOCKER_HOST inside the container
                       so inner containers run in the companion, not on the host.
@@ -247,6 +251,7 @@ HOST_SSH_KEY="${PI_SSH_KEY_PATH:-}"
 HOST_KNOWN_HOSTS="$HOST_SSH_DIR/known_hosts"
 HOST_SSH_CONFIG="$HOST_SSH_DIR/config"
 HOST_CACHE_HOME="$RESOLVED_HOME/.cache"
+HOST_CLAUDE_HOME="$RESOLVED_HOME/.claude"
 ensure_host_dir "$HOST_CACHE_HOME"
 CACHE_DOCKER_FLAGS=(-v "$HOST_CACHE_HOME:$RESOLVED_HOME/.cache")
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
@@ -258,6 +263,7 @@ fi
 ensure_host_dir "$HOST_PI_HOME"
 ensure_host_dir "$HOST_PI_JITI_CACHE"
 ensure_host_dir "$HOST_AGENT_STATUS"
+ensure_host_dir "$HOST_CLAUDE_HOME"
 
 # Image/identity freshness cache: 24h gate on pull+build+identity regen.
 # One stamp covers all images.
@@ -571,6 +577,15 @@ if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 && -d "$RESOLVED_HOME/src" ]]; then
 fi
 
 PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
+
+# Claude Code state for pi-claude-bridge. Directory mount only: a file bind
+# mount of ~/.claude.json breaks Claude's temp-file+rename writes (EBUSY),
+# so CLAUDE_CONFIG_DIR moves it inside the mounted directory instead.
+CLAUDE_DOCKER_FLAGS=(
+  -v "$HOST_CLAUDE_HOME:$CONTAINER_HOME/.claude"
+  -e "CLAUDE_CONFIG_DIR=$CONTAINER_HOME/.claude"
+  -e IS_SANDBOX=1 # Allow Claude's permission bypass when running as root in Docker.
+)
 if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 ]]; then
   mkdir -p "$HOST_PI_HOME/agent/extensions"
   mkdir -p "$HOST_PI_HOME/agent/prompts"
@@ -668,6 +683,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -v "$CACHE_PASSWD:/etc/passwd:ro" \
   -v "$CACHE_GROUP:/etc/group:ro" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
+  "${CLAUDE_DOCKER_FLAGS[@]}" \
   -v "$HOST_AGENT_STATUS:$CONTAINER_AGENT_STATUS" \
   "${GO_DOCKER_FLAGS[@]}" \
   "${SSH_DOCKER_FLAGS[@]}" \

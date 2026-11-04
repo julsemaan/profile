@@ -42,7 +42,7 @@ else
   test_fail ".pi/settings.json defaults to gpt-6-luna" "defaultModel is not gpt-6-luna"
 fi
 
-for pkg in "npm:pi-web-access" "npm:@earendil-works/pi-tui" "npm:pi-mcp-adapter" "npm:agent-status-pi@0.1.33" "https://github.com/DietrichGebert/ponytail@v4.7.0"; do
+for pkg in "npm:pi-web-access" "npm:@earendil-works/pi-tui" "npm:pi-mcp-adapter" "npm:agent-status-pi@0.1.33" "npm:pi-claude-bridge" "https://github.com/DietrichGebert/ponytail@v4.7.0"; do
   if grep -qF "$pkg" "$settings_json"; then
     test_pass ".pi/settings.json contains $pkg"
   else
