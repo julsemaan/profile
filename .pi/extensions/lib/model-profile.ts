@@ -1,8 +1,8 @@
 /**
  * Model-profile codec — parse, validate, and serialize model profiles.
  *
- * Built-in profiles are bare names (case-insensitive): openrouter, deep, priv, and copilotPriv.
- * Custom profiles are JSON with all configured alias keys.
+ * Built-in profiles are bare names (case-insensitive): openrouterHybrid, openrouterFull, deep,
+ * priv, copilotPriv, and claude. Custom profiles are JSON with all configured alias keys.
  */
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
@@ -27,6 +27,11 @@ function modelRef(prefix: string, modelId: string): string {
 }
 
 export const MODEL_PROFILES = {
+	claude: {
+		"custom/large": { model: modelRef("claude-bridge", "claude-opus-5-5"), thinkingLevel: "high" },
+		"custom/medium": { model: modelRef("claude-bridge", "claude-opus-5-5"), thinkingLevel: "medium" },
+		"custom/small": { model: modelRef("claude-bridge", "claude-haiku-5-5"), thinkingLevel: "high" },
+	},
 	openrouterHybrid: {
 		"custom/large": { model: modelRef("openai-codex", GPT_SOL_MODEL_ID), thinkingLevel: "high" },
 		"custom/medium": { model: modelRef("openrouter/z-ai", OPENROUTER_MEDIUM_MODEL_ID), thinkingLevel: "high" },

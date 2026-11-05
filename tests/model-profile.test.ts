@@ -70,6 +70,21 @@ describe("MODEL_PROFILES", () => {
 		});
 	});
 
+	it("defines claude with opus 5.5 large/medium and haiku small", () => {
+		assert.deepEqual(MODEL_PROFILES.claude["custom/large"], {
+			model: "claude-bridge/claude-opus-5-5",
+			thinkingLevel: "high",
+		});
+		assert.deepEqual(MODEL_PROFILES.claude["custom/medium"], {
+			model: "claude-bridge/claude-opus-5-5",
+			thinkingLevel: "medium",
+		});
+		assert.deepEqual(MODEL_PROFILES.claude["custom/small"], {
+			model: "claude-bridge/claude-haiku-5-5",
+			thinkingLevel: "high",
+		});
+	});
+
 	it("contains every alias with a valid model reference", () => {
 		for (const profile of BUILTIN_PROFILES) {
 			const modelMap = MODEL_PROFILES[profile];
