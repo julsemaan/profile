@@ -45,3 +45,12 @@ Some examples of what NOT to do:
 - Setting defaults in Github Action jobs when the variable being read already has a default set.
 - Performing validation for edge-cases that are near impossible to reach during normal operation.
 
+## Models
+
+When you select models, follow these rules.
+
+- When told to use OpenAI models such as Astra, Sol, Terra, Luna, prefer using the `openai-codex` provider since I have a subscription.
+- If OpenAI models are not available via `openai-codex` because of issues or rate-limits, do not use other provider for these models unless you have been told otherwise by me.
+- If you're looking for cross-model or cross-provider reviews, prefer `claude-bridge` if is is configured and authenticated.
+- When working on UI or anything that requires taste, prefer using models from `claude-bridge` when available.
+- For anything else, prefer models from `openai-codex`.
