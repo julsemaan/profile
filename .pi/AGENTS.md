@@ -53,4 +53,4 @@ When you select models, follow these rules.
 - If OpenAI models are not available via `openai-codex` because of issues or rate-limits, do not use other provider for these models unless you have been told otherwise by me.
 - If you're looking for cross-model or cross-provider reviews, prefer `claude-bridge` if is is configured and authenticated.
 - When working on UI or anything that requires taste, prefer using models from `claude-bridge` when available.
-- For anything else, prefer models from `openai-codex`.
+- For anything else, prefer models from the current model profile.

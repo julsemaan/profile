@@ -38,6 +38,7 @@ function genCommitMsg {
     --workdir "$PWD" \
     -- \
     --no-extensions \
+    --no-session \
     --print \
     --model "$model" \
     --thinking off \

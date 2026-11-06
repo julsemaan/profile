@@ -1,2 +1,3 @@
 julsemaan-tmp
 .envrc
+.gen_commit_msg.*.diff
