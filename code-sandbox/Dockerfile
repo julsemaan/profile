@@ -5,6 +5,7 @@ RUN apt-get update \
     ca-certificates \
     curl \
     clang-format \
+    gh \
     ncurses-term \
     python-is-python3 \
     python3 \

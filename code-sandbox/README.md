@@ -8,6 +8,7 @@ This image starts from `node:25-bookworm` and installs common tooling used by co
 
 - Node.js (from base image)
 - `curl`, `ca-certificates`, `clang-format`
+- `gh` (GitHub CLI, Debian package)
 - Python 3 + `python` alias + pip + venv (Debian Bookworm's default Python 3.11)
 - `shellcheck` (Debian package)
 - `shfmt` v3.10.0 (pinned binary, matches CI)
