@@ -54,3 +54,4 @@ When you select models, follow these rules.
 - If you're looking for cross-model or cross-provider reviews, prefer `claude-bridge` if is is configured and authenticated.
 - When working on UI or anything that requires taste, prefer using models from `claude-bridge` when available.
 - For anything else, prefer models from the current model profile.
+
