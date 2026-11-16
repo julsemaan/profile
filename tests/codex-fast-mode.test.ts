@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, after } from "node:test";
+import { describe, it, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
 import {
 	applyFastMode,
@@ -99,8 +99,80 @@ async function loadFastModeExtension() {
 }
 
 describe("codexFastMode extension", () => {
-	beforeEach(() => clearProcessState("fast-mode"));
+	let originalFastMode: string | undefined;
+	beforeEach(() => {
+		clearProcessState("fast-mode");
+		originalFastMode = process.env.PI_FAST_MODE;
+		delete process.env.PI_FAST_MODE;
+	});
+	afterEach(() => {
+		if (originalFastMode === undefined) delete process.env.PI_FAST_MODE;
+		else process.env.PI_FAST_MODE = originalFastMode;
+	});
 	after(() => clearProcessState("fast-mode"));
+
+	for (const value of [undefined, "0", "1", "true", "", "2"]) {
+		it(`uses only PI_FAST_MODE=1 as the default, value ${JSON.stringify(value)}`, async () => {
+			if (value !== undefined) process.env.PI_FAST_MODE = value;
+			const { extension, entries, statuses, ctx } = await loadFastModeExtension();
+			await extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "startup" }, ctx);
+			const enabled = value === "1";
+			assert.equal(statuses.at(-1), enabled ? "⚡ fast" : "○ standard");
+			assert.equal(readFastModeFromEntries(entries), enabled ? true : undefined);
+			const payload = { model: "gpt" };
+			assert.deepEqual(
+				await extension.handlers.get("before_provider_request")?.[0]({ payload }, ctx),
+				enabled ? { ...payload, service_tier: "priority" } : payload,
+			);
+		});
+	}
+
+	for (const saved of [false, true]) {
+		it(`prefers saved ${saved} over the opposite environment default`, async () => {
+			process.env.PI_FAST_MODE = saved ? "0" : "1";
+			writeProcessState("fast-mode", !saved);
+			const { extension, entries, statuses, ctx } = await loadFastModeExtension();
+			entries.push({ type: "custom", customType: "codex-fast-mode", data: { enabled: saved } });
+			await extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "new" }, ctx);
+			assert.equal(statuses.at(-1), saved ? "⚡ fast" : "○ standard");
+			assert.equal(entries.length, 1);
+		});
+	}
+
+	it("uses the environment on /new when no process state exists", async () => {
+		process.env.PI_FAST_MODE = "1";
+		const { extension, entries, statuses, ctx } = await loadFastModeExtension();
+		await extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "new" }, ctx);
+		assert.equal(statuses.at(-1), "⚡ fast");
+		assert.equal(readFastModeFromEntries(entries), true);
+	});
+
+	it("keeps /fast off across /new despite the environment default", async () => {
+		process.env.PI_FAST_MODE = "1";
+		const first = await loadFastModeExtension();
+		await first.extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "startup" }, first.ctx);
+		assert.equal(first.statuses.at(-1), "⚡ fast");
+		await first.extension.commands.get("fast")?.handler("off", first.ctx);
+		assert.equal(readFastModeFromEntries(first.entries), false);
+		await first.extension.handlers.get("session_shutdown")?.[0]({ type: "session_shutdown", reason: "new" }, first.ctx);
+
+		const next = await loadFastModeExtension();
+		await next.extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "new" }, next.ctx);
+		assert.equal(next.statuses.at(-1), "○ standard");
+		const payload = { model: "gpt" };
+		assert.equal(await next.extension.handlers.get("before_provider_request")?.[0]({ payload }, next.ctx), payload);
+	});
+
+	it("does not apply the environment-enabled mode to unsupported providers", async () => {
+		process.env.PI_FAST_MODE = "1";
+		const { extension, statuses, ctx } = await loadFastModeExtension();
+		ctx.model = { provider: "openai", api: "openai-responses" };
+		await extension.handlers.get("session_start")?.[0]({ type: "session_start", reason: "startup" }, ctx);
+		const payload = { model: "gpt" };
+		assert.equal(statuses.at(-1), undefined);
+		assert.equal(await extension.handlers.get("before_provider_request")?.[0]({ payload }, ctx), undefined);
+		assert.deepEqual(payload, { model: "gpt" });
+	});
 
 	it("reads the process state on /new", async () => {
 		writeProcessState("fast-mode", true);

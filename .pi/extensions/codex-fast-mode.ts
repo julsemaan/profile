@@ -39,8 +39,8 @@ export function readFastModeFromEntries(entries: readonly FastModeEntry[]): bool
 	return enabled;
 }
 
-// Fast mode is off by default and stored in the session so /new keeps the setting,
-// mirroring the build-plan model profile.
+// PI_FAST_MODE=1 opts into fast mode. Saved session settings take precedence,
+// and /new carries the current process setting forward.
 export default function codexFastMode(pi: ExtensionAPI) {
 	let enabled = false;
 
@@ -63,12 +63,13 @@ export default function codexFastMode(pi: ExtensionAPI) {
 		const fromSession = readFastModeFromEntries(ctx.sessionManager.getEntries());
 		if (fromSession !== undefined) {
 			enabled = fromSession;
-		} else if (event.reason === "new") {
-			enabled = readProcessState<boolean>("fast-mode") ?? false;
-			// No persisted entry: record the recovered value in the new session.
-			if (enabled) pi.appendEntry(STATE_TYPE, { enabled: true });
 		} else {
-			enabled = false;
+			const defaultEnabled = process.env.PI_FAST_MODE === "1";
+			enabled = event.reason === "new"
+				? readProcessState<boolean>("fast-mode") ?? defaultEnabled
+				: defaultEnabled;
+			// No persisted entry: record the enabled default or recovered value.
+			if (enabled) pi.appendEntry(STATE_TYPE, { enabled: true });
 		}
 		writeProcessState("fast-mode", enabled);
 		updateStatus(ctx);

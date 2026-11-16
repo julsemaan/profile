@@ -73,6 +73,9 @@ Arguments:
 Environment:
   PI_NPM_PACKAGE        NPM package name to install for the CLI.
                         Defaults to "@mariozechner/pi-coding-agent".
+  PI_FAST_MODE          Set to 1 to default Codex fast mode on; other values
+                        leave it off. Saved session settings override this default.
+                        /new keeps the current setting, including /fast off.
   PI_TIMING             Pi's own per-extension startup timing. Forwarded
                         into the container.
   PI_STARTUP_BENCHMARK  Pi's full startup benchmark. Requires a TTY.
@@ -678,6 +681,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${GIT_CONFIG_DOCKER_FLAGS[@]}" \
   "${GITIGNORE_DOCKER_FLAGS[@]}" \
   -e CONTEXT7_API_KEY \
+  -e PI_FAST_MODE \
   -e PI_TIMING \
   -e PI_STARTUP_BENCHMARK \
   -e JITI_FS_CACHE="$CONTAINER_HOME/.pi/cache/jiti" \

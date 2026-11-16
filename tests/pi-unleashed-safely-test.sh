@@ -230,8 +230,9 @@ fi
 assert_contains "Jiti cache path is forwarded" "$run_args" "JITI_FS_CACHE=$home/.pi/cache/jiti"
 assert_contains "Jiti temp root is persistent" "$run_args" "TMPDIR=$home/.pi/cache"
 
-PI_TIMING=1 PI_STARTUP_BENCHMARK=1 run_wrapper
+PI_FAST_MODE=1 PI_TIMING=1 PI_STARTUP_BENCHMARK=1 run_wrapper
 run_args=$(<"$docker_run_log")
+assert_contains "PI_FAST_MODE is forwarded without wrapper defaults" "$run_args" $'-e\nPI_FAST_MODE\n'
 assert_contains "PI_TIMING reaches the container" "$run_args" "PI_TIMING"
 assert_contains "PI_STARTUP_BENCHMARK reaches the container" "$run_args" "PI_STARTUP_BENCHMARK"
 
