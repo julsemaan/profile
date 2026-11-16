@@ -59,6 +59,9 @@ cp)
   ;;
 rm)
   ;;
+network)
+  exit "${DOCKER_KIND_NETWORK_EXIT:-1}"
+  ;;
 run)
   printf '%s\n' "$@" >"$DOCKER_RUN_LOG"
   printf '%s\n' "$@" >>"$DOCKER_COMMAND_LOG"
@@ -259,6 +262,17 @@ rm "$gitconfig"
 run_wrapper
 run_args=$(<"$docker_run_log")
 assert_not_match "absent .gitconfig is not mounted" "gitconfig" "$run_args"
+
+# --- kind network tests ---
+if [[ "$run_args" == *$'--network\nkind'* ]]; then
+  test_fail "kind network is skipped when absent" "--network kind unexpectedly passed"
+else
+  test_pass "kind network is skipped when absent"
+fi
+
+DOCKER_KIND_NETWORK_EXIT=0 run_wrapper
+run_args=$(<"$docker_run_log")
+assert_contains "kind network is attached when present" "$run_args" $'--network\nkind'
 
 # --- SSH key tests ---
 run_wrapper

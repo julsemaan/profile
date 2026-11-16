@@ -91,7 +91,9 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
 - Selected host paths are explicitly bind-mounted for persistence (e.g., pi's `~/.pi`, opencode's
   config/cache/data). `pi-unleashed-safely` can opt into read-only SSH file mounts only when
   `PI_SSH_KEY_PATH` is set to a host private-key file. In that case it also mounts `~/.ssh/known_hosts`
-  and `~/.ssh/config` read-only when present. It does not forward an SSH agent or socket.
+  and `~/.ssh/config` read-only when present. It does not forward an SSH agent or socket. It also
+  joins the Docker network named `kind` when that network exists, so kind cluster containers
+  resolve inside the sandbox.
 - **Clipboard integration** is achieved by forwarding terminal environment variables and mounting
   tmux/X11/Wayland sockets when available.
 - **Go module cache** is mounted from the host (read-only by default) to reuse downloaded modules.

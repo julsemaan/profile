@@ -66,6 +66,8 @@ Arguments:
   --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
                       on a private network. Sets DOCKER_HOST inside the container
                       so inner containers run in the companion, not on the host.
+  kind network        Joins the Docker network named "kind" when it exists, so
+                      kind cluster containers resolve inside the sandbox.
   -h, --help          Show this help text.
 
 Environment:
@@ -431,6 +433,7 @@ phase image-gate
 
 # --- DinD companion (Docker-in-Docker) ---
 DIND_DOCKER_FLAGS=()
+NETWORK_DOCKER_FLAGS=()
 if [[ $DIND_ENABLED -eq 1 ]]; then
   DIND_NETWORK="pi-dind-net"
   DIND_CONTAINER="pi-dind"
@@ -481,9 +484,15 @@ if [[ $DIND_ENABLED -eq 1 ]]; then
     exit 1
   fi
 
-  DIND_DOCKER_FLAGS+=(--network "$DIND_NETWORK")
+  NETWORK_DOCKER_FLAGS+=(--network "$DIND_NETWORK")
   DIND_DOCKER_FLAGS+=(-e "DOCKER_HOST=tcp://$DIND_CONTAINER:$DIND_PORT")
 fi
+
+# ponytail: one network per run; --docker-host keeps its private net.
+if [[ ${#NETWORK_DOCKER_FLAGS[@]} -eq 0 ]] && docker network inspect kind >/dev/null 2>&1; then
+  NETWORK_DOCKER_FLAGS+=(--network kind)
+fi
+phase network
 
 CACHE_PASSWD="$CACHE_DIR/passwd"
 CACHE_GROUP="$CACHE_DIR/group"
@@ -687,6 +696,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -v "$HOST_AGENT_STATUS:$CONTAINER_AGENT_STATUS" \
   "${GO_DOCKER_FLAGS[@]}" \
   "${SSH_DOCKER_FLAGS[@]}" \
+  "${NETWORK_DOCKER_FLAGS[@]}" \
   "${DIND_DOCKER_FLAGS[@]}" \
   "${GWT_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
