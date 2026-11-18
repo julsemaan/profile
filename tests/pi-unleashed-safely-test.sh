@@ -195,11 +195,12 @@ const pi = {
 for (const extension of extensions) extension(pi);
 if (handlers.length !== 2) throw new Error("expected two before_agent_start handlers");
 
-let systemPrompt = "base system prompt";
+const event = { systemPrompt: "base system prompt", systemPromptOptions: { sections: {} } };
 for (const handler of handlers) {
-  const result = await handler({ systemPrompt });
-  if (result?.systemPrompt !== undefined) systemPrompt = result.systemPrompt;
+  const result = await handler(event);
+  if (result?.systemPrompt !== undefined) throw new Error("system prompt was replaced");
 }
+const systemPrompt = Object.values(event.systemPromptOptions.sections).join("\n");
 
 const prompt = fs.readFileSync(promptPath, "utf8");
 const marker = "<!-- profile:always-on-unslop -->";
@@ -207,8 +208,10 @@ const markerCount = systemPrompt.split(marker).length - 1;
 if (!systemPrompt.includes(prompt)) throw new Error("full UNSLOP.md content was not injected");
 if (markerCount !== 1) throw new Error(`expected one marker, got ${markerCount}`);
 
-const duplicateResult = await handlers[0]({ systemPrompt });
-if (duplicateResult !== undefined) throw new Error("duplicate prompt was injected");
+await handlers[0](event);
+if (Object.values(event.systemPromptOptions.sections).join("\n") !== systemPrompt) {
+  throw new Error("duplicate prompt was injected");
+}
 
 process.stdout.write("ok\n");
 NODE

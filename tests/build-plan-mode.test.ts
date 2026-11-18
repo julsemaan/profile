@@ -1,9 +1,13 @@
 import { describe, it, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { MODEL_PROFILES } from "../.pi/extensions/lib/model-profile.ts";
 import { clearProcessState, writeProcessState } from "../.pi/extensions/lib/process-state.ts";
 import { loadExtensions, createExtensionRuntime } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/index.js";
 import { createEventBus } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
+import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
 
 const EXTENSION_PATH = ".pi/extensions/build-plan-mode.ts";
 const PLAN = [
@@ -129,9 +133,10 @@ function makeContext(): MockContext {
 	return ctx;
 }
 
-async function loadBuildPlanExtension(options: { skipSessionStart?: boolean } = {}): Promise<Loaded> {
+async function loadBuildPlanExtension(options: { skipSessionStart?: boolean; cwd?: string } = {}): Promise<Loaded> {
 	const runtime = createExtensionRuntime();
 	const ctx = makeContext();
+	if (options.cwd) ctx.cwd = options.cwd;
 	const sent: SentMessage[] = [];
 	const startedPrompts: string[] = [];
 	const activeTools: string[] = [];
@@ -201,6 +206,101 @@ function waitForTimers(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 10));
 }
 
+function promptEvent() {
+	return { systemPrompt: "base", systemPromptOptions: { sections: { unrelated: "Keep this section." } as Record<string, string> } };
+}
+
+const MODE_SECTION = "profile_build_plan_mode";
+
+describe("mode prompt sections", () => {
+	it("retains planning instructions through the repository prompt extension chain", async () => {
+		const loaded = await loadBuildPlanExtension();
+		loaded.runtime.setSessionName = () => {};
+		const result = await loadExtensions([
+			".pi/always-on-unslop.ts", ".pi/extensions/todo.ts",
+			".pi/extensions/subagent/index.ts", ".pi/extensions/goal.ts",
+		], process.cwd(), createEventBus(), loaded.runtime);
+		assert.deepEqual(result.errors, []);
+		const goal = result.extensions.find((extension) => extension.commands.has("goal"));
+		assert.ok(goal);
+		await goal.commands.get("goal").handler("Inspect the task", loaded.ctx);
+		const options = normalizeBuildSystemPromptOptions({ cwd: process.cwd(), sections: { unrelated: "Keep this section." } });
+		const event = { get systemPrompt() { return buildSystemPrompt(options); }, systemPromptOptions: options };
+		// Unslop loads before the mode extension in normal discovery.
+		const chain = [result.extensions[0], loaded.extension, ...result.extensions.slice(1)];
+		for (const extension of chain) {
+			for (const run of extension.handlers.get("before_agent_start") ?? []) {
+				const patch = await run(event, loaded.ctx);
+				assert.equal(patch?.systemPrompt, undefined);
+			}
+		}
+		const prompt = buildSystemPrompt(options);
+		assert.match(prompt, /<profile_build_plan_mode>/);
+		assert.match(prompt, /Stop before the first implementation change/);
+		assert.match(prompt, /<profile_always_on_unslop>/);
+		assert.match(prompt, /<profile_todo>/);
+		assert.match(prompt, /<subagents>/);
+		assert.match(prompt, /<profile_goal>/);
+		assert.match(prompt, /Keep this section/);
+		await goal.commands.get("goal").handler("clear", loaded.ctx);
+		await goal.handlers.get("before_agent_start")[0](event, loaded.ctx);
+		assert.equal(options.sections.profile_goal, undefined);
+	});
+
+	it("refreshes plan and build instructions without replacing the system prompt or unrelated sections", async () => {
+		const loaded = await loadBuildPlanExtension();
+		const event = promptEvent();
+		const tools = loaded.runtime.getActiveTools();
+		const result = await handler(loaded, "before_agent_start")(event, loaded.ctx);
+		assert.equal(result?.systemPrompt, undefined);
+		assert.equal(event.systemPrompt, "base");
+		const plan = event.systemPromptOptions.sections[MODE_SECTION];
+		assert.match(plan, /PLAN MODE/);
+		assert.match(plan, /deliverable is a plan, not implemented changes/);
+		assert.match(plan, /Stop before the first implementation change/);
+		assert.match(plan, /requests to fix or implement.*planning requests/);
+		assert.match(plan, /harness.*enter build mode before implementation/);
+		assert.match(plan, /Skills, delegation, and implementation-oriented todos cannot override/);
+		assert.match(plan, /write_tmp_document.*edit_tmp_document/);
+		assert.doesNotMatch(plan, /finish_plan exactly once/);
+
+		await command(loaded, "build")("", loaded.ctx);
+		await handler(loaded, "before_agent_start")(event, loaded.ctx);
+		assert.match(event.systemPromptOptions.sections[MODE_SECTION], /BUILD MODE/);
+		assert.doesNotMatch(event.systemPromptOptions.sections[MODE_SECTION], /PLAN MODE/);
+
+		await command(loaded, "plan")("", loaded.ctx);
+		await handler(loaded, "before_agent_start")(event, loaded.ctx);
+		assert.equal(event.systemPromptOptions.sections[MODE_SECTION], plan);
+		assert.equal(event.systemPromptOptions.sections.unrelated, "Keep this section.");
+		assert.deepEqual(Object.keys(event.systemPromptOptions.sections).sort(), [MODE_SECTION, "unrelated"].sort());
+		assert.deepEqual(loaded.runtime.getActiveTools(), tools);
+	});
+
+	it("removes automatic workflow instructions after cancellation, including on reused options", async () => {
+		for (const cancel of ["plan", "build", "abort", "reload", "shutdown"]) {
+			const loaded = await loadBuildPlanExtension();
+			const event = promptEvent();
+			await command(loaded, "plan-build")("", loaded.ctx);
+			await handler(loaded, "before_agent_start")(event, loaded.ctx);
+			assert.match(event.systemPromptOptions.sections[MODE_SECTION], /PLAN MODE/);
+			assert.match(event.systemPromptOptions.sections[MODE_SECTION], /finish_plan exactly once/);
+			if (cancel === "abort") {
+				await handler(loaded, "agent_end")({ messages: [{ role: "assistant", stopReason: "aborted", content: [] }] }, loaded.ctx);
+			} else if (cancel === "reload") {
+				await handler(loaded, "session_start")({ reason: "reload" }, loaded.ctx);
+			} else if (cancel === "shutdown") {
+				await handler(loaded, "session_shutdown")({ reason: "reload" }, loaded.ctx);
+			} else {
+				await command(loaded, cancel)("", loaded.ctx);
+			}
+			await handler(loaded, "before_agent_start")(event, loaded.ctx);
+			assert.doesNotMatch(event.systemPromptOptions.sections[MODE_SECTION], /finish_plan exactly once/);
+			assert.equal(event.systemPromptOptions.sections.unrelated, "Keep this section.");
+		}
+	});
+});
+
 describe("automatic plan-build workflow", () => {
 	it("registers /plan-build and the finish_plan tool", async () => {
 		const loaded = await loadBuildPlanExtension();
@@ -212,8 +312,9 @@ describe("automatic plan-build workflow", () => {
 	it("keeps questions and ordinary assistant responses in plan mode", async () => {
 		const loaded = await loadBuildPlanExtension();
 		await command(loaded, "plan-build")("", loaded.ctx);
-		const prompt = await handler(loaded, "before_agent_start")({ systemPrompt: "base" }, loaded.ctx);
-		assert.match(prompt.systemPrompt, /finish_plan exactly once/);
+		const event = promptEvent();
+		await handler(loaded, "before_agent_start")(event, loaded.ctx);
+		assert.match(event.systemPromptOptions.sections[MODE_SECTION], /finish_plan exactly once/);
 
 		await handler(loaded, "agent_end")({
 			type: "agent_end",
@@ -441,8 +542,12 @@ describe("plan execution commands", () => {
 });
 
 describe("model profile process state", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "build-plan-profile-"));
 	beforeEach(() => clearProcessState("model-profile"));
-	after(() => clearProcessState("model-profile"));
+	after(() => {
+		clearProcessState("model-profile");
+		rmSync(cwd, { recursive: true, force: true });
+	});
 
 	it("keeps a manual pick across /new when the previous session is not persisted", async () => {
 		const loaded = await loadBuildPlanExtension({ skipSessionStart: true });
@@ -474,19 +579,19 @@ describe("model profile process state", () => {
 
 	it("ignores a seeded process file on startup", async () => {
 		writeProcessState("model-profile", MODEL_PROFILES.openrouterHybrid);
-		const loaded = await loadBuildPlanExtension();
+		const loaded = await loadBuildPlanExtension({ cwd });
 		loaded.ctx.ui.notifications.length = 0;
 		await command(loaded, "model-profile")("", loaded.ctx);
-		assert.match(loaded.ctx.ui.notifications.join("\n"), /Current profile: deep/);
+		assert.match(loaded.ctx.ui.notifications.join("\n"), /Current profile: priv/);
 	});
 
 	it("records the resolved map in the new session", async () => {
-		const loaded = await loadBuildPlanExtension({ skipSessionStart: true });
+		const loaded = await loadBuildPlanExtension({ skipSessionStart: true, cwd });
 		await handler(loaded, "session_start")({ type: "session_start", reason: "new" }, loaded.ctx);
 
 		const state = loaded.ctx.sessionManager.entries
 			.filter((entry: any) => entry.customType === "build-plan-mode")
 			.at(-1);
-		assert.deepEqual(state?.data?.modelMap, MODEL_PROFILES.deep);
+		assert.deepEqual(state?.data?.modelMap, MODEL_PROFILES.priv);
 	});
 });

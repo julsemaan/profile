@@ -10,10 +10,6 @@ const UNSLOP_BLOCK = `${UNSLOP_MARKER}\n\n${UNSLOP_PROMPT}`;
 
 export default function alwaysOnUnslop(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event) => {
-		if (event.systemPrompt.includes(UNSLOP_BLOCK)) return;
-
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n${UNSLOP_BLOCK}`,
-		};
+		event.systemPromptOptions.sections.profile_always_on_unslop = UNSLOP_BLOCK;
 	});
 }

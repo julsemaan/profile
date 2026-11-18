@@ -19,12 +19,13 @@ describe("subagent catalog prompt", () => {
 		const handler = extension.handlers.get("before_agent_start")?.[0];
 		assert.ok(handler, "missing before_agent_start handler");
 
-		const result = await handler({ systemPrompt: "BASE" }, { cwd: process.cwd() });
+		const event = { systemPrompt: "BASE", systemPromptOptions: { sections: {} as Record<string, string> } };
+		const result = await handler(event, { cwd: process.cwd() });
 
-		assert.ok(result?.systemPrompt, "handler returned no systemPrompt");
-		const prompt = result.systemPrompt as string;
-		assert.match(prompt, /^BASE\n\n<subagents>/);
-		assert.match(prompt, /<\/subagents>$/);
+		assert.equal(result?.systemPrompt, undefined);
+		assert.equal(event.systemPrompt, "BASE");
+		const prompt = event.systemPromptOptions.sections.subagents;
+		assert.match(prompt, /^Only these agent names exist/);
 		for (const name of ["worker", "code-reviewer", "pr-feedback-worker", "pr-feedback-reviewer"]) {
 			assert.match(prompt, new RegExp(`- ${name} \\(`), `catalog is missing ${name}`);
 		}

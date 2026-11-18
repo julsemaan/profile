@@ -45,6 +45,7 @@ type AppState = {
 };
 
 const STATE_TYPE = "build-plan-mode";
+const MODE_PROMPT_SECTION = "profile_build_plan_mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
 const FILE_OVERRIDE_RELPATH = "julsemaan-tmp/model-profile";
 
@@ -1320,13 +1321,15 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", async (event) => {
 		const modeConfig = getActiveModeConfig();
-		const promptSuffix = modeConfig?.systemPrompt ? `\n\n${modeConfig.systemPrompt}` : "";
-		const automaticSuffix = automaticPlanBuildActive && mode === "plan"
-			? `\n\n${AUTO_PLAN_BUILD_INSTRUCTIONS}`
-			: "";
-		return {
-			systemPrompt: event.systemPrompt + promptSuffix + automaticSuffix,
-		};
+		const instructions = [
+			modeConfig?.systemPrompt,
+			automaticPlanBuildActive && mode === "plan" ? AUTO_PLAN_BUILD_INSTRUCTIONS : undefined,
+		].filter(Boolean).join("\n\n");
+		if (instructions) {
+			event.systemPromptOptions.sections[MODE_PROMPT_SECTION] = instructions;
+		} else {
+			delete event.systemPromptOptions.sections[MODE_PROMPT_SECTION];
+		}
 	});
 
 	pi.on("input", async (event, ctx) => {

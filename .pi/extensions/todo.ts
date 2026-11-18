@@ -105,9 +105,7 @@ export default function todoExtension(pi: ExtensionAPI) {
 	pi.on("session_tree", async (_event, ctx) => syncState(ctx));
 
 	pi.on("before_agent_start", async (event) => {
-		return {
-			systemPrompt: event.systemPrompt + `\n\n${TODO_PROMPT_INSTRUCTIONS}`,
-		};
+		event.systemPromptOptions.sections.profile_todo = TODO_PROMPT_INSTRUCTIONS;
 	});
 
 	pi.registerTool({

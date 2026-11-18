@@ -364,10 +364,11 @@ export default function goalExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event) => {
-		if (!state.active) return;
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n[GOAL ACTIVE]\nCurrent goal: ${state.goalText}\nContinue working toward this goal.\nDo not stop early for partial progress.\nAsk user only if blocked or ambiguity prevents progress.\nIf deferred external wait needed, final lines must be: [exit] ..., optional [WAIT:<reason> poll=<seconds>], then final [GOAL:working|done|blocked].\nEnd every assistant message with exactly one final-line goal marker: [GOAL:working] or [GOAL:done] or [GOAL:blocked].`,
-		};
+		if (!state.active) {
+			delete event.systemPromptOptions.sections.profile_goal;
+			return;
+		}
+		event.systemPromptOptions.sections.profile_goal = `[GOAL ACTIVE]\nCurrent goal: ${state.goalText}\nContinue working toward this goal.\nDo not stop early for partial progress.\nAsk user only if blocked or ambiguity prevents progress.\nIf deferred external wait needed, final lines must be: [exit] ..., optional [WAIT:<reason> poll=<seconds>], then final [GOAL:working|done|blocked].\nEnd every assistant message with exactly one final-line goal marker: [GOAL:working] or [GOAL:done] or [GOAL:blocked].`;
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
