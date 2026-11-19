@@ -12,7 +12,7 @@ pi-unleashed-safely --buildkit --rebuild
 pi-unleashed-safely --buildkit
 ```
 
-The first launch requires `--rebuild` to install the matching `buildctl` client. Client and companion use BuildKit `v0.20.2`. The real integration checks passed on an AppArmor-enabled host using the named `pi-buildkit` policy.
+Run `--rebuild` once after updating to pull the shared base image containing the matching `buildctl` client. Client and companion use BuildKit `v0.20.2`. Publish the updated base image before deploying the simplified wrapper. Pi and its npm packages remain installed by the wrapper and update on `--rebuild`. The existing companion integration checks passed on an AppArmor-enabled host using the named `pi-buildkit` policy.
 
 The companion is `pi-buildkit-<host-uid>`, using the resolved host UID even under sudo. It remains running after Pi exits. Pi connects over `BUILDKIT_HOST=unix:///run/pi-buildkit/buildkitd.sock`. There is no TCP listener or published port. Sessions enabled for the same user share builder state and cache.
 

@@ -342,9 +342,14 @@ assert_contains "config option is omitted when config is absent" "$run_args" "$e
 assert_not_match "absent config is not passed with -F" "GIT_SSH_COMMAND=.*-F" "$run_args"
 
 # --- BuildKit opt-in tests ---
-assert_contains "Pi image copies the matching static buildctl client" "$(<"$docker_build_log")" 'COPY --from=buildkit /usr/bin/buildctl /usr/local/bin/buildctl'
-assert_contains "BuildKit argument has a valid default without duplicating the pin" "$(<"$docker_build_log")" 'ARG BUILDKIT_IMAGE=moby/buildkit:v0.20.2-rootless'
-assert_contains "BuildKit image stage uses the pinned build argument" "$(<"$docker_build_log")" "FROM \${BUILDKIT_IMAGE} AS buildkit"
+base_dockerfile="$(<"$REPO_ROOT/code-sandbox/Dockerfile")"
+companion_version="$(awk -F '"' '/^BUILDKIT_VERSION=/ { print $2 }' "$REPO_ROOT/profile/pi-unleashed-safely.sh")"
+assert_contains "base client pin matches the companion pin" "$base_dockerfile" "FROM moby/buildkit:$companion_version-rootless AS buildkit"
+assert_contains "base image copies the static buildctl client" "$base_dockerfile" 'COPY --from=buildkit /usr/bin/buildctl /usr/local/bin/buildctl'
+assert_contains "base image pins the Docker CLI" "$base_dockerfile" 'DOCKER_VERSION="29.6.2"'
+assert_contains "base image sets the editor" "$base_dockerfile" 'ENV EDITOR=vim'
+assert_contains "Pi image inherits shared tooling" "$(<"$docker_build_log")" 'FROM julsemaan/code-sandbox-img:latest'
+assert_not_match "Pi image does not reinstall shared tooling" 'buildkit|buildctl|DOCKER_VERSION|ENV EDITOR' "$(<"$docker_build_log")"
 run_wrapper
 run_args=$(<"$docker_run_log")
 assert_not_match "BuildKit is absent by default" "BUILDKIT_HOST|pi-buildkit|DOCKER_CONFIG" "$run_args"

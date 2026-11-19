@@ -437,12 +437,11 @@ trap 'rm -rf "$WORK_TMPDIR"; if [[ -n "$IDENTITY_CONTAINER" ]]; then docker rm -
 
 if [[ $FRESH -eq 0 ]]; then
   docker pull julsemaan/code-sandbox-img:latest
-  {
-    printf 'ARG BUILDKIT_IMAGE=%s\n' "$BUILDKIT_IMAGE"
-    cat <<'EOF'
-FROM ${BUILDKIT_IMAGE} AS buildkit
+  cat <<'EOF' | docker build $REBUILD_DOCKER_ARG -t "$IMAGE" \
+    --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" \
+    --build-arg PI_NPM_INSTALL_PACKAGES_JSON="$PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON" \
+    -f- "$WORK_TMPDIR"
 FROM julsemaan/code-sandbox-img:latest
-COPY --from=buildkit /usr/bin/buildctl /usr/local/bin/buildctl
 
 ARG PI_NPM_PACKAGE
 ARG PI_NPM_INSTALL_PACKAGES_JSON
@@ -450,28 +449,8 @@ RUN npm i -g "$PI_NPM_PACKAGE"
 
 RUN node -e 'const pkgs = JSON.parse(process.env.PI_NPM_INSTALL_PACKAGES_JSON || "[]"); if (pkgs.length) require("child_process").execFileSync("npm", ["i", "-g", ...pkgs], { stdio: "inherit" });'
 
-# ponytail: pin to match docker:dind-rootless major; bump together
-RUN set -eux; \
-  ARCH="$(dpkg --print-architecture)"; \
-  case "$ARCH" in \
-    amd64) DOCKER_ARCH="x86_64" ;; \
-    arm64) DOCKER_ARCH="aarch64" ;; \
-    *) echo "Unsupported arch for docker CLI: $ARCH" >&2; exit 1 ;; \
-  esac; \
-  DOCKER_VERSION="29.6.2"; \
-  curl -fsSL "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_VERSION}.tgz" -o /tmp/docker.tgz; \
-  tar --extract --file /tmp/docker.tgz --strip-components 1 --directory /usr/local/bin/ docker/docker; \
-  rm /tmp/docker.tgz; \
-  docker --version
-
-ENV EDITOR=vim
-
 ENTRYPOINT ["pi"]
 EOF
-  } | docker build $REBUILD_DOCKER_ARG -t "$IMAGE" \
-    --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" \
-    --build-arg PI_NPM_INSTALL_PACKAGES_JSON="$PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON" \
-    -f- "$WORK_TMPDIR"
 fi
 phase image-gate
 
