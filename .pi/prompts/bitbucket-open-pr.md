@@ -1,6 +1,6 @@
 ---
-description: Open current branch as a Bitbucket pull request (no preview, no confirmation)
-argument-hint: "[ready|draft]"
+description: Open current branch as a Bitbucket pull request with an optional Jira key (no preview, no confirmation)
+argument-hint: "[JIRA-KEY|JIRA-URL]"
 mode: small-build
 ---
 

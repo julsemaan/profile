@@ -8,6 +8,7 @@ This image starts from `node:25-bookworm` and installs common tooling used by co
 
 - Node.js (from base image)
 - `curl`, `ca-certificates`, `clang-format`
+- `gh` (GitHub CLI, Debian package)
 - Python 3 + `python` alias + pip + venv (Debian Bookworm's default Python 3.11)
 - PlatformIO Core (latest stable at build time, `pio` and `platformio` in `/opt/platformio` venv)
 - `shellcheck` (Debian package)
@@ -16,6 +17,9 @@ This image starts from `node:25-bookworm` and installs common tooling used by co
 - `kubectl` (latest stable at build time)
 - Helm (latest stable at build time)
 - `rg` / ripgrep (latest release at build time)
+- Headless Chromium for agent browser tooling: `@playwright/mcp` (global `playwright-mcp`) with browsers in `/opt/ms-playwright`
+
+Browsers live outside `$HOME` because agent sandboxes mount an ephemeral home directory. Run MCP browser servers with `--headless --no-sandbox --browser chromium`: `--browser` defaults to system Google Chrome, which this image does not install.
 
 ## Publishing
 

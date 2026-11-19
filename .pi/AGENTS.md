@@ -10,17 +10,15 @@ When I work with you, I'll almost always go through a plan mode first, then hand
 
 When writing documentation, keep a balanced level of detail. I feel agents often document with way too much detail. Ensure you do not fall in this trap and keep documentation lean.
 
-When you are replying to pull request comments, always sign messages with "Written by Julien's agent" so that it is clear that you authored this message.
+When you are writing pull request comments, always sign messages with "Written by Julien's agent" so that it is clear that you authored this message.
 
 ## MCP in the sandbox
 
-The sandbox you are in has no usable local browser.
+The sandbox has a headless Chromium behind the `playwright` MCP server. Use it to verify pages you build, take screenshots, and read DOM, console, or network output. Search the `mcp` tool for its tools when they are not loaded yet.
 
+- Headed browsers and local GUI apps are unavailable. Don't launch one or work around it with port forwarding.
 - Prefer MCP tools that return text or JSON.
-- Avoid tools known to open interactive UIs or browser workflows unless explicitly requested.
-- Report browser-dependent blockers instead of attempting browser launches or port-forwarding workarounds.
 - Treat browser-launch warnings separately from operation failures. Inspect the result and never repeat a state-changing call solely because its UI failed.
-- After an unexpected UI launch, avoid that tool for the remaining session and use a non-UI equivalent when available.
 
 ## Worktrees
 
@@ -46,4 +44,14 @@ Some examples of what NOT to do:
 - Setting defaults in many places.
 - Setting defaults in Github Action jobs when the variable being read already has a default set.
 - Performing validation for edge-cases that are near impossible to reach during normal operation.
+
+## Models
+
+When you select models, follow these rules.
+
+- When told to use OpenAI models such as Astra, Sol, Terra, Luna, prefer using the `openai-codex` provider since I have a subscription.
+- If OpenAI models are not available via `openai-codex` because of issues or rate-limits, do not use other provider for these models unless you have been told otherwise by me.
+- If you're looking for cross-model or cross-provider reviews, prefer `claude-bridge` if is is configured and authenticated.
+- When working on UI or anything that requires taste, prefer using models from `claude-bridge` when available.
+- For anything else, prefer models from the current model profile.
 

@@ -462,12 +462,13 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		const { agents } = discoverAgents(ctx.cwd, "both");
-		if (agents.length === 0) return;
+		if (agents.length === 0) {
+			delete event.systemPromptOptions.sections.subagents;
+			return;
+		}
 		const { text, remaining } = formatAgentList(agents, 20);
 		const suffix = remaining > 0 ? `\n- +${remaining} more not listed` : "";
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n<subagents>\nOnly these agent names exist for the subagent tool. Use an exact name from this list; do not invent names.\n${text}${suffix}\n</subagents>`,
-		};
+		event.systemPromptOptions.sections.subagents = `Only these agent names exist for the subagent tool. Use an exact name from this list; do not invent names.\n${text}${suffix}`;
 	});
 
 	pi.registerTool({

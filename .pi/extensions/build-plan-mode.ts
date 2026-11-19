@@ -45,6 +45,7 @@ type AppState = {
 };
 
 const STATE_TYPE = "build-plan-mode";
+const MODE_PROMPT_SECTION = "profile_build_plan_mode";
 const MODEL_CONFIG_EVENT = "build-plan:model-config";
 const FILE_OVERRIDE_RELPATH = "julsemaan-tmp/model-profile";
 
@@ -52,13 +53,13 @@ const DEFAULT_MODEL_MAP: ModelMap = structuredClone(MODEL_PROFILES.priv);
 const DEFAULT_NEW_SESSION_MODE = "plan";
 const DEFAULT_EXISTING_SESSION_MODE = "build";
 const AUTO_BUILD_EXECUTION_INSTRUCTIONS = "This is a plain automatic /plan-build build session. Implement and validate the plan.";
-const PR_EXECUTION_INSTRUCTIONS = `This execution is authorized to implement the plan, commit the intended changes, push the branch, and open a ready-for-review pull request.
+const PR_EXECUTION_INSTRUCTIONS = `This execution is authorized to implement the plan, commit the intended changes, push the branch, and open a pull request.
 
 1. Before changing files, check the repository status. Stop if unrelated uncommitted changes exist. Do not stash, reset, discard, or commit those changes.
 2. Determine the push remote and remote default branch. Stop on detached HEAD or ambiguous repository configuration. If the current branch is the default branch, create a descriptive feature branch before implementation. Otherwise keep the current branch.
 3. Implement the plan and run its validation. Resolve failures before committing. If blocked, report the exact blocker and do not commit, push, or open a pull request.
 4. Inspect the diff and commit only the intended changes.
-5. Read and follow the existing github-open-pr or bitbucket-open-pr skill according to the remote. Preserve its clean-worktree checks, duplicate detection, supported-host rules, push-failure handling, and one-push behavior. Open the pull request ready for review by default.
+5. Read and follow the existing github-open-pr or bitbucket-open-pr skill according to the remote. Preserve its clean-worktree checks, duplicate detection, supported-host rules, push-failure handling, and one-push behavior.
 6. Report the commit SHA and pull request URL.`;
 const AUTO_PLAN_BUILD_INSTRUCTIONS = `This is an explicitly activated /plan-build workflow. Stay in plan mode while exploring and asking questions. Do not infer completion from an ordinary response or a question. Once all required questions are answered, call finish_plan exactly once with a nonempty, self-contained plan containing decisions, files, implementation steps, and validation. The tool will start a fresh build session after this turn settles.`;
 const FINISH_PLAN_PARAMS = Type.Object({
@@ -492,7 +493,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	const SET_MODELS_FLAGS = ["--all", "--large", "--medium", "--small"] as const;
 
 	function setModelsFlagToken(value: string): boolean {
-		return /^(--)?(all|large|medium|small)(=.*)?$/i.test(value);
+		return /^--(all|large|medium|small)(=.*)?$/i.test(value);
 	}
 
 	function setModelsFlagAlias(flag: string): ModelAlias {
@@ -868,7 +869,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("execute-plan-pr", {
-		description: "Finalize current plan, then implement, commit, push, and open a ready-for-review pull request",
+		description: "Finalize current plan, then implement, commit, push, and open a pull request",
 		handler: async (args, ctx) => {
 			if (!ctx.isIdle()) {
 				ctx.ui.notify("Wait for the current turn to finish before executing the plan.", "warning");
@@ -1320,13 +1321,15 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", async (event) => {
 		const modeConfig = getActiveModeConfig();
-		const promptSuffix = modeConfig?.systemPrompt ? `\n\n${modeConfig.systemPrompt}` : "";
-		const automaticSuffix = automaticPlanBuildActive && mode === "plan"
-			? `\n\n${AUTO_PLAN_BUILD_INSTRUCTIONS}`
-			: "";
-		return {
-			systemPrompt: event.systemPrompt + promptSuffix + automaticSuffix,
-		};
+		const instructions = [
+			modeConfig?.systemPrompt,
+			automaticPlanBuildActive && mode === "plan" ? AUTO_PLAN_BUILD_INSTRUCTIONS : undefined,
+		].filter(Boolean).join("\n\n");
+		if (instructions) {
+			event.systemPromptOptions.sections[MODE_PROMPT_SECTION] = instructions;
+		} else {
+			delete event.systemPromptOptions.sections[MODE_PROMPT_SECTION];
+		}
 	});
 
 	pi.on("input", async (event, ctx) => {

@@ -42,7 +42,7 @@ else
   test_fail ".pi/settings.json defaults to gpt-6-luna" "defaultModel is not gpt-6-luna"
 fi
 
-for pkg in "npm:pi-web-access" "npm:@earendil-works/pi-tui" "npm:pi-mcp-adapter" "npm:agent-status-pi" "https://github.com/DietrichGebert/ponytail@v4.7.0"; do
+for pkg in "npm:pi-web-access" "npm:@earendil-works/pi-tui" "npm:pi-mcp-adapter" "npm:agent-status-pi@0.1.33" "npm:pi-claude-bridge" "https://github.com/DietrichGebert/ponytail@v4.7.0"; do
   if grep -qF "$pkg" "$settings_json"; then
     test_pass ".pi/settings.json contains $pkg"
   else
@@ -117,6 +117,21 @@ elif command -v jq >/dev/null 2>&1; then
   fi
 else
   test_fail "mcp.json GitHub header check" "no parser available (node, python3, jq)"
+fi
+
+# 8. Headless browser: the MCP entry and the image browsers must stay paired
+if grep -q '"command": "playwright-mcp"' "$mcp_json" && grep -q '"--headless"' "$mcp_json" && grep -q '"--browser"' "$mcp_json"; then
+  test_pass ".pi/mcp.json runs the Playwright MCP headless"
+else
+  test_fail ".pi/mcp.json runs the Playwright MCP headless" "playwright entry missing headless/browser flags"
+fi
+
+if grep -q 'npm i -g "@playwright/mcp' "$REPO_ROOT/code-sandbox/Dockerfile" &&
+  grep -q 'PLAYWRIGHT_BROWSERS_PATH' "$REPO_ROOT/code-sandbox/Dockerfile" &&
+  grep -q 'install-browser .*chromium' "$REPO_ROOT/code-sandbox/Dockerfile"; then
+  test_pass "code-sandbox image installs Playwright browsers"
+else
+  test_fail "code-sandbox image installs Playwright browsers" "missing playwright install in code-sandbox/Dockerfile"
 fi
 
 test_summary

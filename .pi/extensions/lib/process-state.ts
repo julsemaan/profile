@@ -11,7 +11,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 export function processStatePath(key: string): string {
-	return path.join(os.tmpdir(), `pi-${key}-${process.pid}.json`);
+	return path.join(os.tmpdir(), `pi-${key}-${os.hostname()}-${process.pid}.json`);
 }
 
 export function readProcessState<T>(key: string): T | undefined {

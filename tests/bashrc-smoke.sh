@@ -107,6 +107,7 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   declare -F gpoh >/dev/null && echo "__FN_gpoh__"
   declare -F gtagpush >/dev/null && echo "__FN_gtagpush__"
   declare -F gcoto >/dev/null && echo "__FN_gcoto__"
+  declare -F gacoto >/dev/null && echo "__FN_gacoto__"
   declare -F gcoto-model >/dev/null && echo "__FN_gcoto_model__"
   declare -F gacp >/dev/null && echo "__FN_gacp__"
   declare -F gcoto-commit-with-model >/dev/null && echo "__FN_gcoto_commit_with_model__"
@@ -116,6 +117,7 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   ! declare -F gcoto-free >/dev/null && echo "__NO_FN_gcoto_free__"
   declare -F add_alias >/dev/null && echo "__FN_add_alias__"
   declare -F jprofile_path_prepend >/dev/null && echo "__FN_jprofile_path_prepend__"
+  declare -F stayin-alive >/dev/null && echo "__FN_stayin_alive__"
 
   # Check key aliases
   alias gpush >/dev/null 2>&1 && echo "__AL_gpush__"
@@ -131,7 +133,6 @@ _result=$(_run_interactive "$FIXTURES_DIR" '
   alias qco >/dev/null 2>&1 && echo "__AL_qco__"
   alias qpush >/dev/null 2>&1 && echo "__AL_qpush__"
   alias k >/dev/null 2>&1 && echo "__AL_k__"
-  alias gacoto >/dev/null 2>&1 && echo "__AL_gacoto__"
 
   # Short agent/tmux/kube aliases
   alias pus >/dev/null 2>&1 && echo "__AL_pus__"
@@ -152,6 +153,7 @@ assert_match "gpoh exists" "__FN_gpoh__" "$_result"
 assert_match "gpoh is not an alias" "__NO_AL_gpoh__" "$_result"
 assert_match "gtagpush exists" "__FN_gtagpush__" "$_result"
 assert_match "gcoto exists" "__FN_gcoto__" "$_result"
+assert_match "gacoto exists" "__FN_gacoto__" "$_result"
 assert_match "gcoto-model exists" "__FN_gcoto_model__" "$_result"
 assert_match "gacp exists" "__FN_gacp__" "$_result"
 assert_match "gcoto-commit-with-model exists" "__FN_gcoto_commit_with_model__" "$_result"
@@ -161,6 +163,7 @@ assert_match "gcoto-openrouter exists" "__FN_gcoto_openrouter__" "$_result"
 assert_match "gcoto-free is removed" "__NO_FN_gcoto_free__" "$_result"
 assert_match "add_alias exists" "__FN_add_alias__" "$_result"
 assert_match "jprofile_path_prepend exists" "__FN_jprofile_path_prepend__" "$_result"
+assert_match "stayin-alive exists" "__FN_stayin_alive__" "$_result"
 
 assert_match "gpush alias" "__AL_gpush__" "$_result"
 assert_match "gs alias" "__AL_gs__" "$_result"
@@ -175,7 +178,6 @@ assert_match "rbrc-all alias" "__AL_rbrc_all__" "$_result"
 assert_match "qco alias" "__AL_qco__" "$_result"
 assert_match "qpush alias" "__AL_qpush__" "$_result"
 assert_match "k alias (with kubectl stub)" "__AL_k__" "$_result"
-assert_match "gacoto alias" "__AL_gacoto__" "$_result"
 
 assert_match "pus alias" "__AL_pus__" "$_result"
 assert_match "puss alias" "__AL_puss__" "$_result"

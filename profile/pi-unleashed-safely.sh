@@ -59,14 +59,23 @@ Arguments:
                       Installed /usr/local/etc/.gitignore (from
                       profile/.gitignore) is mounted read-only as the
                       container's global gitignore.
+  Claude config       Host ~/.claude is mounted read-write and CLAUDE_CONFIG_DIR
+                      points at it, so pi-claude-bridge logins and sessions
+                      persist across runs. This means the sandbox can read and
+                      modify your Claude credentials and hooks.
   --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
                       on a private network. Sets DOCKER_HOST inside the container
                       so inner containers run in the companion, not on the host.
+  kind network        Joins the Docker network named "kind" when it exists, so
+                      kind cluster containers resolve inside the sandbox.
   -h, --help          Show this help text.
 
 Environment:
   PI_NPM_PACKAGE        NPM package name to install for the CLI.
                         Defaults to "@mariozechner/pi-coding-agent".
+  PI_FAST_MODE          Set to 1 to default Codex fast mode on; other values
+                        leave it off. Saved session settings override this default.
+                        /new keeps the current setting, including /fast off.
   PI_TIMING             Pi's own per-extension startup timing. Forwarded
                         into the container.
   PI_STARTUP_BENCHMARK  Pi's full startup benchmark. Requires a TTY.
@@ -247,6 +256,7 @@ HOST_SSH_KEY="${PI_SSH_KEY_PATH:-}"
 HOST_KNOWN_HOSTS="$HOST_SSH_DIR/known_hosts"
 HOST_SSH_CONFIG="$HOST_SSH_DIR/config"
 HOST_CACHE_HOME="$RESOLVED_HOME/.cache"
+HOST_CLAUDE_HOME="$RESOLVED_HOME/.claude"
 ensure_host_dir "$HOST_CACHE_HOME"
 CACHE_DOCKER_FLAGS=(-v "$HOST_CACHE_HOME:$RESOLVED_HOME/.cache")
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
@@ -258,6 +268,7 @@ fi
 ensure_host_dir "$HOST_PI_HOME"
 ensure_host_dir "$HOST_PI_JITI_CACHE"
 ensure_host_dir "$HOST_AGENT_STATUS"
+ensure_host_dir "$HOST_CLAUDE_HOME"
 
 # Image/identity freshness cache: 24h gate on pull+build+identity regen.
 # One stamp covers all images.
@@ -425,6 +436,7 @@ phase image-gate
 
 # --- DinD companion (Docker-in-Docker) ---
 DIND_DOCKER_FLAGS=()
+NETWORK_DOCKER_FLAGS=()
 if [[ $DIND_ENABLED -eq 1 ]]; then
   DIND_NETWORK="pi-dind-net"
   DIND_CONTAINER="pi-dind"
@@ -475,9 +487,15 @@ if [[ $DIND_ENABLED -eq 1 ]]; then
     exit 1
   fi
 
-  DIND_DOCKER_FLAGS+=(--network "$DIND_NETWORK")
+  NETWORK_DOCKER_FLAGS+=(--network "$DIND_NETWORK")
   DIND_DOCKER_FLAGS+=(-e "DOCKER_HOST=tcp://$DIND_CONTAINER:$DIND_PORT")
 fi
+
+# ponytail: one network per run; --docker-host keeps its private net.
+if [[ ${#NETWORK_DOCKER_FLAGS[@]} -eq 0 ]] && docker network inspect kind >/dev/null 2>&1; then
+  NETWORK_DOCKER_FLAGS+=(--network kind)
+fi
+phase network
 
 CACHE_PASSWD="$CACHE_DIR/passwd"
 CACHE_GROUP="$CACHE_DIR/group"
@@ -571,6 +589,15 @@ if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 && -d "$RESOLVED_HOME/src" ]]; then
 fi
 
 PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
+
+# Claude Code state for pi-claude-bridge. Directory mount only: a file bind
+# mount of ~/.claude.json breaks Claude's temp-file+rename writes (EBUSY),
+# so CLAUDE_CONFIG_DIR moves it inside the mounted directory instead.
+CLAUDE_DOCKER_FLAGS=(
+  -v "$HOST_CLAUDE_HOME:$CONTAINER_HOME/.claude"
+  -e "CLAUDE_CONFIG_DIR=$CONTAINER_HOME/.claude"
+  -e IS_SANDBOX=1 # Allow Claude's permission bypass when running as root in Docker.
+)
 if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 ]]; then
   mkdir -p "$HOST_PI_HOME/agent/extensions"
   mkdir -p "$HOST_PI_HOME/agent/prompts"
@@ -654,6 +681,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${GIT_CONFIG_DOCKER_FLAGS[@]}" \
   "${GITIGNORE_DOCKER_FLAGS[@]}" \
   -e CONTEXT7_API_KEY \
+  -e PI_FAST_MODE \
   -e PI_TIMING \
   -e PI_STARTUP_BENCHMARK \
   -e JITI_FS_CACHE="$CONTAINER_HOME/.pi/cache/jiti" \
@@ -668,9 +696,11 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -v "$CACHE_PASSWD:/etc/passwd:ro" \
   -v "$CACHE_GROUP:/etc/group:ro" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
+  "${CLAUDE_DOCKER_FLAGS[@]}" \
   -v "$HOST_AGENT_STATUS:$CONTAINER_AGENT_STATUS" \
   "${GO_DOCKER_FLAGS[@]}" \
   "${SSH_DOCKER_FLAGS[@]}" \
+  "${NETWORK_DOCKER_FLAGS[@]}" \
   "${DIND_DOCKER_FLAGS[@]}" \
   "${GWT_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \

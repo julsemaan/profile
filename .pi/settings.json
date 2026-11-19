@@ -10,7 +10,8 @@
     "openrouter/z-ai/glm-5.3-flash",
     "openrouter/deepseek/*",
     "openrouter/meta/*-contributor",
-    "github-copilot/*"
+    "github-copilot/*",
+    "claude-bridge/*"
   ],
   "compaction": {
     "enabled": true
@@ -19,7 +20,8 @@
     "npm:pi-web-access",
     "npm:@earendil-works/pi-tui",
     "npm:pi-mcp-adapter",
-    "npm:agent-status-pi",
+    "npm:agent-status-pi@0.1.33",
+    "npm:pi-claude-bridge",
     "https://github.com/DietrichGebert/ponytail@v4.7.0"
   ],
   "theme": "dark"
