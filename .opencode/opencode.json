@@ -152,8 +152,12 @@
     "playwright": {
       "type": "local",
       "command": [
-        "npx",
-        "@playwright/mcp@latest"
+        "playwright-mcp",
+        "--headless",
+        "--no-sandbox",
+        "--browser",
+        "chromium",
+        "--isolated"
       ]
     },
     "gh_grep": {

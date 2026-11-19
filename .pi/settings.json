@@ -1,19 +1,17 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.5",
+  "defaultModel": "gpt-6-luna",
   "enabledModels": [
-    "deepseek/deepseek-v4-pro",
-    "deepseek/deepseek-v4-flash",
-    "openai-codex/gpt-5.4",
-    "openai-codex/gpt-5.5",
-    "openai-codex/gpt-5.6-luna",
-    "openai-codex/gpt-5.6-sol",
-    "openai-codex/gpt-5.6-terra",
+    "deepseek/*",
+    "openai-codex/*",
     "opencode/*-free",
     "openrouter/free",
+    "openrouter/openai/gpt-6-luna",
     "openrouter/z-ai/glm-5.3-flash",
-    "openrouter/deepseek/deepseek-v4-flash-0731",
-    "github-copilot/*"
+    "openrouter/deepseek/*",
+    "openrouter/meta/*-contributor",
+    "github-copilot/*",
+    "claude-bridge/*"
   ],
   "compaction": {
     "enabled": true
@@ -22,7 +20,9 @@
     "npm:pi-web-access",
     "npm:@earendil-works/pi-tui",
     "npm:pi-mcp-adapter",
-    "npm:agent-status-pi",
+    "npm:agent-status-pi@0.1.33",
+    "npm:pi-claude-bridge",
     "https://github.com/DietrichGebert/ponytail@v4.7.0"
-  ]
+  ],
+  "theme": "dark"
 }

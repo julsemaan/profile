@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+GWT_EXECUTABLE="$SCRIPT_DIR/gwt"
+
 IMAGE="pi-unleashed-safely:latest"
 MNT_HOST="$PWD"
 MNT_CONTAINER="$PWD"
@@ -12,6 +15,17 @@ USE_TTY=1
 HIDE_HOME_PI_EXTENSIONS=0
 MODEL_PROFILE=""
 DIND_ENABLED=0
+
+# Opt-in phase timing: PI_UNLEASHED_TIMING=1 prints per-phase ms to stderr.
+TIMING_ENABLED="${PI_UNLEASHED_TIMING:-0}"
+TIMING_LAST="${EPOCHREALTIME:-0}"
+TIMING_LAST="${TIMING_LAST/./}"
+function phase {
+  [[ "$TIMING_ENABLED" == "1" && -n "${EPOCHREALTIME:-}" ]] || return 0
+  local now="${EPOCHREALTIME/./}"
+  printf 'pi-timing %-24s %5dms\n' "$1" "$(((now - TIMING_LAST) / 1000))" >&2
+  TIMING_LAST="$now"
+}
 
 # Extra npm packages to install into image.
 PI_NPM_INSTALL_PACKAGES=("pi-web-access" "@earendil-works/pi-tui" "pi-mcp-adapter" "agent-status-pi")
@@ -45,14 +59,28 @@ Arguments:
                       Installed /usr/local/etc/.gitignore (from
                       profile/.gitignore) is mounted read-only as the
                       container's global gitignore.
+  Claude config       Host ~/.claude is mounted read-write and CLAUDE_CONFIG_DIR
+                      points at it, so pi-claude-bridge logins and sessions
+                      persist across runs. This means the sandbox can read and
+                      modify your Claude credentials and hooks.
   --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
                       on a private network. Sets DOCKER_HOST inside the container
                       so inner containers run in the companion, not on the host.
+  kind network        Joins the Docker network named "kind" when it exists, so
+                      kind cluster containers resolve inside the sandbox.
   -h, --help          Show this help text.
 
 Environment:
   PI_NPM_PACKAGE        NPM package name to install for the CLI.
                         Defaults to "@mariozechner/pi-coding-agent".
+  PI_FAST_MODE          Set to 1 to default Codex fast mode on; other values
+                        leave it off. Saved session settings override this default.
+                        /new keeps the current setting, including /fast off.
+  PI_TIMING             Pi's own per-extension startup timing. Forwarded
+                        into the container.
+  PI_STARTUP_BENCHMARK  Pi's full startup benchmark. Requires a TTY.
+                        PI_TIMING=1 PI_STARTUP_BENCHMARK=1 ./pi-unleashed-safely.sh
+  PI_UNLEASHED_TIMING   Print per-phase wrapper timings (ms) to stderr.
   PI_SSH_KEY_PATH       Opt-in host SSH private key path. When valid, Git
                         explicitly uses mounted key with IdentitiesOnly=yes
                         and mounted host ~/.ssh/known_hosts for strict
@@ -160,6 +188,13 @@ while [[ $# -gt 0 ]]; do
     ;;
   esac
 done
+phase prologue
+
+if [[ ! -x "$GWT_EXECUTABLE" ]]; then
+  echo "Error: gwt executable is missing or not executable beside this wrapper: $GWT_EXECUTABLE" >&2
+  exit 1
+fi
+GWT_DOCKER_FLAGS=(--mount "type=bind,src=$GWT_EXECUTABLE,dst=/usr/local/bin/gwt,readonly")
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Error: docker is required but not found in PATH." >&2
@@ -221,6 +256,7 @@ HOST_SSH_KEY="${PI_SSH_KEY_PATH:-}"
 HOST_KNOWN_HOSTS="$HOST_SSH_DIR/known_hosts"
 HOST_SSH_CONFIG="$HOST_SSH_DIR/config"
 HOST_CACHE_HOME="$RESOLVED_HOME/.cache"
+HOST_CLAUDE_HOME="$RESOLVED_HOME/.claude"
 ensure_host_dir "$HOST_CACHE_HOME"
 CACHE_DOCKER_FLAGS=(-v "$HOST_CACHE_HOME:$RESOLVED_HOME/.cache")
 PI_NPM_PACKAGE="${PI_NPM_PACKAGE:-@earendil-works/pi-coding-agent}"
@@ -232,6 +268,7 @@ fi
 ensure_host_dir "$HOST_PI_HOME"
 ensure_host_dir "$HOST_PI_JITI_CACHE"
 ensure_host_dir "$HOST_AGENT_STATUS"
+ensure_host_dir "$HOST_CLAUDE_HOME"
 
 # Image/identity freshness cache: 24h gate on pull+build+identity regen.
 # One stamp covers all images.
@@ -255,6 +292,7 @@ if [[ -d "$HOST_PI_HOME" ]]; then
     fi
   fi
 fi
+phase ownership-scan
 
 # Go cache discovery for private module reuse in container builds.
 # Discovers host Go paths, creates cache dirs, and builds bind-mount flags.
@@ -262,18 +300,22 @@ fi
 # already-downloaded module files.
 GO_DOCKER_FLAGS=()
 if command -v go >/dev/null 2>&1; then
-  HOST_GOMODCACHE=$(go env GOMODCACHE 2>/dev/null || true)
-  HOST_GOCACHE=$(go env GOCACHE 2>/dev/null || true)
+  # One go env spawn for all variables; the indexes below follow GO_ENV_VARS order.
+  GO_ENV_VARS=(GOPATH GOMODCACHE GOCACHE GOPRIVATE GONOPROXY GONOSUMDB GOVCS)
+  mapfile -t GO_ENV_VALUES < <(go env "${GO_ENV_VARS[@]}" 2>/dev/null || true)
+
+  HOST_GOMODCACHE="${GO_ENV_VALUES[1]:-}"
+  HOST_GOCACHE="${GO_ENV_VALUES[2]:-}"
 
   [[ -n "$HOST_GOMODCACHE" ]] && mkdir -p "$HOST_GOMODCACHE" && GO_DOCKER_FLAGS+=(-v "$HOST_GOMODCACHE:$HOST_GOMODCACHE:rw")
   [[ -n "$HOST_GOCACHE" ]] && mkdir -p "$HOST_GOCACHE" && GO_DOCKER_FLAGS+=(-v "$HOST_GOCACHE:$HOST_GOCACHE:rw")
 
   # Forward Go env vars (only if set on host)
-  for go_env in GOPATH GOMODCACHE GOCACHE GOPRIVATE GONOPROXY GONOSUMDB GOVCS; do
-    val=$(go env "$go_env" 2>/dev/null || true)
-    [[ -n "$val" ]] && GO_DOCKER_FLAGS+=(-e "$go_env")
+  for i in 0 3 4 5 6; do
+    [[ -n "${GO_ENV_VALUES[$i]:-}" ]] && GO_DOCKER_FLAGS+=(-e "${GO_ENV_VARS[$i]}")
   done
 fi
+phase go-caches
 
 # GOFLAGS: default to -mod=readonly unless host overrides
 GOFLAGS_VALUE="${GOFLAGS:--mod=readonly}"
@@ -390,9 +432,11 @@ ENV EDITOR=vim
 ENTRYPOINT ["pi"]
 EOF
 fi
+phase image-gate
 
 # --- DinD companion (Docker-in-Docker) ---
 DIND_DOCKER_FLAGS=()
+NETWORK_DOCKER_FLAGS=()
 if [[ $DIND_ENABLED -eq 1 ]]; then
   DIND_NETWORK="pi-dind-net"
   DIND_CONTAINER="pi-dind"
@@ -443,9 +487,15 @@ if [[ $DIND_ENABLED -eq 1 ]]; then
     exit 1
   fi
 
-  DIND_DOCKER_FLAGS+=(--network "$DIND_NETWORK")
+  NETWORK_DOCKER_FLAGS+=(--network "$DIND_NETWORK")
   DIND_DOCKER_FLAGS+=(-e "DOCKER_HOST=tcp://$DIND_CONTAINER:$DIND_PORT")
 fi
+
+# ponytail: one network per run; --docker-host keeps its private net.
+if [[ ${#NETWORK_DOCKER_FLAGS[@]} -eq 0 ]] && docker network inspect kind >/dev/null 2>&1; then
+  NETWORK_DOCKER_FLAGS+=(--network kind)
+fi
+phase network
 
 CACHE_PASSWD="$CACHE_DIR/passwd"
 CACHE_GROUP="$CACHE_DIR/group"
@@ -478,6 +528,7 @@ if [[ $FRESH -eq 0 ]]; then
     chown "$RESOLVED_UID:$RESOLVED_GID" "$CACHE_PASSWD" "$CACHE_GROUP" "$STAMP"
   fi
 fi
+phase identity-cache
 if [[ $USE_TTY -eq 1 ]]; then
   DOCKER_TTY_FLAGS="-it"
   DOCKER_NO_TTY_ENV_FLAGS=""
@@ -538,6 +589,15 @@ if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 && -d "$RESOLVED_HOME/src" ]]; then
 fi
 
 PI_HOME_DOCKER_FLAGS=(-v "$HOST_PI_HOME:$CONTAINER_HOME/.pi")
+
+# Claude Code state for pi-claude-bridge. Directory mount only: a file bind
+# mount of ~/.claude.json breaks Claude's temp-file+rename writes (EBUSY),
+# so CLAUDE_CONFIG_DIR moves it inside the mounted directory instead.
+CLAUDE_DOCKER_FLAGS=(
+  -v "$HOST_CLAUDE_HOME:$CONTAINER_HOME/.claude"
+  -e "CLAUDE_CONFIG_DIR=$CONTAINER_HOME/.claude"
+  -e IS_SANDBOX=1 # Allow Claude's permission bypass when running as root in Docker.
+)
 if [[ $HIDE_HOME_PI_EXTENSIONS -eq 1 ]]; then
   mkdir -p "$HOST_PI_HOME/agent/extensions"
   mkdir -p "$HOST_PI_HOME/agent/prompts"
@@ -583,6 +643,7 @@ if [[ -n "${WAYLAND_DISPLAY:-}" && -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME
 fi
 
 # Jiti's current env parser treats JITI_FS_CACHE as a boolean, so TMPDIR selects its persistent cache root.
+phase run-assembly
 # shellcheck disable=SC2086 # word-splitting intentional: multi-flag string
 docker run --rm $DOCKER_TTY_FLAGS \
   $DOCKER_NO_TTY_ENV_FLAGS \
@@ -615,14 +676,17 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e GH_TOKEN \
   -e BRAVE_API_KEY \
   -e GH_MCP_TOKEN \
+  -e MCP_UI_VIEWER=none \
   -e BB_MCP_TOKEN \
   "${GIT_CONFIG_DOCKER_FLAGS[@]}" \
   "${GITIGNORE_DOCKER_FLAGS[@]}" \
   -e CONTEXT7_API_KEY \
+  -e PI_FAST_MODE \
   -e PI_TIMING \
   -e PI_STARTUP_BENCHMARK \
   -e JITI_FS_CACHE="$CONTAINER_HOME/.pi/cache/jiti" \
   -e TMPDIR="$CONTAINER_HOME/.pi/cache" \
+  -e "GWT_MOUNT_ROOT=$MNT_CONTAINER" \
   -e PI_BUILD_PLAN_MODEL_PROFILE="$MODEL_PROFILE" \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \
@@ -632,10 +696,13 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -v "$CACHE_PASSWD:/etc/passwd:ro" \
   -v "$CACHE_GROUP:/etc/group:ro" \
   "${PI_HOME_DOCKER_FLAGS[@]}" \
+  "${CLAUDE_DOCKER_FLAGS[@]}" \
   -v "$HOST_AGENT_STATUS:$CONTAINER_AGENT_STATUS" \
   "${GO_DOCKER_FLAGS[@]}" \
   "${SSH_DOCKER_FLAGS[@]}" \
+  "${NETWORK_DOCKER_FLAGS[@]}" \
   "${DIND_DOCKER_FLAGS[@]}" \
+  "${GWT_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
   --mount "type=bind,src=$MNT_HOST,dst=$MNT_CONTAINER" -w "$WORKDIR" \
   "${EXTRA_MOUNT_FLAGS[@]}" \
@@ -643,3 +710,4 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "$IMAGE" \
   --extension "$CONTAINER_HOME/.pi/agent/always-on-unslop.ts" \
   "${PI_ARGS[@]}"
+phase container

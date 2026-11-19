@@ -5,6 +5,7 @@ RUN apt-get update \
     ca-certificates \
     curl \
     clang-format \
+    gh \
     ncurses-term \
     python-is-python3 \
     python3 \
@@ -18,6 +19,11 @@ RUN apt-get update \
     xclip \
     xsel \
  && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/platformio \
+ && /opt/platformio/bin/pip install --no-cache-dir platformio \
+ && ln -s /opt/platformio/bin/pio /usr/local/bin/pio \
+ && ln -s /opt/platformio/bin/platformio /usr/local/bin/platformio
 
 COPY profile/.gitignore /usr/local/etc/.gitignore
 RUN git config --system core.excludesfile /usr/local/etc/.gitignore
@@ -48,6 +54,19 @@ tar -C /usr/local -xzf /tmp/go.tgz; \
 rm /tmp/go.tgz; \
 ln -sf /usr/local/go/bin/go /usr/local/bin/go; \
 ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+'
+
+# Headless Chromium for agent browser tooling (Playwright MCP). Browsers live
+# outside $HOME because the sandbox mounts an ephemeral home directory, and the
+# headless shell is skipped because MCP launches the Chrome for Testing build.
+ARG PLAYWRIGHT_MCP_VERSION=0.0.84
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN /bin/bash -euo pipefail -c '\
+npm i -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}"; \
+mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"; \
+chmod 777 "$PLAYWRIGHT_BROWSERS_PATH"; \
+playwright-mcp install-browser --with-deps --no-shell chromium; \
+rm -rf /var/lib/apt/lists/* \
 '
 
 RUN /bin/bash -euo pipefail -c '\

@@ -16,6 +16,8 @@ ssh_dir="$home/.ssh"
 stub_dir="$tmp_dir/bin"
 docker_run_log="$tmp_dir/docker-run.log"
 docker_command_log="$tmp_dir/docker-command.log"
+go_env_log="$tmp_dir/go-env.log"
+go_stub_root="$tmp_dir/go-stub"
 key="$ssh_dir/id_rsa_git"
 known_hosts="$ssh_dir/known_hosts"
 config="$ssh_dir/config"
@@ -57,6 +59,9 @@ cp)
   ;;
 rm)
   ;;
+network)
+  exit "${DOCKER_KIND_NETWORK_EXIT:-1}"
+  ;;
 run)
   printf '%s\n' "$@" >"$DOCKER_RUN_LOG"
   printf '%s\n' "$@" >>"$DOCKER_COMMAND_LOG"
@@ -69,6 +74,23 @@ esac
 STUB
 chmod +x "$stub_dir/docker"
 
+cat >"$stub_dir/go" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "$*" >>"$GO_ENV_LOG"
+
+printf '%s\n' \
+  "$GO_STUB_ROOT/gopath" \
+  "$GO_STUB_ROOT/gomodcache" \
+  "$GO_STUB_ROOT/gocache" \
+  "$GO_STUB_ROOT/goprivate" \
+  "$GO_STUB_ROOT/gonoproxy" \
+  "$GO_STUB_ROOT/gonosumdb" \
+  "$GO_STUB_ROOT/govcs"
+STUB
+chmod +x "$stub_dir/go"
+
 function run_wrapper {
   (
     cd "$REPO_ROOT"
@@ -76,6 +98,8 @@ function run_wrapper {
     export PATH="$stub_dir:/usr/bin:/bin"
     export DOCKER_RUN_LOG="$docker_run_log"
     export DOCKER_COMMAND_LOG="$docker_command_log"
+    export GO_ENV_LOG="$go_env_log"
+    export GO_STUB_ROOT="$go_stub_root"
     export PI_SSH_KEY_PATH="$key"
     unset SUDO_UID SUDO_GID SUDO_USER GOFLAGS GOMODCACHE GOCACHE GOPATH
     unset TMUX DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR HERDR_SOCKET_PATH
@@ -95,6 +119,32 @@ assert_contains "custom prompt remains forwarded to Pi" "$run_args" "$tmp_dir/cu
 assert_contains "--dev masks host extensions" "$run_args" "$home/.pi/agent/extensions:rw,exec,uid=$(id -u),gid=$(id -g)"
 assert_contains "--dev masks host prompts" "$run_args" "$home/.pi/agent/prompts:rw,exec,uid=$(id -u),gid=$(id -g)"
 assert_contains "--dev masks host skills" "$run_args" "$home/.pi/agent/skills:rw,exec,uid=$(id -u),gid=$(id -g)"
+assert_contains "gwt is mounted read-only" "$run_args" "type=bind,src=$REPO_ROOT/profile/gwt,dst=/usr/local/bin/gwt,readonly"
+assert_contains "primary mount is passed to gwt" "$run_args" "GWT_MOUNT_ROOT=$REPO_ROOT"
+assert_contains "MCP browser launches are disabled" "$run_args" $'-e\nMCP_UI_VIEWER=none\n'
+
+no_gwt_wrapper_dir="$tmp_dir/no-gwt-wrapper"
+no_gwt_wrapper="$no_gwt_wrapper_dir/pi-unleashed-safely.sh"
+mkdir -p "$no_gwt_wrapper_dir"
+cp "$REPO_ROOT/profile/pi-unleashed-safely.sh" "$no_gwt_wrapper"
+chmod +x "$no_gwt_wrapper"
+rm -f "$docker_command_log"
+if (
+  cd "$REPO_ROOT"
+  env -u SUDO_UID -u SUDO_GID -u SUDO_USER \
+    HOME="$home" PATH="$stub_dir:/usr/bin:/bin" DOCKER_COMMAND_LOG="$docker_command_log" \
+    bash "$no_gwt_wrapper" --no-tty
+) >/dev/null 2>"$tmp_dir/no-gwt-wrapper.stderr"; then
+  test_fail "missing sibling gwt fails before Docker launches" "wrapper unexpectedly succeeded"
+else
+  test_pass "missing sibling gwt fails before Docker launches"
+fi
+assert_contains "missing gwt error names the sibling executable" "$(<"$tmp_dir/no-gwt-wrapper.stderr")" "$no_gwt_wrapper_dir/gwt"
+if [[ ! -e "$docker_command_log" ]]; then
+  test_pass "missing sibling gwt does not invoke Docker"
+else
+  test_fail "missing sibling gwt does not invoke Docker" "Docker was invoked"
+fi
 
 rm "$unslop_prompt"
 rm -f "$docker_command_log"
@@ -145,11 +195,12 @@ const pi = {
 for (const extension of extensions) extension(pi);
 if (handlers.length !== 2) throw new Error("expected two before_agent_start handlers");
 
-let systemPrompt = "base system prompt";
+const event = { systemPrompt: "base system prompt", systemPromptOptions: { sections: {} } };
 for (const handler of handlers) {
-  const result = await handler({ systemPrompt });
-  if (result?.systemPrompt !== undefined) systemPrompt = result.systemPrompt;
+  const result = await handler(event);
+  if (result?.systemPrompt !== undefined) throw new Error("system prompt was replaced");
 }
+const systemPrompt = Object.values(event.systemPromptOptions.sections).join("\n");
 
 const prompt = fs.readFileSync(promptPath, "utf8");
 const marker = "<!-- profile:always-on-unslop -->";
@@ -157,8 +208,10 @@ const markerCount = systemPrompt.split(marker).length - 1;
 if (!systemPrompt.includes(prompt)) throw new Error("full UNSLOP.md content was not injected");
 if (markerCount !== 1) throw new Error(`expected one marker, got ${markerCount}`);
 
-const duplicateResult = await handlers[0]({ systemPrompt });
-if (duplicateResult !== undefined) throw new Error("duplicate prompt was injected");
+await handlers[0](event);
+if (Object.values(event.systemPromptOptions.sections).join("\n") !== systemPrompt) {
+  throw new Error("duplicate prompt was injected");
+}
 
 process.stdout.write("ok\n");
 NODE
@@ -180,10 +233,20 @@ fi
 assert_contains "Jiti cache path is forwarded" "$run_args" "JITI_FS_CACHE=$home/.pi/cache/jiti"
 assert_contains "Jiti temp root is persistent" "$run_args" "TMPDIR=$home/.pi/cache"
 
-PI_TIMING=1 PI_STARTUP_BENCHMARK=1 run_wrapper
+PI_FAST_MODE=1 PI_TIMING=1 PI_STARTUP_BENCHMARK=1 run_wrapper
 run_args=$(<"$docker_run_log")
+assert_contains "PI_FAST_MODE is forwarded without wrapper defaults" "$run_args" $'-e\nPI_FAST_MODE\n'
 assert_contains "PI_TIMING reaches the container" "$run_args" "PI_TIMING"
 assert_contains "PI_STARTUP_BENCHMARK reaches the container" "$run_args" "PI_STARTUP_BENCHMARK"
+
+# --- Go cache discovery tests ---
+rm -f "$go_env_log"
+run_wrapper
+run_args=$(<"$docker_run_log")
+assert_eq "go env is invoked once per wrapper run" "1" "$(wc -l <"$go_env_log" | tr -d ' ')"
+assert_contains "GOMODCACHE is bind-mounted read-write" "$run_args" "$go_stub_root/gomodcache:$go_stub_root/gomodcache:rw"
+assert_contains "GOCACHE is bind-mounted read-write" "$run_args" "$go_stub_root/gocache:$go_stub_root/gocache:rw"
+assert_contains "GOPATH is forwarded to the container" "$run_args" $'-e\nGOPATH'
 
 # --- .gitconfig forwarding tests ---
 gitconfig="$home/.gitconfig"
@@ -195,11 +258,25 @@ run_wrapper
 run_args=$(<"$docker_run_log")
 assert_contains ".gitconfig mounted read-only" "$run_args" "$gitconfig:$home/.gitconfig:ro"
 assert_contains "host .cache bind-mounted (jiti compile cache persists)" "$run_args" "$home/.cache:$home/.cache"
+assert_contains "host .claude bind-mounted for pi-claude-bridge" "$run_args" "$home/.claude:$home/.claude"
+assert_contains "CLAUDE_CONFIG_DIR points at the mounted .claude dir" "$run_args" $'-e\nCLAUDE_CONFIG_DIR='"$home/.claude"
+assert_contains "Claude can skip permissions as root inside the sandbox" "$run_args" $'-e\nIS_SANDBOX=1'
 
 rm "$gitconfig"
 run_wrapper
 run_args=$(<"$docker_run_log")
 assert_not_match "absent .gitconfig is not mounted" "gitconfig" "$run_args"
+
+# --- kind network tests ---
+if [[ "$run_args" == *$'--network\nkind'* ]]; then
+  test_fail "kind network is skipped when absent" "--network kind unexpectedly passed"
+else
+  test_pass "kind network is skipped when absent"
+fi
+
+DOCKER_KIND_NETWORK_EXIT=0 run_wrapper
+run_args=$(<"$docker_run_log")
+assert_contains "kind network is attached when present" "$run_args" $'--network\nkind'
 
 # --- SSH key tests ---
 run_wrapper

@@ -20,6 +20,7 @@ Generate a visually polished, self-contained HTML version of the current plan. M
 
 - **Always** use `write_tmp_document` — never `write`
 - Path: `html-plans/YYYY-MM-DD-HHMM-<slug>.html` (slug from plan title, fallback `plan`)
+- When revising an already exported plan, use `edit_tmp_document` with targeted edits instead of regenerating the document with `write_tmp_document`
 - All CSS inline — no external stylesheets, JS, fonts, or images
 - Escape all plan text before inserting into HTML
 

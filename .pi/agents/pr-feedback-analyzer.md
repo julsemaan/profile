@@ -72,7 +72,7 @@ Return JSON only. Top-level fields required:
 - `filePath` — when inline
 - `line` — when inline
 - `side` — when available
-- `commentId` — numeric REST review-comment ID only for `review-comment` artifacts; `null` for `review` artifacts
+- `commentId` — numeric REST review-comment ID parsed from comment `html_url` `#discussion_r<digits>` for `review-comment` artifacts; `null` for `review` artifacts
 - `threadId`
 - `parentId`
 - `state`
@@ -81,7 +81,7 @@ Return JSON only. Top-level fields required:
 - `inlineAnchor`
 
 `routing` must include exact metadata needed by worker to reply:
-- GitHub: owner, repo, pullNumber, `commentId` only for review comments, `threadId` when available, and whether fallback must be PR-level comment. Never put a review's `id` in `commentId`; review bodies require PR-level comments.
+- GitHub: owner, repo, pullNumber, `commentId` set to the latest numeric discussion id in the thread for review comments, `threadId` (GraphQL `PRRT_...` for reporting only, never as `commentId`), and `fallbackToPrComment` (`false` when a numeric id was parsed, `true` only when no `#discussion_r<digits>` anchor exists). Never put a review's `id` in `commentId`; review bodies require PR-level comments.
 - Bitbucket: workspaceId, repoId, prId, parentCommentId when applicable, plus any inline path and line anchors needed for threaded or inline reply
 
 `inlineAnchor` should preserve any available path/line/side/start-line anchors needed to attach reply in same location.
@@ -116,6 +116,7 @@ Use MCP read tools to fetch:
 - checks or status
 
 Preserve reply-routing identifiers exactly as returned by MCP when possible.
+Parse the numeric reply target from each review comment `html_url` `#discussion_r<digits>` anchor. Set item `commentId` and `routing.commentId` to the latest comment id in the thread. Keep `PRRT_...` in `threadId` for reporting only, never as `commentId`.
 
 ## Bitbucket guidance
 
@@ -133,6 +134,7 @@ Preserve parent comment id and inline anchors exactly.
 - Prefer latest edited timestamp for stable key revision component
 - If one review body contains several distinct asks, split only when separation is obvious; otherwise keep as one item
 - Sort actionable items oldest first unless source ordering already encodes thread flow better
+- Emit one item per GitHub `threadId`: use the latest unresolved comment body and timestamps in that thread, with its latest numeric discussion id as `commentId`
 
 ## Failure
 
@@ -155,10 +157,10 @@ On MCP failure, return exact failure details. No retry. No fallback.
       "filePath": "src/x.ts",
       "line": 10,
       "commentId": "123",
-      "threadId": "456",
+      "threadId": "PRRT_abc123",
       "parentId": null,
       "forge": "github",
-      "routing": {"owner": "o", "repo": "r", "pullNumber": 12, "commentId": "123"},
+      "routing": {"owner": "o", "repo": "r", "pullNumber": 12, "commentId": "123", "threadId": "PRRT_abc123", "fallbackToPrComment": false},
       "inlineAnchor": {"path": "src/x.ts", "line": 10}
     }
   ]

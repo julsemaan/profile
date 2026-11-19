@@ -1,1 +1,0 @@
-- "Syncing Pi settings with runtime package preservation" is very long. Find ways to speed up

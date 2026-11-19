@@ -84,13 +84,16 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
 - Each wrapper script builds (or reuses) a Docker image on top of `julsemaan/code-sandbox-img:latest`.
 - The container runs the AI agent with **read/write access only to the mounted working directory**.
 - The container has **no access to the host system** beyond the mounted paths — no ability to modify
-  system config or install packages globally. Sensitive host-file access is blocked except for one
-  pi-specific read-only SSH exception described below.
+  system config or install packages globally. Sensitive host-file access is blocked apart from two
+  exceptions: the opt-in read-only SSH key mount, and the read-write `~/.claude` mount used by
+  `pi-claude-bridge`.
 - The agent's home directory is a **tmpfs** (ephemeral), so no state persists on the host.
 - Selected host paths are explicitly bind-mounted for persistence (e.g., pi's `~/.pi`, opencode's
   config/cache/data). `pi-unleashed-safely` can opt into read-only SSH file mounts only when
   `PI_SSH_KEY_PATH` is set to a host private-key file. In that case it also mounts `~/.ssh/known_hosts`
-  and `~/.ssh/config` read-only when present. It does not forward an SSH agent or socket.
+  and `~/.ssh/config` read-only when present. It does not forward an SSH agent or socket. It also
+  joins the Docker network named `kind` when that network exists, so kind cluster containers
+  resolve inside the sandbox.
 - **Clipboard integration** is achieved by forwarding terminal environment variables and mounting
   tmux/X11/Wayland sockets when available.
 - **Go module cache** is mounted from the host (read-only by default) to reuse downloaded modules.
@@ -104,7 +107,8 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
 From `code-sandbox/Dockerfile`:
 - Based on `node:25-bookworm`
 - Includes: Go, kubectl, Helm, ripgrep, Python 3 (with `python` alias via `python-is-python3`),
-  `shellcheck`, `shfmt` (pinned), vim, tmux, clipboard utilities (xclip, xsel, wl-clipboard)
+  `shellcheck`, `shfmt` (pinned), vim, tmux, clipboard utilities (xclip, xsel, wl-clipboard),
+  headless Chromium with Playwright MCP (browsers in `/opt/ms-playwright`, outside the ephemeral home)
 - Published via GitHub Actions on push (see `.github/workflows/docker.yml`)
 
 ### Wrapper Scripts
@@ -123,22 +127,27 @@ of `-v`, so host paths containing `:` (e.g. gvfs sftp mounts) work correctly.
 
 Located at the repository root, the `.pi/` directory configures the pi coding agent:
 
-- **`settings.json`** — Default provider/model (`openai-codex/gpt-5.5`), enabled models, compaction, and `packages` array for managed pi packages.
-- **`models.json`** — Provider overrides (e.g., DeepSeek context window).
+- **`settings.json`** — Default provider/model (`openai-codex/gpt-6-luna`), enabled models, compaction, and `packages` array for managed pi packages. `install` deploys this file to `~/.pi/agent/settings.json`.
+- **`models.json`** — Provider overrides; keep the file shaped as `{"providers": {}}` because pi rejects an empty object. The context window cap lives in the extension below.
 - **`mcp.json`** — MCP server definitions (Context7 docs, Playwright, GitHub MCP, Bitbucket MCP).
 - **`extensions/`** — Custom pi extensions (todo tracking,
-  build-plan mode, question asking, subagent delegation, modes switcher).
-- **`agents/`** — Custom agent definitions (`pr-feedback-analyzer`,
+  build-plan mode, question asking, subagent delegation, modes switcher,
+  context window cap). The cap clamps every model's context window to 272K so
+  requests stay in the standard-context pricing tier; that is why a 1M model
+  reports 272K in the footer and `/model`.
+- **`agents/`** — Custom agent definitions (`code-reviewer`, `security-auditor`,
+  `test-engineer`, `web-performance-auditor`, `worker`, `pr-feedback-analyzer`,
   `pr-feedback-reviewer`, `pr-feedback-worker`, `model-test-orchestrator`,
   `model-test-worker`).
 - **`prompts/`** — Prompt templates (`pr-feedback`, `fix-lint`, `model-test`).
 - **`modes/`** — Custom modes (brainstorm).
+- **`AGENTS.md`** — Global agent context, synced to `~/.pi/agent/AGENTS.md`.
 
 The PR feedback automation surface is now one command and three agents:
-- `/pr-feedback <PR-URL>` — one-pass orchestration
+- `/pr-feedback [<PR-URL>]` — one-pass orchestration
 - `pr-feedback-analyzer` — fetches PR state, CI, reviewer summary, and actionable items
 - `pr-feedback-reviewer` — skeptical per-item triage
-- `pr-feedback-worker` — minimal execution, mandatory in-thread reply, optional commit
+- `pr-feedback-worker` — executes only the decision produced by pr-feedback-reviewer, mandatory in-thread reply, optional commit
 - **`TODO.md`** — Known issues (e.g., multiline copy/paste in pi).
 
 ### Important

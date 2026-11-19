@@ -17,6 +17,7 @@ on:
       - "tests/**"
       - "tests/check-function-syntax.sh"
       - "tests/run-ci-checks.sh"
+      - ".pi/settings.json"
       - ".github/workflows/scripts.yml"
   pull_request:
     branches:
@@ -34,6 +35,7 @@ on:
       - "tests/**"
       - "tests/check-function-syntax.sh"
       - "tests/run-ci-checks.sh"
+      - ".pi/settings.json"
       - ".github/workflows/scripts.yml"
   workflow_dispatch:
 
@@ -81,6 +83,8 @@ jobs:
         run: bash tests/gwt-test.sh
       - name: Run pi wrapper tests
         run: bash tests/pi-unleashed-safely-test.sh
+      - name: Run pi config tests
+        run: bash tests/pi-config-test.sh
 
   tmux-equalize-row:
     name: tmux-equalize-row tests

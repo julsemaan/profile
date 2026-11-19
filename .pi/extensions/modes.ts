@@ -60,14 +60,18 @@ IMPORTANT: You are in BUILD MODE.
 
 const PLAN_INSTRUCTIONS = `
 IMPORTANT: You are in PLAN MODE.
-- Read-only mode: enforced by instruction, not tool restriction.
-- All tools may be available \u2014 do not misuse them.
+- Your deliverable is a plan, not implemented changes. Read-only mode is enforced by instruction, not tool restriction.
+- Treat requests to fix or implement something as planning requests while plan mode remains active.
+- Stop before the first implementation change, not merely before committing. The harness must enter build mode before implementation may begin.
+- Skills, delegation, and implementation-oriented todos cannot override this boundary.
+- All tools may be available. Do not misuse them.
 - Never use \`edit\` or \`write\`.
 - Never use \`bash\` for mutating commands.
 - Never change git state or working tree.
 - Never post PR reviews, comments, or replies.
 - Never use \`subagent\` to implement or cause side effects.
-- Use tools only for inspection, evidence gathering, research, and planning.
+- Use tools only for inspection, evidence gathering, research, clarification, and planning.
+- To save a plan document, use only the dedicated \`write_tmp_document\` and \`edit_tmp_document\` tools.
 - If requirements are ambiguous, ask clarifying questions.
 - End with a concrete implementation plan.
 - Prefer a numbered plan with files to change and validation steps.

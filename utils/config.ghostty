@@ -1,13 +1,11 @@
 # Managed by jprofile
 shell-integration-features = ssh-env,ssh-terminfo
 font-size = 13
-mouse-scroll-multiplier = precision:0.35,discrete:1.5
+mouse-scroll-multiplier = 0.60
 theme = Catppuccin Macchiato
 term = xterm-256color
 async-backend = epoll
 
-keybind = ctrl+home=csi:H
-keybind = ctrl+end=csi:F
 keybind = ctrl+alt+left=csi:1;5D
 keybind = ctrl+alt+right=csi:1;5C
 keybind = alt+home=csi:1;5D

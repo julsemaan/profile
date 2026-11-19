@@ -1,12 +1,11 @@
 {
   "mcpServers": {
-    "context7": {
-      "url": "https://mcp.context7.com/mcp"
-    },
     "github": {
       "url": "https://api.githubcopilot.com/mcp/",
-      "auth": "bearer",
-      "bearerTokenEnv": "GH_MCP_TOKEN",
+      "headers": {
+        "Authorization": "Bearer $env:GH_MCP_TOKEN",
+        "X-MCP-Features": "mcp_apps_disable_form_deferral"
+      },
       "lifecycle": "lazy"
     },
     "bitbucket": {
@@ -15,6 +14,20 @@
         "Authorization": "Basic $env:BB_MCP_TOKEN"
       },
       "lifecycle": "lazy"
+    },
+    "playwright": {
+      "command": "playwright-mcp",
+      "args": [
+        "--headless",
+        "--no-sandbox",
+        "--browser",
+        "chromium",
+        "--isolated",
+        "--output-dir",
+        "/tmp/playwright-mcp"
+      ],
+      "lifecycle": "lazy-keep-alive",
+      "description": "Headless Chromium for browsing: navigate, click, type, take screenshots, and read DOM, console, and network output."
     }
   }
 }

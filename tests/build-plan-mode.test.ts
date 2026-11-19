@@ -1,0 +1,597 @@
+import { describe, it, beforeEach, after } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { MODEL_PROFILES } from "../.pi/extensions/lib/model-profile.ts";
+import { clearProcessState, writeProcessState } from "../.pi/extensions/lib/process-state.ts";
+import { loadExtensions, createExtensionRuntime } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/index.js";
+import { createEventBus } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
+import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
+
+const EXTENSION_PATH = ".pi/extensions/build-plan-mode.ts";
+const PLAN = [
+	"Decisions:",
+	"- Keep the existing command path.",
+	"Files:",
+	"- .pi/extensions/build-plan-mode.ts",
+	"Implementation steps:",
+	"1. Add the workflow.",
+	"Validation:",
+	"- Run node --test tests/build-plan-mode.test.ts",
+].join("\n");
+
+type SentMessage = { content: string; options?: Record<string, unknown> };
+type NewSessionCall = {
+	parentSession?: string;
+	setup?: (sessionManager: { appendCustomEntry(type: string, data: unknown): void }) => Promise<void>;
+	withSession?: (ctx: MockContext & { sendUserMessage(content: string, options?: Record<string, unknown>): Promise<void> }) => Promise<void>;
+};
+
+type MockContext = {
+	cwd: string;
+	replacementPrompts: string[];
+	replacementCommands: string[];
+	mode: "tui";
+	hasUI: true;
+	ui: {
+		notifications: string[];
+		notify(message: string, type?: string): void;
+		setStatus(): void;
+		theme: { fg(_color: string, text: string): string };
+	};
+	sessionManager: {
+		entries: any[];
+		getEntries(): any[];
+		getBranch(): any[];
+		getSessionFile(): string;
+	};
+	modelRegistry: {
+		find(provider: string, modelId: string): { provider: string; id: string };
+		refresh(): Promise<void>;
+		getAvailable(): { provider: string; id: string }[];
+	};
+	scopedModels: [];
+	isIdle(): boolean;
+	waitForIdle(): Promise<void>;
+	newSessionCalls: NewSessionCall[];
+	newSessionResult: { cancelled: boolean };
+	newSession(options?: NewSessionCall): Promise<{ cancelled: boolean }>;
+	sendUserMessage?(content: string, options?: Record<string, unknown>): Promise<void>;
+};
+
+type Loaded = {
+	extension: any;
+	runtime: any;
+	ctx: MockContext;
+	sent: SentMessage[];
+	startedPrompts: string[];
+};
+
+function makeContext(): MockContext {
+	const notifications: string[] = [];
+	const ctx = {
+		cwd: process.cwd(),
+		replacementPrompts: [] as string[],
+		replacementCommands: [] as string[],
+		mode: "tui" as const,
+		hasUI: true as const,
+		ui: {
+			notifications,
+			notify(message: string, type?: string) {
+				notifications.push(`${type ?? "info"}: ${message}`);
+			},
+			setStatus() {},
+			theme: { fg: (_color: string, text: string) => text },
+		},
+		sessionManager: {
+			entries: [] as any[],
+			getEntries() {
+				return this.entries;
+			},
+			getBranch() {
+				return this.entries;
+			},
+			getSessionFile() {
+				return "/tmp/plan-session.jsonl";
+			},
+		},
+		modelRegistry: {
+			find(provider: string, modelId: string) {
+				return { provider, id: modelId };
+			},
+			async refresh() {},
+			getAvailable() {
+				return [];
+			},
+		},
+		scopedModels: [] as [],
+		isIdle: () => true,
+		async waitForIdle() {},
+		newSessionCalls: [] as NewSessionCall[],
+		newSessionResult: { cancelled: false },
+		async newSession(options?: NewSessionCall) {
+			this.newSessionCalls.push(options ?? {});
+			if (options?.setup) {
+				await options.setup({
+					appendCustomEntry: (type, data) => this.sessionManager.entries.push({ type: "custom", customType: type, data }),
+				});
+			}
+			if (!this.newSessionResult.cancelled && options?.withSession) {
+				await options.withSession({
+					...this,
+					sessionManager: this.sessionManager,
+					sendUserMessage: async (content: string) => {
+						if (content === "/build") this.replacementCommands.push(content);
+						else this.replacementPrompts.push(content);
+					},
+				});
+			}
+			return this.newSessionResult;
+		},
+	};
+	return ctx;
+}
+
+async function loadBuildPlanExtension(options: { skipSessionStart?: boolean; cwd?: string } = {}): Promise<Loaded> {
+	const runtime = createExtensionRuntime();
+	const ctx = makeContext();
+	if (options.cwd) ctx.cwd = options.cwd;
+	const sent: SentMessage[] = [];
+	const startedPrompts: string[] = [];
+	const activeTools: string[] = [];
+
+	runtime.getAllTools = () => [
+		{ name: "read", description: "read", parameters: {}, sourceInfo: { path: "test", source: "test", scope: "temporary", origin: "top-level" } },
+		{ name: "question", description: "question", parameters: {}, sourceInfo: { path: "test", source: "test", scope: "temporary", origin: "top-level" } },
+	];
+	runtime.getActiveTools = () => [...activeTools];
+	runtime.setActiveTools = (names: string[]) => {
+		activeTools.splice(0, activeTools.length, ...names);
+	};
+	runtime.getCommands = () => [];
+	runtime.setModel = async () => true;
+	runtime.setThinkingLevel = () => {};
+	runtime.appendEntry = (type: string, data: unknown) => {
+		ctx.sessionManager.entries.push({ type: "custom", customType: type, data });
+	};
+	runtime.sendMessage = () => {};
+	runtime.sendUserMessage = (content: any, options?: any) => {
+		sent.push({ content, options });
+		if (typeof content === "string" && content !== "/execute-plan") startedPrompts.push(content);
+	};
+
+	const result = await loadExtensions([EXTENSION_PATH], process.cwd(), createEventBus(), runtime);
+	assert.equal(result.errors.length, 0, result.errors.map((error) => error.error).join("\n"));
+	const extension = result.extensions[0];
+	assert.ok(extension);
+
+	const sessionStart = extension.handlers.get("session_start")?.[0];
+	assert.ok(sessionStart);
+	if (!options.skipSessionStart) {
+		await sessionStart({ type: "session_start", reason: "startup" }, ctx);
+	}
+
+	runtime.sendUserMessage = (content: any, options?: any) => {
+		sent.push({ content, options });
+		if (typeof content === "string" && content !== "/execute-plan") startedPrompts.push(content);
+		if (content === "/execute-plan" && options?.expandPromptTemplates === true) {
+			const execute = extension.commands.get("execute-plan")?.handler;
+			if (execute) void execute("", ctx as any);
+		}
+	};
+
+	return { extension, runtime, ctx, sent, startedPrompts };
+}
+
+function command(loaded: Loaded, name: string) {
+	const registered = loaded.extension.commands.get(name);
+	assert.ok(registered, `missing command: ${name}`);
+	return registered.handler;
+}
+
+function tool(loaded: Loaded, name: string) {
+	const registered = loaded.extension.tools.get(name);
+	assert.ok(registered, `missing tool: ${name}`);
+	return registered.definition;
+}
+
+function handler(loaded: Loaded, event: string) {
+	const registered = loaded.extension.handlers.get(event)?.[0];
+	assert.ok(registered, `missing handler: ${event}`);
+	return registered;
+}
+
+function waitForTimers(): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, 10));
+}
+
+function promptEvent() {
+	return { systemPrompt: "base", systemPromptOptions: { sections: { unrelated: "Keep this section." } as Record<string, string> } };
+}
+
+const MODE_SECTION = "profile_build_plan_mode";
+
+describe("mode prompt sections", () => {
+	it("retains planning instructions through the repository prompt extension chain", async () => {
+		const loaded = await loadBuildPlanExtension();
+		loaded.runtime.setSessionName = () => {};
+		const result = await loadExtensions([
+			".pi/always-on-unslop.ts", ".pi/extensions/todo.ts",
+			".pi/extensions/subagent/index.ts", ".pi/extensions/goal.ts",
+		], process.cwd(), createEventBus(), loaded.runtime);
+		assert.deepEqual(result.errors, []);
+		const goal = result.extensions.find((extension) => extension.commands.has("goal"));
+		assert.ok(goal);
+		await goal.commands.get("goal").handler("Inspect the task", loaded.ctx);
+		const options = normalizeBuildSystemPromptOptions({ cwd: process.cwd(), sections: { unrelated: "Keep this section." } });
+		const event = { get systemPrompt() { return buildSystemPrompt(options); }, systemPromptOptions: options };
+		// Unslop loads before the mode extension in normal discovery.
+		const chain = [result.extensions[0], loaded.extension, ...result.extensions.slice(1)];
+		for (const extension of chain) {
+			for (const run of extension.handlers.get("before_agent_start") ?? []) {
+				const patch = await run(event, loaded.ctx);
+				assert.equal(patch?.systemPrompt, undefined);
+			}
+		}
+		const prompt = buildSystemPrompt(options);
+		assert.match(prompt, /<profile_build_plan_mode>/);
+		assert.match(prompt, /Stop before the first implementation change/);
+		assert.match(prompt, /<profile_always_on_unslop>/);
+		assert.match(prompt, /<profile_todo>/);
+		assert.match(prompt, /<subagents>/);
+		assert.match(prompt, /<profile_goal>/);
+		assert.match(prompt, /Keep this section/);
+		await goal.commands.get("goal").handler("clear", loaded.ctx);
+		await goal.handlers.get("before_agent_start")[0](event, loaded.ctx);
+		assert.equal(options.sections.profile_goal, undefined);
+	});
+
+	it("refreshes plan and build instructions without replacing the system prompt or unrelated sections", async () => {
+		const loaded = await loadBuildPlanExtension();
+		const event = promptEvent();
+		const tools = loaded.runtime.getActiveTools();
+		const result = await handler(loaded, "before_agent_start")(event, loaded.ctx);
+		assert.equal(result?.systemPrompt, undefined);
+		assert.equal(event.systemPrompt, "base");
+		const plan = event.systemPromptOptions.sections[MODE_SECTION];
+		assert.match(plan, /PLAN MODE/);
+		assert.match(plan, /deliverable is a plan, not implemented changes/);
+		assert.match(plan, /Stop before the first implementation change/);
+		assert.match(plan, /requests to fix or implement.*planning requests/);
+		assert.match(plan, /harness.*enter build mode before implementation/);
+		assert.match(plan, /Skills, delegation, and implementation-oriented todos cannot override/);
+		assert.match(plan, /write_tmp_document.*edit_tmp_document/);
+		assert.doesNotMatch(plan, /finish_plan exactly once/);
+
+		await command(loaded, "build")("", loaded.ctx);
+		await handler(loaded, "before_agent_start")(event, loaded.ctx);
+		assert.match(event.systemPromptOptions.sections[MODE_SECTION], /BUILD MODE/);
+		assert.doesNotMatch(event.systemPromptOptions.sections[MODE_SECTION], /PLAN MODE/);
+
+		await command(loaded, "plan")("", loaded.ctx);
+		await handler(loaded, "before_agent_start")(event, loaded.ctx);
+		assert.equal(event.systemPromptOptions.sections[MODE_SECTION], plan);
+		assert.equal(event.systemPromptOptions.sections.unrelated, "Keep this section.");
+		assert.deepEqual(Object.keys(event.systemPromptOptions.sections).sort(), [MODE_SECTION, "unrelated"].sort());
+		assert.deepEqual(loaded.runtime.getActiveTools(), tools);
+	});
+
+	it("removes automatic workflow instructions after cancellation, including on reused options", async () => {
+		for (const cancel of ["plan", "build", "abort", "reload", "shutdown"]) {
+			const loaded = await loadBuildPlanExtension();
+			const event = promptEvent();
+			await command(loaded, "plan-build")("", loaded.ctx);
+			await handler(loaded, "before_agent_start")(event, loaded.ctx);
+			assert.match(event.systemPromptOptions.sections[MODE_SECTION], /PLAN MODE/);
+			assert.match(event.systemPromptOptions.sections[MODE_SECTION], /finish_plan exactly once/);
+			if (cancel === "abort") {
+				await handler(loaded, "agent_end")({ messages: [{ role: "assistant", stopReason: "aborted", content: [] }] }, loaded.ctx);
+			} else if (cancel === "reload") {
+				await handler(loaded, "session_start")({ reason: "reload" }, loaded.ctx);
+			} else if (cancel === "shutdown") {
+				await handler(loaded, "session_shutdown")({ reason: "reload" }, loaded.ctx);
+			} else {
+				await command(loaded, cancel)("", loaded.ctx);
+			}
+			await handler(loaded, "before_agent_start")(event, loaded.ctx);
+			assert.doesNotMatch(event.systemPromptOptions.sections[MODE_SECTION], /finish_plan exactly once/);
+			assert.equal(event.systemPromptOptions.sections.unrelated, "Keep this section.");
+		}
+	});
+});
+
+describe("automatic plan-build workflow", () => {
+	it("registers /plan-build and the finish_plan tool", async () => {
+		const loaded = await loadBuildPlanExtension();
+
+		assert.ok(loaded.extension.commands.has("plan-build"));
+		assert.ok(loaded.extension.tools.has("finish_plan"));
+	});
+
+	it("keeps questions and ordinary assistant responses in plan mode", async () => {
+		const loaded = await loadBuildPlanExtension();
+		await command(loaded, "plan-build")("", loaded.ctx);
+		const event = promptEvent();
+		await handler(loaded, "before_agent_start")(event, loaded.ctx);
+		assert.match(event.systemPromptOptions.sections[MODE_SECTION], /finish_plan exactly once/);
+
+		await handler(loaded, "agent_end")({
+			type: "agent_end",
+			messages: [{ role: "assistant", content: [{ type: "toolCall", name: "question" }, { type: "text", text: PLAN }] }],
+		}, loaded.ctx);
+		await handler(loaded, "agent_settled")({ type: "agent_settled" }, loaded.ctx);
+		await waitForTimers();
+
+		assert.equal(loaded.sent.some((message) => message.content === "/execute-plan"), false);
+		assert.equal(loaded.ctx.ui.notifications.some((message) => message.includes("Automatic plan-build enabled")), true);
+	});
+
+	it("accepts an explicit plan and dispatches exactly one handoff after settling", async () => {
+		const loaded = await loadBuildPlanExtension();
+		await command(loaded, "plan-build")("Implement the feature", loaded.ctx);
+		assert.equal(loaded.startedPrompts.at(-1), "Implement the feature");
+		const finish = tool(loaded, "finish_plan");
+		const result = await finish.execute("finish-1", { plan: PLAN }, undefined, undefined, loaded.ctx);
+
+		assert.equal(result.terminate, true);
+		assert.match(result.content[0].text, /Plan accepted/);
+		await handler(loaded, "agent_settled")({ type: "agent_settled" }, loaded.ctx);
+		await handler(loaded, "agent_settled")({ type: "agent_settled" }, loaded.ctx);
+		await waitForTimers();
+
+		assert.equal(loaded.sent.filter((message) => message.content === "/execute-plan").length, 1);
+		assert.equal(loaded.sent.find((message) => message.content === "/execute-plan")?.options?.deliverAs, "followUp");
+		assert.equal(loaded.sent.find((message) => message.content === "/execute-plan")?.options?.expandPromptTemplates, true);
+		await waitForTimers();
+		assert.equal(loaded.ctx.newSessionCalls.length, 1);
+		assert.equal(loaded.ctx.newSessionCalls[0]?.parentSession, "/tmp/plan-session.jsonl");
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /This is a plain automatic \/plan-build build session/);
+	});
+
+	it("does not retry a cancelled automatic session replacement", async () => {
+		const loaded = await loadBuildPlanExtension();
+		await command(loaded, "plan-build")("task", loaded.ctx);
+		loaded.ctx.newSessionResult = { cancelled: true };
+		await tool(loaded, "finish_plan").execute("finish-1", { plan: PLAN }, undefined, undefined, loaded.ctx);
+		await handler(loaded, "agent_settled")({ type: "agent_settled" }, loaded.ctx);
+		await waitForTimers();
+		await handler(loaded, "agent_settled")({ type: "agent_settled" }, loaded.ctx);
+		await waitForTimers();
+
+		assert.equal(loaded.ctx.newSessionCalls.length, 1);
+		assert.equal(loaded.ctx.ui.notifications.some((message) => message.includes("No retry will be attempted")), true);
+	});
+
+	it("rejects empty plans without scheduling a handoff", async () => {
+		const loaded = await loadBuildPlanExtension();
+		await command(loaded, "plan-build")("task", loaded.ctx);
+		const result = await tool(loaded, "finish_plan").execute("finish-1", { plan: " \n " }, undefined, undefined, loaded.ctx);
+
+		assert.equal(result.terminate, undefined);
+		assert.match(result.content[0].text, /nonempty/);
+		await handler(loaded, "agent_settled")({ type: "agent_settled" }, loaded.ctx);
+		await waitForTimers();
+		assert.equal(loaded.sent.some((message) => message.content === "/execute-plan"), false);
+	});
+
+	it("cancels automatic completion on abort, mode changes, and shutdown", async () => {
+		const loaded = await loadBuildPlanExtension();
+		await command(loaded, "plan-build")("task", loaded.ctx);
+		await handler(loaded, "agent_end")({
+			type: "agent_end",
+			messages: [{ role: "assistant", stopReason: "aborted", content: [] }],
+		}, loaded.ctx);
+		assert.equal((await tool(loaded, "finish_plan").execute("finish-1", { plan: PLAN }, undefined, undefined, loaded.ctx)).terminate, undefined);
+
+		await command(loaded, "plan-build")("task", loaded.ctx);
+		await command(loaded, "plan")("", loaded.ctx);
+		assert.equal((await tool(loaded, "finish_plan").execute("finish-2", { plan: PLAN }, undefined, undefined, loaded.ctx)).terminate, undefined);
+
+		await command(loaded, "plan-build")("task", loaded.ctx);
+		await command(loaded, "build")("", loaded.ctx);
+		assert.equal((await tool(loaded, "finish_plan").execute("finish-3", { plan: PLAN }, undefined, undefined, loaded.ctx)).terminate, undefined);
+
+		await command(loaded, "plan-build")("task", loaded.ctx);
+		await handler(loaded, "session_start")({ type: "session_start", reason: "reload" }, loaded.ctx);
+		assert.equal((await tool(loaded, "finish_plan").execute("finish-4", { plan: PLAN }, undefined, undefined, loaded.ctx)).terminate, undefined);
+
+		await handler(loaded, "session_shutdown")({ type: "session_shutdown", reason: "reload" }, loaded.ctx);
+		assert.equal((await tool(loaded, "finish_plan").execute("finish-5", { plan: PLAN }, undefined, undefined, loaded.ctx)).terminate, undefined);
+	});
+});
+
+describe("plan execution commands", () => {
+	it("keeps /execute-plan finalization and /execute-plan-now direct handoff behavior", async () => {
+		const loaded = await loadBuildPlanExtension();
+		let idle = true;
+		loaded.ctx.isIdle = () => idle;
+		loaded.runtime.sendUserMessage = (content: string, options?: Record<string, unknown>) => {
+			loaded.sent.push({ content, options });
+			if (content.startsWith("Provide the final plan")) {
+				idle = false;
+				queueMicrotask(() => {
+					loaded.ctx.sessionManager.entries.push({
+						type: "message",
+						id: "final-plan",
+						message: { role: "assistant", content: [{ type: "text", text: PLAN }] },
+					});
+					idle = true;
+				});
+			}
+		};
+
+		await command(loaded, "execute-plan")("extra", loaded.ctx);
+		await waitForTimers();
+		assert.match(loaded.sent[0]?.content ?? "", /^Provide the final plan/);
+
+		const direct = await loadBuildPlanExtension();
+		direct.ctx.sessionManager.entries.push({
+			type: "message",
+			id: "latest",
+			message: { role: "assistant", content: [{ type: "text", text: PLAN }] },
+		});
+		await command(direct, "execute-plan-now")("direct", direct.ctx);
+		await waitForTimers();
+		assert.equal(direct.sent.some((message) => message.content.startsWith("Provide the final plan")), false);
+		assert.equal(direct.ctx.newSessionCalls.length, 1);
+		assert.doesNotMatch(direct.ctx.replacementPrompts[0] ?? "", /github-open-pr or bitbucket-open-pr/);
+	});
+
+	it("reports failed finalization and cancelled session creation without retrying", async () => {
+		const loaded = await loadBuildPlanExtension();
+		let idle = true;
+		loaded.ctx.isIdle = () => idle;
+		loaded.runtime.sendUserMessage = (content: string) => {
+			loaded.sent.push({ content });
+			idle = false;
+			queueMicrotask(() => {
+				idle = true;
+			});
+		};
+		await command(loaded, "execute-plan")("", loaded.ctx);
+		assert.equal(loaded.ctx.ui.notifications.some((message) => message.includes("did not produce a final plan")), true);
+
+		const failed = await loadBuildPlanExtension();
+		let failedIdle = true;
+		failed.ctx.isIdle = () => failedIdle;
+		failed.runtime.sendUserMessage = (content: string) => {
+			failed.sent.push({ content });
+			failedIdle = false;
+			queueMicrotask(() => {
+				failed.ctx.sessionManager.entries.push({
+					type: "message",
+					id: "failed-plan",
+					message: { role: "assistant", stopReason: "error", content: [{ type: "text", text: PLAN }] },
+				});
+				failedIdle = true;
+			});
+		};
+		await command(failed, "execute-plan")("", failed.ctx);
+		assert.equal(failed.ctx.newSessionCalls.length, 0);
+		assert.equal(failed.ctx.ui.notifications.some((message) => message.includes("Final plan request failed")), true);
+
+		const cancelled = await loadBuildPlanExtension();
+		cancelled.ctx.sessionManager.entries.push({
+			type: "message",
+			id: "latest",
+			message: { role: "assistant", content: [{ type: "text", text: PLAN }] },
+		});
+		cancelled.ctx.newSessionResult = { cancelled: true };
+		await command(cancelled, "execute-plan-now")("", cancelled.ctx);
+		assert.equal(cancelled.ctx.newSessionCalls.length, 1);
+		assert.equal(cancelled.ctx.ui.notifications.some((message) => message.includes("Execute plan cancelled")), true);
+
+		const failedSession = await loadBuildPlanExtension();
+		failedSession.ctx.sessionManager.entries.push({
+			type: "message",
+			id: "latest",
+			message: { role: "assistant", content: [{ type: "text", text: PLAN }] },
+		});
+		failedSession.ctx.newSession = async () => {
+			throw new Error("session unavailable");
+		};
+		await command(failedSession, "execute-plan-now")("", failedSession.ctx);
+		assert.equal(failedSession.ctx.ui.notifications.some((message) => message.includes("session unavailable")), true);
+	});
+
+	it("passes only the submitted plan, execution instructions, and build configuration to a fresh session", async () => {
+		const loaded = await loadBuildPlanExtension();
+		loaded.ctx.sessionManager.entries.push({
+			type: "message",
+			id: "latest",
+			message: { role: "assistant", content: [{ type: "text", text: PLAN }] },
+		});
+		await command(loaded, "execute-plan-now")("run validation", loaded.ctx);
+		await waitForTimers();
+
+		const setupState = loaded.ctx.sessionManager.entries.at(-1)?.data;
+		assert.equal(setupState?.mode, "build");
+		assert.deepEqual(loaded.ctx.replacementCommands, ["/build"]);
+		assert.equal(loaded.ctx.replacementPrompts.length, 1);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /Execute this plan/);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /run validation/);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /## Plan/);
+	});
+
+	it("adds PR instructions only for /execute-plan-pr", async () => {
+		const loaded = await loadBuildPlanExtension();
+		let idle = true;
+		loaded.ctx.isIdle = () => idle;
+		loaded.runtime.sendUserMessage = (content: string, options?: Record<string, unknown>) => {
+			loaded.sent.push({ content, options });
+			if (content.startsWith("Provide the final plan")) {
+				idle = false;
+				queueMicrotask(() => {
+					loaded.ctx.sessionManager.entries.push({
+						type: "message",
+						id: `final-${loaded.sent.length}`,
+						message: { role: "assistant", content: [{ type: "text", text: PLAN }] },
+					});
+					idle = true;
+				});
+			}
+		};
+		await command(loaded, "execute-plan-pr")("", loaded.ctx);
+		await waitForTimers();
+		assert.equal(loaded.ctx.newSessionCalls.length, 1);
+		assert.match(loaded.ctx.ui.notifications.join("\n"), /Started fresh build session/);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /github-open-pr or bitbucket-open-pr/);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /open a pull request/);
+	});
+});
+
+describe("model profile process state", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "build-plan-profile-"));
+	beforeEach(() => clearProcessState("model-profile"));
+	after(() => {
+		clearProcessState("model-profile");
+		rmSync(cwd, { recursive: true, force: true });
+	});
+
+	it("keeps a manual pick across /new when the previous session is not persisted", async () => {
+		const loaded = await loadBuildPlanExtension({ skipSessionStart: true });
+		await handler(loaded, "session_start")({ type: "session_start", reason: "new" }, loaded.ctx);
+		await command(loaded, "model-profile")("openrouterHybrid", loaded.ctx);
+
+		// /new runs in a fresh instance and cannot see the previous entries.
+		const next = await loadBuildPlanExtension({ skipSessionStart: true });
+		await handler(next, "session_start")({ type: "session_start", reason: "new" }, next.ctx);
+
+		next.ctx.ui.notifications.length = 0;
+		await command(next, "model-profile")("", next.ctx);
+		assert.match(next.ctx.ui.notifications.join("\n"), /Current profile: openrouterHybrid/);
+	});
+
+	it("keeps a manual pick across consecutive /new", async () => {
+		const first = await loadBuildPlanExtension({ skipSessionStart: true });
+		await handler(first, "session_start")({ type: "session_start", reason: "new" }, first.ctx);
+		await command(first, "model-profile")("openrouterHybrid", first.ctx);
+
+		for (let i = 0; i < 2; i++) {
+			const next = await loadBuildPlanExtension({ skipSessionStart: true });
+			await handler(next, "session_start")({ type: "session_start", reason: "new" }, next.ctx);
+			next.ctx.ui.notifications.length = 0;
+			await command(next, "model-profile")("", next.ctx);
+			assert.match(next.ctx.ui.notifications.join("\n"), /Current profile: openrouterHybrid/);
+		}
+	});
+
+	it("ignores a seeded process file on startup", async () => {
+		writeProcessState("model-profile", MODEL_PROFILES.openrouterHybrid);
+		const loaded = await loadBuildPlanExtension({ cwd });
+		loaded.ctx.ui.notifications.length = 0;
+		await command(loaded, "model-profile")("", loaded.ctx);
+		assert.match(loaded.ctx.ui.notifications.join("\n"), /Current profile: priv/);
+	});
+
+	it("records the resolved map in the new session", async () => {
+		const loaded = await loadBuildPlanExtension({ skipSessionStart: true, cwd });
+		await handler(loaded, "session_start")({ type: "session_start", reason: "new" }, loaded.ctx);
+
+		const state = loaded.ctx.sessionManager.entries
+			.filter((entry: any) => entry.customType === "build-plan-mode")
+			.at(-1);
+		assert.deepEqual(state?.data?.modelMap, MODEL_PROFILES.priv);
+	});
+});
