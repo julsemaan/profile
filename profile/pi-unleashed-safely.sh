@@ -15,6 +15,9 @@ USE_TTY=1
 HIDE_HOME_PI_EXTENSIONS=0
 MODEL_PROFILE=""
 DIND_ENABLED=0
+BUILDKIT_ENABLED=0
+BUILDKIT_VERSION="v0.20.2"
+BUILDKIT_IMAGE="moby/buildkit:$BUILDKIT_VERSION-rootless"
 
 # Opt-in phase timing: PI_UNLEASHED_TIMING=1 prints per-phase ms to stderr.
 TIMING_ENABLED="${PI_UNLEASHED_TIMING:-0}"
@@ -32,7 +35,7 @@ PI_NPM_INSTALL_PACKAGES=("pi-web-access" "@earendil-works/pi-tui" "pi-mcp-adapte
 
 function usage {
   cat <<'USAGE'
-Usage: pi-unleashed-safely.sh [--mount PATH] [--mount2 HOST_DIR CONTAINER_DIR] [--workdir PATH] [--rebuild] [--no-tty] [--dev] [-- <pi args...>]
+Usage: pi-unleashed-safely.sh [--mount PATH] [--mount2 HOST_DIR CONTAINER_DIR] [--workdir PATH] [--rebuild] [--no-tty] [--dev] [--buildkit] [--docker-host] [-- <pi args...>]
 
 Arguments:
   -m, --mount PATH    Host path to bind-mount into the container.
@@ -63,7 +66,12 @@ Arguments:
                       points at it, so pi-claude-bridge logins and sessions
                       persist across runs. This means the sandbox can read and
                       modify your Claude credentials and hooks.
-  --docker-host       Start a companion rootless Docker-in-Docker container (pi-dind)
+  --buildkit          Enable a reusable per-user rootless BuildKit companion.
+                      Mounts ~/.docker/config.json read-only when present,
+                      authorizing registry access for the session.
+                      Unix socket only, no host Docker socket. First use requires
+                      --rebuild to install buildctl. See profile/pi-buildkit.md.
+  --docker-host       Start a privileged Docker-in-Docker container (pi-dind)
                       on a private network. Sets DOCKER_HOST inside the container
                       so inner containers run in the companion, not on the host.
   kind network        Joins the Docker network named "kind" when it exists, so
@@ -81,6 +89,16 @@ Environment:
   PI_STARTUP_BENCHMARK  Pi's full startup benchmark. Requires a TTY.
                         PI_TIMING=1 PI_STARTUP_BENCHMARK=1 ./pi-unleashed-safely.sh
   PI_UNLEASHED_TIMING   Print per-phase wrapper timings (ms) to stderr.
+  PI_BUILDKIT_APPARMOR_PROFILE
+                        Optional preloaded host AppArmor profile for BuildKit.
+                        Defaults to pi-buildkit when installed by this profile,
+                        otherwise unconfined. Changing it requires removing
+                        the existing companion first, retaining cache volumes.
+  PI_DOCKER_CONFIG_DIR  Override ~/.docker as the registry config directory.
+                        Requires --buildkit and readable config.json with auths.
+                        Only that file is mounted read-only. The agent can read
+                        credentials and push without individual approvals.
+                        Use revocable, repository-scoped tokens outside contexts.
   PI_SSH_KEY_PATH       Opt-in host SSH private key path. When valid, Git
                         explicitly uses mounted key with IdentitiesOnly=yes
                         and mounted host ~/.ssh/known_hosts for strict
@@ -178,6 +196,10 @@ while [[ $# -gt 0 ]]; do
     MODEL_PROFILE="$2"
     shift 2
     ;;
+  --buildkit)
+    BUILDKIT_ENABLED=1
+    shift
+    ;;
   --docker-host)
     DIND_ENABLED=1
     shift
@@ -226,6 +248,20 @@ else
   RESOLVED_GID="$(id -g)"
   RESOLVED_USER="$(id -un)"
   RESOLVED_HOME="$HOME"
+fi
+
+REGISTRY_DOCKER_FLAGS=()
+REGISTRY_CONFIG_DIR="${PI_DOCKER_CONFIG_DIR:-}"
+if [[ $BUILDKIT_ENABLED -eq 1 && -z "$REGISTRY_CONFIG_DIR" && -f "$RESOLVED_HOME/.docker/config.json" ]]; then
+  REGISTRY_CONFIG_DIR="$RESOLVED_HOME/.docker"
+fi
+if [[ -n "$REGISTRY_CONFIG_DIR" ]]; then
+  if [[ $BUILDKIT_ENABLED -ne 1 || ! -f "$REGISTRY_CONFIG_DIR/config.json" || ! -r "$REGISTRY_CONFIG_DIR/config.json" ]]; then
+    echo "Error: registry credentials require --buildkit and a readable config.json in $REGISTRY_CONFIG_DIR." >&2
+    exit 1
+  fi
+  REGISTRY_CONFIG="$(cd -- "$REGISTRY_CONFIG_DIR" && pwd -P)/config.json"
+  REGISTRY_DOCKER_FLAGS=(--mount "type=bind,src=$REGISTRY_CONFIG,dst=/run/pi-registry/config.json,readonly" -e DOCKER_CONFIG=/run/pi-registry)
 fi
 
 # Safe host-dir creation: mkdir -p + chown if running as root-for-other-user
@@ -401,11 +437,12 @@ trap 'rm -rf "$WORK_TMPDIR"; if [[ -n "$IDENTITY_CONTAINER" ]]; then docker rm -
 
 if [[ $FRESH -eq 0 ]]; then
   docker pull julsemaan/code-sandbox-img:latest
-  docker build $REBUILD_DOCKER_ARG -t "$IMAGE" \
-    --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" \
-    --build-arg PI_NPM_INSTALL_PACKAGES_JSON="$PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON" \
-    -f- "$WORK_TMPDIR" <<'EOF'
+  {
+    printf 'ARG BUILDKIT_IMAGE=%s\n' "$BUILDKIT_IMAGE"
+    cat <<'EOF'
+FROM ${BUILDKIT_IMAGE} AS buildkit
 FROM julsemaan/code-sandbox-img:latest
+COPY --from=buildkit /usr/bin/buildctl /usr/local/bin/buildctl
 
 ARG PI_NPM_PACKAGE
 ARG PI_NPM_INSTALL_PACKAGES_JSON
@@ -431,8 +468,108 @@ ENV EDITOR=vim
 
 ENTRYPOINT ["pi"]
 EOF
+  } | docker build $REBUILD_DOCKER_ARG -t "$IMAGE" \
+    --build-arg PI_NPM_PACKAGE="$PI_NPM_PACKAGE" \
+    --build-arg PI_NPM_INSTALL_PACKAGES_JSON="$PI_UNLEASHED_NPM_INSTALL_PACKAGES_JSON" \
+    -f- "$WORK_TMPDIR"
 fi
 phase image-gate
+
+# --- Rootless BuildKit companion. No host socket, TCP listener, or privileged fallback. ---
+BUILDKIT_DOCKER_FLAGS=()
+if [[ $BUILDKIT_ENABLED -eq 1 ]]; then
+  BUILDKIT_APPARMOR_PROFILE="${PI_BUILDKIT_APPARMOR_PROFILE:-unconfined}"
+  if [[ -z "${PI_BUILDKIT_APPARMOR_PROFILE:-}" && -f /etc/apparmor.d/pi-buildkit ]]; then
+    BUILDKIT_APPARMOR_PROFILE=pi-buildkit
+  fi
+  BUILDKIT_CONTAINER="pi-buildkit-$RESOLVED_UID"
+  BUILDKIT_STATE="$BUILDKIT_CONTAINER-state"
+  BUILDKIT_SOCKET="$BUILDKIT_CONTAINER-socket"
+  BUILDKIT_ADDR="unix:///run/pi-buildkit/buildkitd.sock"
+  BUILDKIT_DOCKER_FLAGS=(--mount "type=volume,src=$BUILDKIT_SOCKET,dst=/run/pi-buildkit,readonly" -e "BUILDKIT_HOST=$BUILDKIT_ADDR")
+
+  BUILDKIT_CLIENT_VERSION="$(docker run --rm --user "$RESOLVED_UID:$RESOLVED_GID" --entrypoint buildctl "$IMAGE" --version)" || BUILDKIT_CLIENT_VERSION=""
+  if [[ " $BUILDKIT_CLIENT_VERSION " != *" $BUILDKIT_VERSION "* ]]; then
+    echo "Error: matching buildctl $BUILDKIT_VERSION is unavailable. Run --buildkit --rebuild first." >&2
+    exit 1
+  fi
+  if [[ ${#REGISTRY_DOCKER_FLAGS[@]} -gt 0 ]]; then
+    # Validate inside Pi's image and as its UID, without printing credential contents.
+    docker run --rm --user "$RESOLVED_UID:$RESOLVED_GID" "${REGISTRY_DOCKER_FLAGS[@]}" \
+      --entrypoint node "$IMAGE" -e '
+        try {
+          const c = JSON.parse(require("fs").readFileSync("/run/pi-registry/config.json", "utf8"));
+          if (!c || typeof c !== "object" || Array.isArray(c) || c.credsStore ||
+              (c.credHelpers && Object.keys(c.credHelpers).length) ||
+              !c.auths || typeof c.auths !== "object" || Array.isArray(c.auths)) throw Error();
+        } catch {
+          console.error("Error: registry config must be readable JSON with standalone auths, not credential helpers.");
+          process.exit(1);
+        }'
+  fi
+
+  if ! docker inspect "$BUILDKIT_CONTAINER" >/dev/null 2>&1; then
+    docker volume create "$BUILDKIT_STATE" >/dev/null
+    docker volume create "$BUILDKIT_SOCKET" >/dev/null
+    # Only this short-lived initializer is root. The daemon always runs as UID 1000.
+    docker run --rm --user 0:0 --entrypoint sh \
+      --mount "type=volume,src=$BUILDKIT_STATE,dst=/home/user/.local/share/buildkit" \
+      --mount "type=volume,src=$BUILDKIT_SOCKET,dst=/run/pi-buildkit" \
+      "$BUILDKIT_IMAGE" -ec 'chown 1000:1000 /home/user/.local/share/buildkit /run/pi-buildkit; chmod 755 /run/pi-buildkit'
+    if ! docker run -d --name "$BUILDKIT_CONTAINER" --user 1000:1000 \
+      --security-opt seccomp=unconfined --security-opt "apparmor=$BUILDKIT_APPARMOR_PROFILE" \
+      --security-opt systempaths=unconfined \
+      --mount "type=volume,src=$BUILDKIT_STATE,dst=/home/user/.local/share/buildkit" \
+      --mount "type=volume,src=$BUILDKIT_SOCKET,dst=/run/pi-buildkit" \
+      "$BUILDKIT_IMAGE" --addr "$BUILDKIT_ADDR" --oci-worker-snapshotter=native >/dev/null; then
+      # Another session may have won the name. Validate it below, never replace it.
+      if ! docker inspect "$BUILDKIT_CONTAINER" >/dev/null 2>&1; then
+        echo "Error: BuildKit companion creation failed. Pi will not start." >&2
+        exit 1
+      fi
+    fi
+  fi
+  if [[ "$(docker inspect -f '{{.Config.Image}}' "$BUILDKIT_CONTAINER")" != "$BUILDKIT_IMAGE" ]]; then
+    echo "Error: $BUILDKIT_CONTAINER uses another image. Stop enabled sessions, remove the companion with docker rm -f $BUILDKIT_CONTAINER, then retry. Cache volumes are retained." >&2
+    exit 1
+  fi
+  if [[ "$BUILDKIT_APPARMOR_PROFILE" != unconfined &&
+    "$(docker inspect -f '{{.AppArmorProfile}}' "$BUILDKIT_CONTAINER")" != "$BUILDKIT_APPARMOR_PROFILE" ]]; then
+    echo "Error: $BUILDKIT_CONTAINER needs AppArmor profile $BUILDKIT_APPARMOR_PROFILE. Stop enabled sessions, run docker rm -f $BUILDKIT_CONTAINER, then retry. Cache volumes are retained." >&2
+    exit 1
+  fi
+  if [[ "$(docker inspect -f '{{.State.Status}}' "$BUILDKIT_CONTAINER")" != running ]]; then
+    if ! docker start "$BUILDKIT_CONTAINER" >/dev/null &&
+      [[ "$(docker inspect -f '{{.State.Status}}' "$BUILDKIT_CONTAINER")" != running ]]; then
+      echo "Error: BuildKit companion restart failed. Pi will not start." >&2
+      exit 1
+    fi
+  fi
+
+  BUILDKIT_READY=0
+  for ((attempt = 0; attempt < 30; attempt++)); do
+    if docker exec "$BUILDKIT_CONTAINER" sh -ec \
+      'chmod 666 /run/pi-buildkit/buildkitd.sock && buildctl --addr unix:///run/pi-buildkit/buildkitd.sock --timeout 1 debug workers' >"$WORK_TMPDIR/buildkit-ready.log" 2>&1 &&
+      docker run --rm --user "$RESOLVED_UID:$RESOLVED_GID" "${BUILDKIT_DOCKER_FLAGS[@]}" \
+        --entrypoint buildctl "$IMAGE" --timeout 1 debug workers >>"$WORK_TMPDIR/buildkit-ready.log" 2>&1; then
+      BUILDKIT_READY=1
+      break
+    fi
+    case "$(docker inspect -f '{{.State.Status}}' "$BUILDKIT_CONTAINER" 2>/dev/null)" in
+    exited | dead) break ;;
+    esac
+    sleep 1
+  done
+  if [[ $BUILDKIT_READY -eq 0 ]]; then
+    echo "Error: BuildKit failed readiness. Pi will not start." >&2
+    echo "Host must support rootless user namespaces and the documented security options. No privileged fallback or sysctl changes are applied." >&2
+    echo "If AppArmor denies user namespaces, see profile/pi-buildkit.md for the targeted host policy test." >&2
+    docker logs --tail 50 "$BUILDKIT_CONTAINER" >&2 2>&1 || true
+    docker inspect -f '{{.State.Status}} {{.State.Error}}' "$BUILDKIT_CONTAINER" >&2 2>&1 || true
+    while IFS= read -r line; do printf '%s\n' "$line" >&2; done <"$WORK_TMPDIR/buildkit-ready.log"
+    exit 1
+  fi
+fi
 
 # --- DinD companion (Docker-in-Docker) ---
 DIND_DOCKER_FLAGS=()
@@ -702,6 +839,8 @@ docker run --rm $DOCKER_TTY_FLAGS \
   "${SSH_DOCKER_FLAGS[@]}" \
   "${NETWORK_DOCKER_FLAGS[@]}" \
   "${DIND_DOCKER_FLAGS[@]}" \
+  "${BUILDKIT_DOCKER_FLAGS[@]}" \
+  "${REGISTRY_DOCKER_FLAGS[@]}" \
   "${GWT_DOCKER_FLAGS[@]}" \
   -e GOFLAGS="$GOFLAGS_VALUE" \
   --mount "type=bind,src=$MNT_HOST,dst=$MNT_CONTAINER" -w "$WORKDIR" \

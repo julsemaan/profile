@@ -16,8 +16,10 @@ ssh_dir="$home/.ssh"
 stub_dir="$tmp_dir/bin"
 docker_run_log="$tmp_dir/docker-run.log"
 docker_command_log="$tmp_dir/docker-command.log"
+docker_build_log="$tmp_dir/docker-build.log"
 go_env_log="$tmp_dir/go-env.log"
 go_stub_root="$tmp_dir/go-stub"
+node_bin="$(command -v node || true)"
 key="$ssh_dir/id_rsa_git"
 known_hosts="$ssh_dir/known_hosts"
 config="$ssh_dir/config"
@@ -36,11 +38,31 @@ cat >"$stub_dir/docker" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 
+printf '%s\n' "$@" >>"$DOCKER_COMMAND_LOG"
 case "${1:-}" in
+inspect)
+  if [[ "${DOCKER_BUILDKIT_EXISTS:-0}" != 1 ]] && ! grep -q 'systempaths=unconfined' "$DOCKER_COMMAND_LOG"; then exit 1; fi
+  if [[ "${3:-}" == '{{.Config.Image}}' ]]; then
+    printf '%s\n' "${DOCKER_BUILDKIT_IMAGE:-moby/buildkit:v0.20.2-rootless}"
+  elif [[ "${3:-}" == '{{.AppArmorProfile}}' ]]; then
+    if [[ -n "${DOCKER_BUILDKIT_APPARMOR_PROFILE:-}" ]]; then
+      printf '%s\n' "$DOCKER_BUILDKIT_APPARMOR_PROFILE"
+    else
+      grep '^apparmor=' "$DOCKER_COMMAND_LOG" | tail -1 | cut -d= -f2 || echo unconfined
+    fi
+  elif [[ "${2:-}" == -f ]]; then
+    printf '%s\n' "${DOCKER_BUILDKIT_STATUS:-running}"
+  fi
+  ;;
+start | volume | logs)
+  ;;
+exec)
+  exit "${DOCKER_BUILDKIT_READY_EXIT:-0}"
+  ;;
 pull)
   ;;
 build)
-  cat >/dev/null
+  cat >"$DOCKER_BUILD_LOG"
   ;;
 create)
   echo "stub-container-id"
@@ -64,7 +86,26 @@ network)
   ;;
 run)
   printf '%s\n' "$@" >"$DOCKER_RUN_LOG"
-  printf '%s\n' "$@" >>"$DOCKER_COMMAND_LOG"
+  if [[ "$*" == *"--name pi-buildkit-"* && "${DOCKER_BUILDKIT_RACE:-0}" == 1 ]]; then
+    echo 'Docker: container name is already in use' >&2
+    exit 1
+  fi
+  if [[ "$*" == *"--entrypoint buildctl"* && "${@: -1}" == --version ]]; then
+    printf 'buildctl github.com/moby/buildkit %s test\n' "${DOCKER_BUILDCTL_VERSION:-v0.20.2}"
+  fi
+  if [[ "$*" == *"--entrypoint node"* ]]; then
+    for arg in "$@"; do
+      if [[ "$arg" == type=bind,src=*,dst=/run/pi-registry/config.json,readonly ]]; then
+        export TEST_REGISTRY_CONFIG="${arg#type=bind,src=}"
+        TEST_REGISTRY_CONFIG="${TEST_REGISTRY_CONFIG%,dst=*}"
+      fi
+    done
+    "$NODE_BIN" -e '
+      const fs = require("fs"), read = fs.readFileSync;
+      fs.readFileSync = (p, ...args) => read(p === "/run/pi-registry/config.json" ? process.env.TEST_REGISTRY_CONFIG : p, ...args);
+      eval(process.argv[1]);
+    ' "${@: -1}"
+  fi
   ;;
 *)
   echo "unexpected docker command: ${1:-<missing>}" >&2
@@ -91,6 +132,10 @@ printf '%s\n' \
 STUB
 chmod +x "$stub_dir/go"
 
+# Readiness failure tests should not spend 30 seconds sleeping.
+printf '#!/bin/bash\nexit 0\n' >"$stub_dir/sleep"
+chmod +x "$stub_dir/sleep"
+
 function run_wrapper {
   (
     cd "$REPO_ROOT"
@@ -98,12 +143,14 @@ function run_wrapper {
     export PATH="$stub_dir:/usr/bin:/bin"
     export DOCKER_RUN_LOG="$docker_run_log"
     export DOCKER_COMMAND_LOG="$docker_command_log"
+    export DOCKER_BUILD_LOG="$docker_build_log"
     export GO_ENV_LOG="$go_env_log"
     export GO_STUB_ROOT="$go_stub_root"
+    export NODE_BIN="$node_bin"
     export PI_SSH_KEY_PATH="$key"
     unset SUDO_UID SUDO_GID SUDO_USER GOFLAGS GOMODCACHE GOCACHE GOPATH
     unset TMUX DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR HERDR_SOCKET_PATH
-    bash "$REPO_ROOT/profile/pi-unleashed-safely.sh" --no-tty "$@"
+    bash "${test_wrapper:-$REPO_ROOT/profile/pi-unleashed-safely.sh}" --no-tty "$@"
   )
 }
 
@@ -166,7 +213,6 @@ else
 fi
 cp "$REPO_ROOT/.pi/always-on-unslop.ts" "$unslop_extension"
 
-node_bin="$(command -v node || true)"
 if [[ -z "$node_bin" ]]; then
   test_fail "unslop extension injects the full prompt" "node is required"
 else
@@ -294,5 +340,112 @@ run_args=$(<"$docker_run_log")
 expected_command="GIT_SSH_COMMAND=ssh -i $home/.ssh/id_rsa_git -o IdentitiesOnly=yes -o UserKnownHostsFile=$home/.ssh/known_hosts"
 assert_contains "config option is omitted when config is absent" "$run_args" "$expected_command"
 assert_not_match "absent config is not passed with -F" "GIT_SSH_COMMAND=.*-F" "$run_args"
+
+# --- BuildKit opt-in tests ---
+assert_contains "Pi image copies the matching static buildctl client" "$(<"$docker_build_log")" 'COPY --from=buildkit /usr/bin/buildctl /usr/local/bin/buildctl'
+assert_contains "BuildKit argument has a valid default without duplicating the pin" "$(<"$docker_build_log")" 'ARG BUILDKIT_IMAGE=moby/buildkit:v0.20.2-rootless'
+assert_contains "BuildKit image stage uses the pinned build argument" "$(<"$docker_build_log")" "FROM \${BUILDKIT_IMAGE} AS buildkit"
+run_wrapper
+run_args=$(<"$docker_run_log")
+assert_not_match "BuildKit is absent by default" "BUILDKIT_HOST|pi-buildkit|DOCKER_CONFIG" "$run_args"
+
+rm -f "$docker_command_log"
+run_wrapper --buildkit
+run_args=$(<"$docker_run_log")
+commands=$(<"$docker_command_log")
+assert_contains "BuildKit address is a Unix socket" "$run_args" "BUILDKIT_HOST=unix:///run/pi-buildkit/buildkitd.sock"
+assert_contains "Pi mounts only the shared socket volume" "$run_args" "src=pi-buildkit-$(id -u)-socket,dst=/run/pi-buildkit,readonly"
+assert_not_match "Pi does not mount builder state" "dst=/home/user/.local/share/buildkit" "$run_args"
+assert_contains "companion is per resolved UID" "$commands" "pi-buildkit-$(id -u)"
+assert_contains "companion security settings are explicit" "$commands" "systempaths=unconfined"
+assert_contains "companion is rootless" "$commands" "1000:1000"
+assert_not_match "BuildKit never requests privileged execution or TCP" "(--privileged|tcp://|--publish|--pid|--ipc)" "$commands"
+assert_contains "matching release is pinned" "$commands" "moby/buildkit:v0.20.2-rootless"
+rm -f "$docker_command_log"
+PI_BUILDKIT_APPARMOR_PROFILE=pi-buildkit run_wrapper --buildkit
+assert_contains "explicit AppArmor profile is applied to companion" "$(<"$docker_command_log")" "apparmor=pi-buildkit"
+PI_BUILDKIT_APPARMOR_PROFILE=pi-buildkit DOCKER_BUILDKIT_EXISTS=1 DOCKER_BUILDKIT_APPARMOR_PROFILE=unconfined \
+  assert_fail "old companion must be recreated to apply named policy" run_wrapper --buildkit
+
+rm -f "$docker_command_log"
+DOCKER_BUILDKIT_EXISTS=1 run_wrapper --buildkit
+commands=$(<"$docker_command_log")
+assert_not_match "running companion is reused" "seccomp=unconfined" "$commands"
+rm -f "$docker_command_log"
+DOCKER_BUILDKIT_EXISTS=1 DOCKER_BUILDKIT_STATUS=exited run_wrapper --buildkit
+assert_contains "stopped companion is restarted" "$(<"$docker_command_log")" $'start\npi-buildkit-'
+DOCKER_BUILDKIT_EXISTS=1 DOCKER_BUILDKIT_IMAGE=other:version assert_fail "incompatible companion fails closed" run_wrapper --buildkit
+DOCKER_BUILDCTL_VERSION=v0.1.0 assert_fail "stale buildctl requires --rebuild" run_wrapper --buildkit
+rm -f "$docker_command_log"
+DOCKER_BUILDKIT_RACE=1 assert_success "concurrent creation loser reuses winning companion" run_wrapper --buildkit
+
+rm -f "$docker_run_log"
+if DOCKER_BUILDKIT_READY_EXIT=1 run_wrapper --buildkit >"$tmp_dir/readiness.log" 2>&1; then
+  test_fail "BuildKit readiness fails closed" "wrapper succeeded"
+else
+  test_pass "BuildKit readiness fails closed"
+fi
+assert_not_match "Pi never launches on failed readiness" 'MCP_UI_VIEWER=none' "$(<"$docker_run_log")"
+assert_contains "readiness diagnostics explain failure" "$(<"$tmp_dir/readiness.log")" "BuildKit"
+rm -f "$docker_command_log"
+DOCKER_BUILDKIT_EXISTS=1 DOCKER_BUILDKIT_STATUS=exited DOCKER_BUILDKIT_READY_EXIT=1 assert_fail "exited companion fails readiness" run_wrapper --buildkit
+assert_eq "exited companion is not polled 30 times" "1" "$(grep -c '^exec$' "$docker_command_log")"
+
+registry_config="$tmp_dir/registry credentials"
+mkdir -p "$registry_config"
+printf '{"auths":{}}\n' >"$registry_config/config.json"
+PI_DOCKER_CONFIG_DIR="$registry_config" assert_fail "registry config requires --buildkit" run_wrapper
+PI_DOCKER_CONFIG_DIR="$tmp_dir/missing" assert_fail "missing registry config is rejected" run_wrapper --buildkit
+PI_DOCKER_CONFIG_DIR="$registry_config" run_wrapper --buildkit
+run_args=$(<"$docker_run_log")
+assert_contains "only config file is mounted read-only, including spaces" "$run_args" "type=bind,src=$registry_config/config.json,dst=/run/pi-registry/config.json,readonly"
+assert_contains "Docker config is explicitly isolated" "$run_args" "DOCKER_CONFIG=/run/pi-registry"
+printf '{"credsStore":"desktop","auths":{}}\n' >"$registry_config/config.json"
+PI_DOCKER_CONFIG_DIR="$registry_config" assert_fail "credential stores are rejected" run_wrapper --buildkit
+printf '{"credHelpers":{"example.com":"secret-helper"},"auths":{}}\n' >"$registry_config/config.json"
+PI_DOCKER_CONFIG_DIR="$registry_config" assert_fail "credential helpers are rejected" run_wrapper --buildkit
+printf 'invalid json with secret token\n' >"$registry_config/config.json"
+if PI_DOCKER_CONFIG_DIR="$registry_config" run_wrapper --buildkit >"$tmp_dir/invalid-config.log" 2>&1; then
+  test_fail "invalid registry JSON fails closed" "wrapper succeeded"
+else
+  test_pass "invalid registry JSON fails closed"
+fi
+assert_not_match "credential contents never appear in diagnostics" "secret token" "$(<"$tmp_dir/invalid-config.log")"
+DOCKER_CONFIG="$registry_config" run_wrapper --buildkit
+assert_not_match "host Docker config is not implicitly forwarded" "DOCKER_CONFIG|registry credentials" "$(<"$docker_run_log")"
+
+# BuildKit forwards the resolved user's default Docker config, but ordinary launches do not.
+mkdir -p "$home/.docker"
+printf '{"auths":{}}\n' >"$home/.docker/config.json"
+run_wrapper
+assert_not_match "ordinary launches never mount default Docker credentials" "DOCKER_CONFIG|/\\.docker/config\\.json" "$(<"$docker_run_log")"
+run_wrapper --buildkit
+assert_contains "--buildkit accepts default Docker credentials" "$(<"$docker_run_log")" "type=bind,src=$home/.docker/config.json,dst=/run/pi-registry/config.json,readonly"
+assert_contains "default credentials are selected through DOCKER_CONFIG" "$(<"$docker_run_log")" "DOCKER_CONFIG=/run/pi-registry"
+printf '{"auths":{}}\n' >"$registry_config/config.json"
+PI_DOCKER_CONFIG_DIR="$registry_config" run_wrapper --buildkit
+assert_contains "explicit config overrides default Docker credentials" "$(<"$docker_run_log")" "src=$registry_config/config.json,dst=/run/pi-registry/config.json,readonly"
+assert_not_match "override does not also mount default credentials" "/\\.docker/config\\.json" "$(<"$docker_run_log")"
+printf '{"credsStore":"desktop","auths":{}}\n' >"$home/.docker/config.json"
+assert_fail "default config with unsupported helpers fails clearly" run_wrapper --buildkit
+rm "$home/.docker/config.json"
+
+# Select the installed named policy automatically, without touching the real host's /etc.
+mkdir -p "$tmp_dir/apparmor-wrapper"
+ln -s "$REPO_ROOT/profile/gwt" "$tmp_dir/apparmor-wrapper/gwt"
+awk -v policy="$tmp_dir/installed-pi-buildkit" '{ gsub(/\/etc\/apparmor\.d\/pi-buildkit/, policy); print }' \
+  "$REPO_ROOT/profile/pi-unleashed-safely.sh" >"$tmp_dir/apparmor-wrapper/pi-unleashed-safely.sh"
+test_wrapper="$tmp_dir/apparmor-wrapper/pi-unleashed-safely.sh"
+rm -f "$docker_command_log"
+run_wrapper --buildkit
+assert_contains "hosts without installed policy retain unconfined default" "$(<"$docker_command_log")" 'apparmor=unconfined'
+touch "$tmp_dir/installed-pi-buildkit"
+rm -f "$docker_command_log"
+run_wrapper --buildkit
+assert_contains "installed policy is automatically selected" "$(<"$docker_command_log")" 'apparmor=pi-buildkit'
+rm -f "$docker_command_log"
+PI_BUILDKIT_APPARMOR_PROFILE=custom-policy run_wrapper --buildkit
+assert_contains "explicit policy overrides installed default" "$(<"$docker_command_log")" 'apparmor=custom-policy'
+unset test_wrapper
 
 test_summary

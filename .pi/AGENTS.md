@@ -20,6 +20,18 @@ The sandbox has a headless Chromium behind the `playwright` MCP server. Use it t
 - Prefer MCP tools that return text or JSON.
 - Treat browser-launch warnings separately from operation failures. Inspect the result and never repeat a state-changing call solely because its UI failed.
 
+## Building container images in the sandbox
+
+Use `buildctl`, not `docker build`. It connects to the BuildKit companion without a Docker daemon.
+
+To build a Dockerfile in the current directory and export an OCI archive:
+
+```bash
+buildctl build --frontend dockerfile.v0 \
+  --local context=. --local dockerfile=. \
+  --output type=oci,dest=/tmp/image.tar
+```
+
 ## Worktrees
 
 Before any worktree operation, load the `gwt` skill. Use `gwt` instead of direct `git worktree` commands. 
