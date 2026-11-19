@@ -23,5 +23,6 @@
     "npm:agent-status-pi@0.1.33",
     "npm:pi-claude-bridge",
     "https://github.com/DietrichGebert/ponytail@v4.7.0"
-  ]
+  ],
+  "theme": "dark"
 }
