@@ -19,6 +19,11 @@ RUN apt-get update \
     xsel \
  && rm -rf /var/lib/apt/lists/*
 
+RUN python3 -m venv /opt/platformio \
+ && /opt/platformio/bin/pip install --no-cache-dir platformio \
+ && ln -s /opt/platformio/bin/pio /usr/local/bin/pio \
+ && ln -s /opt/platformio/bin/platformio /usr/local/bin/platformio
+
 COPY profile/.gitignore /usr/local/etc/.gitignore
 RUN git config --system core.excludesfile /usr/local/etc/.gitignore
 

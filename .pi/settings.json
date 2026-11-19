@@ -21,5 +21,6 @@
     "npm:pi-mcp-adapter",
     "npm:agent-status-pi",
     "https://github.com/DietrichGebert/ponytail@v4.7.0"
-  ]
+  ],
+  "theme": "dark"
 }
