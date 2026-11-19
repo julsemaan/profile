@@ -24,6 +24,10 @@ The sandbox has a headless Chromium behind the `playwright` MCP server. Use it t
 
 Before any worktree operation, load the `gwt` skill. Use `gwt` instead of direct `git worktree` commands. 
 
+## Confluence
+
+When trying to access pages hosted on Confluence, use the `bitbucket` MCP server.
+
 ## Commit messages
 
 When you write commit messages for me, write a one-line commit message following the Conventional Commits standard.
