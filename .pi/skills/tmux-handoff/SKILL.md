@@ -29,13 +29,15 @@ Read the current definitions before launching. The source is `~/src/profile/`:
 
 `tnc`, `tmuxifier`, and `puss` may be absent from the agent container. This is expected. Sourcing profile files or running `bash -lic` inside the container does not grant host execution.
 
-Both helpers are host shell aliases. Invoke a host `bash -lic` through the existing tmux server's `run-shell`, using an explicit socket and source pane target. First run a read-only host preflight, `type tnc; type puss; command -v tmuxifier`, and capture stdout/stderr. Proceed only if all three resolve on the host. If the socket or host helpers are unavailable, stop and provide manual host instructions. Do not install or recreate the helpers inside the container.
+Run every tmux CLI call as `letee tmux <args>`, never bare `tmux`. This includes read-only queries, `run-shell`, window selection, `send-keys`, and pane capture. `letee tmux` passes arguments unchanged, so keep the explicit `-S <socket>` and `-t <target>` on every call. If `letee tmux -V` fails, stop and report it rather than falling back to bare `tmux`.
+
+Both helpers are host shell aliases. Invoke a host `bash -lic` through the existing tmux server's `letee tmux -S <socket> run-shell -t <source-pane>`. First run a read-only host preflight, `type tnc; type puss; command -v tmuxifier`, and capture stdout/stderr. Proceed only if all three resolve on the host. If the socket or host helpers are unavailable, stop and provide manual host instructions. Do not install or recreate the helpers inside the container.
 
 Use shell-quoted arguments. Do not substitute bare `pi`, print mode, or redirected Pi stdin/stdout. The receiving session must remain interactive.
 
 ## Launch
 
-1. Discover the current tmux socket and session from the actual environment. Resolve stable session/window/pane IDs with read-only queries. Never hardcode a username, UID, socket, or session ID from another task. Use an explicit socket and session/pane targets for direct tmux commands.
+1. Discover the current tmux socket and session from the actual environment. Resolve stable session/window/pane IDs with read-only queries. Never hardcode a username, UID, socket, or session ID from another task. Use an explicit socket and session/pane targets for every `letee tmux` command.
 2. After the host preflight succeeds, run `tnc <absolute-task-worktree-path>` through the same host execution route. Pass the resolved tmux context to the host shell so `tnc` targets the intended server/session. Never invoke `tnc` directly with the agent's bash tool inside the container.
 3. Record existing window IDs before creation and identify the new window afterward. Confirm its pane working directories point to the task worktree and inspect the layout. Do not identify it by name alone, as names can collide. If creation is ambiguous or fails, stop and inspect the output rather than creating another window.
 4. Select the new window and its empty shell pane. Verify it is idle before sending anything. Never send commands to the originating agent, Neovim, a running devbox startup, or an existing user process.
