@@ -292,6 +292,10 @@ assert_match "tnc names worktree window from checked-out branch" "TNC_WORKTREE_W
 assert_match "tnc retains directory-basename naming" "TNC_WINDOW=regular-root" "$_result"
 
 # ---------------------------------------------------------------------------
+# Background layout uses real tmux on an isolated socket, with a guard against
+# any focus-changing command, not just a before/after comparison.
+assert_success "background coding layout preserves focus and routes input" bash "$SCRIPT_DIR/tmux-coding-background-test.sh"
+
 # Scenario 3 - Repeated source does not duplicate PROMPT_COMMAND hook
 # ---------------------------------------------------------------------------
 echo ""

@@ -5,7 +5,7 @@ description: Hand off the current task or plan to a fresh interactive Pi session
 
 # Tmux handoff
 
-Prepare an isolated task worktree and a self-contained handoff, open the worktree with `tnc`, and start interactive `puss` in build mode with the originating session's current model profile in its empty shell pane. Select the new window. Do not implement the handed-off task in the originating session.
+Prepare an isolated task worktree and a self-contained handoff, open the worktree with `tnc`, and start interactive `puss` in build mode with the originating session's current model profile in its empty shell pane. Keep the user's current window and pane focused throughout creation and launch. Do not implement the handed-off task in the originating session.
 
 ## Prepare
 
@@ -23,31 +23,52 @@ For a built-in profile, launch `puss --model-profile <captured-profile>`. For a 
 
 Read the current definitions before launching. The source is `~/src/profile/`:
 
-- `profile/bashrc.d/10-tmux.bash`: `tnc` aliases `tmux-new-coding` and accepts a directory, not a command. Worktree windows are named after their branch.
+- `profile/bashrc.d/10-tmux.bash`: `tnc` aliases `tmux-new-coding` and accepts `--background <directory>`, not a command. Worktree windows are named after their branch.
 - `tmuxifiers/coding.window.sh`: the coding layout starts Neovim and devbox panes and leaves an empty shell pane. Inspect the layout rather than hardcoding pane numbers.
 - `profile/bashrc.d/30-ai.bash`: `puss` launches sandboxed Pi with `~/src` mounted.
 
 `tnc`, `tmuxifier`, and `puss` may be absent from the agent container. This is expected. Sourcing profile files or running `bash -lic` inside the container does not grant host execution.
 
-Run every tmux CLI call as `letee tmux <args>`, never bare `tmux`. This includes read-only queries, `run-shell`, window selection, `send-keys`, and pane capture. `letee tmux` passes arguments unchanged, so keep the explicit `-S <socket>` and `-t <target>` on every call. If `letee tmux -V` fails, stop and report it rather than falling back to bare `tmux`.
+Run every tmux CLI call as `letee tmux <args>`, never bare `tmux`. This includes read-only queries, `run-shell`, `send-keys`, and pane capture. Never use `select-window`, `select-pane`, or `switch-client` for a handoff, even followed by a switch back. `letee tmux` passes arguments unchanged, so keep the explicit `-S <socket>` and `-t <target>` on every call. If `letee tmux -V` fails, stop and report it rather than falling back to bare `tmux`.
 
-Both helpers are host shell aliases. Invoke a host `bash -lic` through the existing tmux server's `letee tmux -S <socket> run-shell -t <source-pane>`. First run a read-only host preflight, `type tnc; type puss; command -v tmuxifier`, and capture stdout/stderr. Proceed only if all three resolve on the host. If the socket or host helpers are unavailable, stop and provide manual host instructions. Do not install or recreate the helpers inside the container.
+Both helpers are host shell aliases. Invoke a host `bash -lic` through the existing tmux server's `letee tmux -S <socket> run-shell -t <source-pane>`. First run a read-only host preflight that checks `type tnc`, `type puss`, and `command -v tmuxifier`. Check each result, for example `rc=0; type tnc || rc=1; type puss || rc=1; command -v tmuxifier || rc=1; exit "$rc"`. A successful last command alone is not sufficient. Proceed only if all three resolve on the host. If the socket or host helpers are unavailable, stop and provide manual host instructions. Do not install or recreate the helpers inside the container.
+
+### Capture host output without touching Pi's display
+
+Host `run-shell` output can overwrite the originating Pi display. For both preflight and window creation, allocate separate, uniquely named `.log`, `.status`, and `.done` paths under the shared `julsemaan-tmp/`. Verify the directory is writable and readable through both host and sandbox paths before running helpers. If shared logging is unavailable, stop; never fall back to pane output.
+
+Redirect stdout and stderr around the entire host invocation, outside `bash -lic`, so shell startup output is captured too. In the enclosing host shell, save its exit status immediately, write the numeric status to `.status`, then create `.done` only after the status write succeeds. Suppress outer redirection-failure diagnostics so they cannot reach the source pane. Also redirect the `letee tmux` invocation's own stdout/stderr to a separate local invocation log. Shell-quote every path and payload at each shell boundary, including paths containing spaces. Do not redirect the later interactive `puss` session.
+
+Use this host-side wrapper shape with fresh paths and a shell-quoted payload. Quote the complete wrapper again when passing it as the `run-shell` argument:
+
+```bash
+(
+  (
+    bash -lic "$host_payload"
+    rc=$?
+    printf '%s\n' "$rc" > "$status" && : > "$done"
+  ) > "$log" 2>&1
+) 2>/dev/null
+```
+
+Wait for `.done`, then use filesystem tools to read `.status`, `.log`, and the invocation log. The tmux command returning successfully is not completion of the host operation. Use a bounded completion wait, such as 30 seconds; a missing marker, unreadable status, nonzero status, or invocation failure is a blocker. Report captured errors without replaying logs through tmux. Never retry window creation solely because completion is uncertain.
 
 Use shell-quoted arguments. Do not substitute bare `pi`, print mode, or redirected Pi stdin/stdout. The receiving session must remain interactive.
 
 ## Launch
 
 1. Discover the current tmux socket and session from the actual environment. Resolve stable session/window/pane IDs with read-only queries. Never hardcode a username, UID, socket, or session ID from another task. Use an explicit socket and session/pane targets for every `letee tmux` command.
-2. After the host preflight succeeds, run `tnc <absolute-task-worktree-path>` through the same host execution route. Pass the resolved tmux context to the host shell so `tnc` targets the intended server/session. Never invoke `tnc` directly with the agent's bash tool inside the container.
-3. Record existing window IDs before creation and identify the new window afterward. Confirm its pane working directories point to the task worktree and inspect the layout. Do not identify it by name alone, as names can collide. If creation is ambiguous or fails, stop and inspect the output rather than creating another window.
-4. Select the new window and its empty shell pane. Verify it is idle before sending anything. Never send commands to the originating agent, Neovim, a running devbox startup, or an existing user process.
-5. In that new shell, launch `puss --model-profile <captured-profile>` for a built-in profile, or `puss` for a custom profile. Shell-quote arguments. Do not pass the handoff as an initial prompt: new sessions default to plan mode. The shell must have loaded the aliases. Prefer sending the launch command to the new interactive shell rather than replacing its shell process, so launch errors remain visible. Do not pipe the prompt into Pi.
-6. Wait for Pi's input editor. Restore custom mappings if needed, then submit `/build` and wait for confirmation. Submit `/model-profile` and verify all alias models and thinking levels match the captured configuration. Verify the status shows build mode. Do not use `PI_SUBAGENT=1` as a mode workaround or invent a `--build` flag. If configuration differs or a command fails, stop before sending the task.
-7. Only after mode and profile verification, submit a normal Pi prompt telling the receiver to read and execute the handoff at its absolute path in the task worktree. Treat the path as prompt text, not a shell command. Check the pane output to confirm the handoff was read. A successful window-creation exit code is not evidence that Pi launched. If startup is still underway, report that instead of claiming completion. If it exits, capture the actual error from the pane before retrying. Do not repeat a launch merely because the original window did not visibly change.
+2. After the logged host preflight completes successfully, run `tnc --background <absolute-task-worktree-path>` through the same logged host execution route. Pass the resolved tmux context to the host shell so `tnc` targets the intended server/session. Never invoke `tnc` directly with the agent's bash tool inside the container.
+3. Record existing window IDs before creation and identify the new window by the ID difference after the creation marker and successful status arrive. Do not identify it by name alone, as names can collide. If creation is ambiguous or fails, stop and inspect the captured logs rather than creating another window. Record the new window's stable pane IDs and inspect the layout. Reject the originating pane as a launch target.
+4. Poll the new window's panes once per second for up to 30 seconds using `letee tmux -S <socket> list-panes -t <new-window-id> -F '#{pane_id} #{pane_current_path}'`. Split each row only at the first space so directory paths containing spaces remain intact. Require a nonempty pane list with the recorded IDs and every pane directory equal to the absolute task worktree path before launching Pi. Compare canonical host paths if symlinks are involved. Do not treat an initial mismatch as failure or assume asynchronous startup is the cause. On timeout, report each pane ID and its actual directory together with captured host errors. Stop without recreating the window, sending corrective `cd` commands, or weakening the all-pane check.
+5. Identify the empty shell pane without selecting it. Background creation logs its stable pane ID as the final layout output; cross-check that ID against the new window's recorded pane IDs and layout. Inspect `pane_current_command` and `capture-pane -p -t <new-shell-pane-id>` through `letee tmux -S <socket>` to verify an idle shell before sending anything. Never send commands to the originating agent, Neovim, a running devbox startup, or an existing user process.
+6. Target every `send-keys` and `capture-pane` call explicitly at `<new-shell-pane-id>` with `letee tmux -S <socket>`. Never rely on the active pane or window. In that background shell, launch `puss --model-profile <captured-profile>` for a built-in profile, or `puss` for a custom profile. Shell-quote arguments. Do not pass the handoff as an initial prompt: new sessions default to plan mode. The shell must have loaded the aliases. Prefer sending the launch command to the new interactive shell rather than replacing its shell process, so launch errors remain visible. Do not pipe the prompt into Pi.
+7. Wait for Pi's input editor. Restore custom mappings if needed, then submit `/build` and wait for confirmation. Submit `/model-profile` and verify all alias models and thinking levels match the captured configuration. Verify the status shows build mode. Do not use `PI_SUBAGENT=1` as a mode workaround or invent a `--build` flag. If configuration differs or a command fails, stop before sending the task.
+8. Only after mode and profile verification, submit a normal Pi prompt telling the receiver to read and execute the handoff at its absolute path in the task worktree. Treat the path as prompt text, not a shell command. Check the pane output to confirm the handoff was read. A successful window-creation exit code is not evidence that Pi launched. If startup is still underway, report that instead of claiming completion. If it exits, capture the actual error from the pane before retrying. Do not repeat a launch merely because the original window did not visibly change.
 
 ## Safety and completion
 
 - Respect repository tmux restrictions even when they prevent using `tnc`. Do not restart, kill, or reconfigure servers, modify shell configuration, install tools, or bypass sandbox restrictions to make the handoff work.
-- If host execution or helper access is unavailable, save the handoff and provide a shell-quoted host command using `tnc` and interactive `puss`. Report the exact blocker and any captured error. Do not invent an error when none was captured.
+- If host execution or helper access is unavailable, save the handoff and provide a shell-quoted host command using `tnc --background` and interactive `puss` without focus-changing commands. Report the exact blocker and any captured error. Do not invent an error when none was captured.
 - Do not run a live handoff merely to test this skill. Validate commands with stubs or inspect definitions unless the user requests a launch.
-- Finish with the workspace, branch, new window/pane IDs, handoff path, verified build mode, inherited profile, and launch status. Leave the new window selected. Do not wait for the receiver to complete the implementation unless asked.
+- Finish with the workspace, branch, new window/pane IDs, handoff path, verified build mode, inherited profile, and launch status. Leave the user's original focus untouched. Report the target IDs so the user can switch when ready. Do not wait for the receiver to complete the implementation unless asked.
