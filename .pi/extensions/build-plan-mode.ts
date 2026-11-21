@@ -126,7 +126,9 @@ function buildExecutionPrompt(plan: string, extraInstructions?: string): string 
 function buildFinalizePlanPrompt(extraInstructions?: string): string {
 	const extra = extraInstructions?.trim();
 	return [
-		"Provide the final plan for this task.",
+		"Write the handoff for a fresh build session. The build agent will receive only your response, not this conversation.",
+		"State what to change, the decisions we've settled, and any constraints the implementation must preserve. Include the relevant files, implementation steps, and commands to check the result. Carry over findings the build agent would otherwise have to rediscover.",
+		"Leave out discarded options and generic development advice. Return only the handoff. Do not implement anything.",
 		extra ? `Additional instructions for the plan: ${extra}` : undefined,
 	]
 		.filter(Boolean)

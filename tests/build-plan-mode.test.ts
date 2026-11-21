@@ -408,7 +408,7 @@ describe("plan execution commands", () => {
 		loaded.ctx.isIdle = () => idle;
 		loaded.runtime.sendUserMessage = (content: string, options?: Record<string, unknown>) => {
 			loaded.sent.push({ content, options });
-			if (content.startsWith("Provide the final plan")) {
+			if (content.startsWith("Write the handoff")) {
 				idle = false;
 				queueMicrotask(() => {
 					loaded.ctx.sessionManager.entries.push({
@@ -423,7 +423,15 @@ describe("plan execution commands", () => {
 
 		await command(loaded, "execute-plan")("extra", loaded.ctx);
 		await waitForTimers();
-		assert.match(loaded.sent[0]?.content ?? "", /^Provide the final plan/);
+		const handoff = loaded.sent[0]?.content ?? "";
+		assert.match(handoff, /Write the handoff for a fresh build session\. The build agent will receive only your response, not this conversation\./);
+		assert.match(handoff, /State what to change, the decisions we've settled, and any constraints the implementation must preserve\./);
+		assert.match(handoff, /Include the relevant files, implementation steps, and commands to check the result\./);
+		assert.match(handoff, /Carry over findings the build agent would otherwise have to rediscover\./);
+		assert.match(handoff, /Leave out discarded options and generic development advice\. Return only the handoff\. Do not implement anything\./);
+		assert.match(handoff, /Additional instructions for the plan: extra$/);
+		assert.equal(loaded.ctx.newSessionCalls.length, 1);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /Additional instructions: extra/);
 
 		const direct = await loadBuildPlanExtension();
 		direct.ctx.sessionManager.entries.push({
@@ -433,7 +441,7 @@ describe("plan execution commands", () => {
 		});
 		await command(direct, "execute-plan-now")("direct", direct.ctx);
 		await waitForTimers();
-		assert.equal(direct.sent.some((message) => message.content.startsWith("Provide the final plan")), false);
+		assert.equal(direct.sent.some((message) => message.content.startsWith("Write the handoff")), false);
 		assert.equal(direct.ctx.newSessionCalls.length, 1);
 		assert.doesNotMatch(direct.ctx.replacementPrompts[0] ?? "", /github-open-pr or bitbucket-open-pr/);
 	});
@@ -520,7 +528,7 @@ describe("plan execution commands", () => {
 		loaded.ctx.isIdle = () => idle;
 		loaded.runtime.sendUserMessage = (content: string, options?: Record<string, unknown>) => {
 			loaded.sent.push({ content, options });
-			if (content.startsWith("Provide the final plan")) {
+			if (content.startsWith("Write the handoff")) {
 				idle = false;
 				queueMicrotask(() => {
 					loaded.ctx.sessionManager.entries.push({
@@ -532,8 +540,11 @@ describe("plan execution commands", () => {
 				});
 			}
 		};
-		await command(loaded, "execute-plan-pr")("", loaded.ctx);
+		await command(loaded, "execute-plan-pr")("run validation", loaded.ctx);
 		await waitForTimers();
+		assert.match(loaded.sent[0]?.content ?? "", /^Write the handoff for a fresh build session\./);
+		assert.match(loaded.sent[0]?.content ?? "", /Additional instructions for the plan: run validation$/);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /Additional instructions: run validation/);
 		assert.equal(loaded.ctx.newSessionCalls.length, 1);
 		assert.match(loaded.ctx.ui.notifications.join("\n"), /Started fresh build session/);
 		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /github-open-pr or bitbucket-open-pr/);
