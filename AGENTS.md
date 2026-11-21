@@ -85,8 +85,8 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
 - The container runs the AI agent with **read/write access only to the mounted working directory**.
 - The container has **no access to the host system** beyond the mounted paths — no ability to modify
   system config or install packages globally. Sensitive host-file access is blocked apart from two
-  exceptions: the opt-in read-only SSH key mount, and the read-write `~/.claude` mount used by
-  `pi-claude-bridge`.
+  exceptions: the opt-in read-only SSH key mount, the read-write `~/.claude` mount used by
+  `pi-claude-bridge`, and the read-only registry config mount when BuildKit is enabled.
 - The agent's home directory is a **tmpfs** (ephemeral), so no state persists on the host.
 - Selected host paths are explicitly bind-mounted for persistence (e.g., pi's `~/.pi`, opencode's
   config/cache/data). `pi-unleashed-safely` can opt into read-only SSH file mounts only when
@@ -100,7 +100,20 @@ All three AI coding agents (pi, opencode, codex) are wrapped in a **Docker-based
 - API keys for AI providers are forwarded from the host environment.
 - `pi-unleashed-safely.sh --docker-host` starts a companion Docker-in-Docker
   container (`pi-dind`) on a private network. Pi container gets `DOCKER_HOST` pointing
-  at it. No host socket mounted. Inner containers cannot reach host filesystem.
+  at it. This companion is privileged, not rootless. No host socket is mounted.
+- `pi-unleashed-safely.sh --buildkit` enables a reusable rootless BuildKit companion per
+  resolved host UID. It uses dedicated state and Unix-socket volumes, no TCP endpoint,
+  and no host Docker socket. First use requires `--rebuild` for matching `buildctl`.
+  Enabling BuildKit also mounts the resolved host user's `~/.docker/config.json` read-only
+  when present. `PI_DOCKER_CONFIG_DIR` overrides that directory. Only standalone `auths`
+  are supported, not credential helpers. The agent can read credentials and push for the session.
+  Rootless BuildKit requires relaxed container security settings and shares the host kernel,
+  builder state, and cache across enabled sessions for the same user. No privileged fallback
+  or host sysctl changes are applied. See `profile/pi-buildkit.md` for usage and cleanup.
+  On enabled AppArmor 4 hosts, `install` deploys and loads `/etc/apparmor.d/pi-buildkit`;
+  the wrapper selects it automatically to allow user namespaces without changing global
+  restrictions. Old companions must be recreated to pick up the policy, retaining cache.
+  Real build, cache, archive, and authenticated-push checks passed on an AppArmor-enabled host.
 
 ### Shared Base Image: `julsemaan/code-sandbox-img`
 

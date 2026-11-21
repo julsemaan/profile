@@ -18,6 +18,19 @@ function install_tpm {
   chown -R `basename $home`: $home/.tmux
 }
 
+function install_pi_buildkit_apparmor {
+  local profile_dir="$1"
+  if ! command -v apparmor_parser >/dev/null 2>&1 ||
+    [[ ! -f /etc/apparmor.d/abi/4.0 || ! -r /sys/module/apparmor/parameters/enabled ]] ||
+    [[ "$(</sys/module/apparmor/parameters/enabled)" != Y ]]; then
+    echo "Skipping BuildKit AppArmor policy because AppArmor 4 is not available and enabled"
+    return 0
+  fi
+
+  command install -o root -g root -m 0644 "$profile_dir/profile/apparmor/pi-buildkit" /etc/apparmor.d/pi-buildkit
+  apparmor_parser -r /etc/apparmor.d/pi-buildkit
+}
+
 function install_nvim {
   if ! [ -d /opt/nvim-linux64 ]; then
     (
@@ -252,6 +265,8 @@ chmod +x /usr/local/bin/opencode-unleashed-safely
 
 install_file $d/profile/pi-unleashed-safely.sh /usr/local/bin/pi-unleashed-safely
 chmod +x /usr/local/bin/pi-unleashed-safely
+
+install_pi_buildkit_apparmor "$d"
 
 install_file $d/profile/gwt /usr/local/bin/gwt
 chmod +x /usr/local/bin/gwt

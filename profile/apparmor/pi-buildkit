@@ -1,0 +1,8 @@
+# Load on the Docker host and select with --security-opt apparmor=pi-buildkit.
+# Keep the host-wide restriction on unprivileged user namespaces enabled.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile pi-buildkit flags=(unconfined) {
+  userns,
+}

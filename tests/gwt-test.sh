@@ -78,6 +78,25 @@ assert_eq 'new branch starts without upstream' '' "$(git -C "$wt_path" rev-parse
 assert_eq 'selected remote is recorded' origin "$(git -C "$repo" config --local --get branch.feature.remote || true)"
 assert_eq 'push auto-setup is enabled locally' true "$(git -C "$repo" config --local --get push.autoSetupRemote || true)"
 
+reuse_stdout="$tmp_dir/gwt-reuse.stdout"
+if reuse_output=$(printf 'feature\n' | PATH="$stub_dir:$PATH" script -qfec "$create_command > $(printf '%q' "$reuse_stdout")" /dev/null 2>&1); then
+  test_pass 'interactive create reuses an existing worktree'
+else
+  test_fail 'interactive create reuses an existing worktree' "$reuse_output"
+fi
+assert_eq 'reuse stdout is only the existing worktree path' "$wt_path" "$(<"$reuse_stdout")"
+
+mkdir -p "$tmp_dir/repo-unrelated"
+if unrelated_output=$(
+  cd "$repo"
+  GWT_MOUNT_ROOT="$tmp_dir" bash "$REPO_ROOT/profile/gwt" create local/main unrelated 2>&1
+); then
+  test_fail 'unregistered directory is not reused' "$unrelated_output"
+else
+  test_pass 'unregistered directory is not reused'
+fi
+assert_contains 'unregistered directory reports the collision' "$unrelated_output" 'target path already exists'
+
 # A remote-only branch exercises gwt's tracking-branch path.
 git -C "$repo" push -q origin main:remote-only
 git -C "$repo" fetch -q origin

@@ -134,4 +134,58 @@ else
   test_fail "code-sandbox image installs Playwright browsers" "missing playwright install in code-sandbox/Dockerfile"
 fi
 
+# Exercise just the installer function against a fake host, without provisioning this machine.
+apparmor_test_root="$(mktemp -d)"
+trap 'rm -rf "$apparmor_test_root"' EXIT
+mkdir -p "$apparmor_test_root/bin" "$apparmor_test_root/etc/apparmor.d/abi" "$apparmor_test_root/sys/module/apparmor/parameters"
+printf 'Y\n' >"$apparmor_test_root/sys/module/apparmor/parameters/enabled"
+printf '# ABI placeholder\n' >"$apparmor_test_root/etc/apparmor.d/abi/4.0"
+cat >"$apparmor_test_root/bin/install" <<'STUB'
+#!/bin/bash
+set -eu
+printf '%s\n' "$@" >>"$APPARMOR_INSTALL_LOG"
+cp "${@: -2}"
+STUB
+cat >"$apparmor_test_root/bin/apparmor_parser" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$@" >>"$APPARMOR_PARSER_LOG"
+exit "${APPARMOR_PARSER_EXIT:-0}"
+STUB
+chmod +x "$apparmor_test_root/bin/"*
+# Rewrite only host paths in the extracted function so the checks and writes stay in the fixture.
+# shellcheck disable=SC1090
+source <(awk -v root="$apparmor_test_root" '
+  /^function install_pi_buildkit_apparmor / { emit=1 }
+  emit { gsub(/\/etc\/apparmor\.d/, root "/etc/apparmor.d"); gsub(/\/sys\//, root "/sys/"); print }
+  emit && /^}/ { exit }
+' "$install_file")
+function run_apparmor_install {
+  PATH="$apparmor_test_root/bin:$PATH" \
+    APPARMOR_INSTALL_LOG="$apparmor_test_root/install.log" \
+    APPARMOR_PARSER_LOG="$apparmor_test_root/parser.log" \
+    install_pi_buildkit_apparmor "$REPO_ROOT"
+}
+assert_success "enabled AppArmor 4 installs and loads BuildKit policy" run_apparmor_install
+assert_success "installed AppArmor policy matches repository" cmp "$REPO_ROOT/profile/apparmor/pi-buildkit" "$apparmor_test_root/etc/apparmor.d/pi-buildkit"
+assert_contains "policy installation sets root ownership and read permissions" "$(<"$apparmor_test_root/install.log")" $'-o\nroot\n-g\nroot\n-m\n0644'
+assert_contains "policy is loaded without restarting AppArmor" "$(<"$apparmor_test_root/parser.log")" $'-r\n'
+APPARMOR_PARSER_EXIT=1 assert_fail "policy load failure is reported" run_apparmor_install
+rm -f "$apparmor_test_root/install.log" "$apparmor_test_root/parser.log"
+printf 'N\n' >"$apparmor_test_root/sys/module/apparmor/parameters/enabled"
+assert_success "disabled AppArmor skips policy setup" run_apparmor_install
+if [[ ! -e "$apparmor_test_root/install.log" && ! -e "$apparmor_test_root/parser.log" ]]; then
+  test_pass "disabled AppArmor does not install or load a policy"
+else
+  test_fail "disabled AppArmor does not install or load a policy" "unexpected command"
+fi
+printf 'Y\n' >"$apparmor_test_root/sys/module/apparmor/parameters/enabled"
+rm "$apparmor_test_root/etc/apparmor.d/abi/4.0"
+assert_success "older AppArmor skips policy setup" run_apparmor_install
+if [[ ! -e "$apparmor_test_root/install.log" && ! -e "$apparmor_test_root/parser.log" ]]; then
+  test_pass "older AppArmor does not install or load a policy"
+else
+  test_fail "older AppArmor does not install or load a policy" "unexpected command"
+fi
+assert_contains "profile install invokes policy deployment" "$(<"$install_file")" "install_pi_buildkit_apparmor \"\$d\""
+
 test_summary
