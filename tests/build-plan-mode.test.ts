@@ -585,6 +585,36 @@ describe("model profile process state", () => {
 		assert.match(loaded.ctx.ui.notifications.join("\n"), /Current profile: priv/);
 	});
 
+	describe("env profile", () => {
+		const keys = ["PI_DEFAULT_MODEL_PROFILE", "PI_BUILD_PLAN_MODEL_PROFILE"] as const;
+		const saved = keys.map((key) => [key, process.env[key]] as const);
+		beforeEach(() => keys.forEach((key) => delete process.env[key]));
+		after(() => saved.forEach(([key, value]) => (value === undefined ? delete process.env[key] : (process.env[key] = value))));
+
+		async function currentProfile() {
+			const loaded = await loadBuildPlanExtension({ cwd });
+			loaded.ctx.ui.notifications.length = 0;
+			await command(loaded, "model-profile")("", loaded.ctx);
+			return loaded.ctx.ui.notifications.join("\n");
+		}
+
+		it("uses PI_DEFAULT_MODEL_PROFILE", async () => {
+			process.env.PI_DEFAULT_MODEL_PROFILE = "deep";
+			assert.match(await currentProfile(), /Current profile: deep/);
+		});
+
+		it("falls back to legacy PI_BUILD_PLAN_MODEL_PROFILE", async () => {
+			process.env.PI_BUILD_PLAN_MODEL_PROFILE = "deep";
+			assert.match(await currentProfile(), /Current profile: deep/);
+		});
+
+		it("prefers PI_DEFAULT_MODEL_PROFILE over the legacy name", async () => {
+			process.env.PI_DEFAULT_MODEL_PROFILE = "openrouterHybrid";
+			process.env.PI_BUILD_PLAN_MODEL_PROFILE = "deep";
+			assert.match(await currentProfile(), /Current profile: openrouterHybrid/);
+		});
+	});
+
 	it("records the resolved map in the new session", async () => {
 		const loaded = await loadBuildPlanExtension({ skipSessionStart: true, cwd });
 		await handler(loaded, "session_start")({ type: "session_start", reason: "new" }, loaded.ctx);

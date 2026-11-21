@@ -13,7 +13,7 @@ EXTRA_MOUNT_FLAGS=()
 REBUILD=0
 USE_TTY=1
 HIDE_HOME_PI_EXTENSIONS=0
-MODEL_PROFILE=""
+MODEL_PROFILE="${PI_DEFAULT_MODEL_PROFILE:-}"
 DIND_ENABLED=0
 
 # Opt-in phase timing: PI_UNLEASHED_TIMING=1 prints per-phase ms to stderr.
@@ -51,7 +51,8 @@ Arguments:
                       Herdr `herdr-agent-state.ts`.
   --model-profile NAME
                       Start Pi with a specific model profile (e.g. deep, openrouter, priv).
-                      Overrides julsemaan-tmp/model-profile for this session only.
+                      Overrides PI_DEFAULT_MODEL_PROFILE and julsemaan-tmp/model-profile
+                      for this session only.
   Git config forwarding
                       Host ~/.gitconfig is mounted read-only into the container
                       when present on the host. No credential stores or included
@@ -687,7 +688,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
   -e JITI_FS_CACHE="$CONTAINER_HOME/.pi/cache/jiti" \
   -e TMPDIR="$CONTAINER_HOME/.pi/cache" \
   -e "GWT_MOUNT_ROOT=$MNT_CONTAINER" \
-  -e PI_BUILD_PLAN_MODEL_PROFILE="$MODEL_PROFILE" \
+  -e PI_DEFAULT_MODEL_PROFILE="$MODEL_PROFILE" \
   -e PI_CODING_AGENT_DIR="$CONTAINER_HOME/.pi/agent" \
   -e HOME="$CONTAINER_HOME" \
   -e USER="$RESOLVED_USER" \

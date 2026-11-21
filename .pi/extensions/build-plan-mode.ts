@@ -1226,18 +1226,20 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 			mode = "build";
 		}
 
-		// Resolve modelMap once at startup. Reload resets to disk (env > file > session);
-		// otherwise keep working (env > session > process state on /new > file). Mid-session
+		// Resolve modelMap once at startup. Reload applies file overrides; otherwise saved
+		// session and process picks win. The environment profile is only the default. Mid-session
 		// file edits do nothing until /reload, which re-runs session_start.
 		let envProfile: BuiltinProfile | null = null;
-		const envRaw = process.env.PI_BUILD_PLAN_MODEL_PROFILE?.trim();
+		// PI_BUILD_PLAN_MODEL_PROFILE is the legacy name.
+		const envName = process.env.PI_DEFAULT_MODEL_PROFILE?.trim() ? "PI_DEFAULT_MODEL_PROFILE" : "PI_BUILD_PLAN_MODEL_PROFILE";
+		const envRaw = process.env[envName]?.trim();
 		if (envRaw) {
 			const matched = findBuiltinProfile(envRaw);
 			if (matched) {
 				envProfile = matched;
 			} else {
 				ctx.ui.notify(
-					`Invalid PI_BUILD_PLAN_MODEL_PROFILE="${envRaw}" — expected one of: ${BUILTIN_PROFILES_DISPLAY}. Ignoring.`,
+					`Invalid ${envName}="${envRaw}" — expected one of: ${BUILTIN_PROFILES_DISPLAY}. Ignoring.`,
 					"warning",
 				);
 			}
@@ -1263,7 +1265,7 @@ export default function buildPlanMode(pi: ExtensionAPI) {
 
 		// Reload resets to disk: persist it so later resumes and /new
 		// see the file pick instead of the stale session pick.
-		if (event.reason === "reload" && !envProfile && (fileProfile || fileCustomData)) {
+		if (event.reason === "reload" && (fileProfile || fileCustomData)) {
 			persistState();
 		}
 
