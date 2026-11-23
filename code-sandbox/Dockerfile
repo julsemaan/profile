@@ -1,3 +1,4 @@
+FROM moby/buildkit:v0.20.2-rootless AS buildkit
 FROM node:25-bookworm
 
 RUN apt-get update \
@@ -93,3 +94,27 @@ RG_DIR="/tmp/ripgrep-${RG_VERSION#v}-${RG_ARCH}"; \
 install -m 0755 "${RG_DIR}/rg" /usr/local/bin/rg; \
 rm -rf "${RG_DIR}" \
 '
+
+# letee installs into ${XDG_DATA_HOME}/letee; keep it out of the ephemeral $HOME.
+# Unpinned on purpose: each image build picks up the latest release.
+RUN curl -LsSf https://raw.githubusercontent.com/julsemaan/letee/main/install.sh \
+  | XDG_DATA_HOME=/opt LETEE_BIN_DIR=/usr/local/bin sh \
+ && letee version
+
+COPY --from=buildkit /usr/bin/buildctl /usr/local/bin/buildctl
+
+# ponytail: pin to match docker:dind-rootless major; bump together
+RUN set -eux; \
+  ARCH="$(dpkg --print-architecture)"; \
+  case "$ARCH" in \
+    amd64) DOCKER_ARCH="x86_64" ;; \
+    arm64) DOCKER_ARCH="aarch64" ;; \
+    *) echo "Unsupported arch for docker CLI: $ARCH" >&2; exit 1 ;; \
+  esac; \
+  DOCKER_VERSION="29.6.2"; \
+  curl -fsSL "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_VERSION}.tgz" -o /tmp/docker.tgz; \
+  tar --extract --file /tmp/docker.tgz --strip-components 1 --directory /usr/local/bin/ docker/docker; \
+  rm /tmp/docker.tgz; \
+  docker --version
+
+ENV EDITOR=vim

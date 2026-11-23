@@ -408,7 +408,7 @@ describe("plan execution commands", () => {
 		loaded.ctx.isIdle = () => idle;
 		loaded.runtime.sendUserMessage = (content: string, options?: Record<string, unknown>) => {
 			loaded.sent.push({ content, options });
-			if (content.startsWith("Provide the final plan")) {
+			if (content.startsWith("Write the handoff")) {
 				idle = false;
 				queueMicrotask(() => {
 					loaded.ctx.sessionManager.entries.push({
@@ -423,7 +423,15 @@ describe("plan execution commands", () => {
 
 		await command(loaded, "execute-plan")("extra", loaded.ctx);
 		await waitForTimers();
-		assert.match(loaded.sent[0]?.content ?? "", /^Provide the final plan/);
+		const handoff = loaded.sent[0]?.content ?? "";
+		assert.match(handoff, /Write the handoff for a fresh build session\. The build agent will receive only your response, not this conversation\./);
+		assert.match(handoff, /State what to change, the decisions we've settled, and any constraints the implementation must preserve\./);
+		assert.match(handoff, /Include the relevant files, implementation steps, and commands to check the result\./);
+		assert.match(handoff, /Carry over findings the build agent would otherwise have to rediscover\./);
+		assert.match(handoff, /Leave out discarded options and generic development advice\. Return only the handoff\. Do not implement anything\./);
+		assert.match(handoff, /Additional instructions for the plan: extra$/);
+		assert.equal(loaded.ctx.newSessionCalls.length, 1);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /Additional instructions: extra/);
 
 		const direct = await loadBuildPlanExtension();
 		direct.ctx.sessionManager.entries.push({
@@ -433,7 +441,7 @@ describe("plan execution commands", () => {
 		});
 		await command(direct, "execute-plan-now")("direct", direct.ctx);
 		await waitForTimers();
-		assert.equal(direct.sent.some((message) => message.content.startsWith("Provide the final plan")), false);
+		assert.equal(direct.sent.some((message) => message.content.startsWith("Write the handoff")), false);
 		assert.equal(direct.ctx.newSessionCalls.length, 1);
 		assert.doesNotMatch(direct.ctx.replacementPrompts[0] ?? "", /github-open-pr or bitbucket-open-pr/);
 	});
@@ -520,7 +528,7 @@ describe("plan execution commands", () => {
 		loaded.ctx.isIdle = () => idle;
 		loaded.runtime.sendUserMessage = (content: string, options?: Record<string, unknown>) => {
 			loaded.sent.push({ content, options });
-			if (content.startsWith("Provide the final plan")) {
+			if (content.startsWith("Write the handoff")) {
 				idle = false;
 				queueMicrotask(() => {
 					loaded.ctx.sessionManager.entries.push({
@@ -532,8 +540,11 @@ describe("plan execution commands", () => {
 				});
 			}
 		};
-		await command(loaded, "execute-plan-pr")("", loaded.ctx);
+		await command(loaded, "execute-plan-pr")("run validation", loaded.ctx);
 		await waitForTimers();
+		assert.match(loaded.sent[0]?.content ?? "", /^Write the handoff for a fresh build session\./);
+		assert.match(loaded.sent[0]?.content ?? "", /Additional instructions for the plan: run validation$/);
+		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /Additional instructions: run validation/);
 		assert.equal(loaded.ctx.newSessionCalls.length, 1);
 		assert.match(loaded.ctx.ui.notifications.join("\n"), /Started fresh build session/);
 		assert.match(loaded.ctx.replacementPrompts[0] ?? "", /github-open-pr or bitbucket-open-pr/);
@@ -583,6 +594,36 @@ describe("model profile process state", () => {
 		loaded.ctx.ui.notifications.length = 0;
 		await command(loaded, "model-profile")("", loaded.ctx);
 		assert.match(loaded.ctx.ui.notifications.join("\n"), /Current profile: priv/);
+	});
+
+	describe("env profile", () => {
+		const keys = ["PI_DEFAULT_MODEL_PROFILE", "PI_BUILD_PLAN_MODEL_PROFILE"] as const;
+		const saved = keys.map((key) => [key, process.env[key]] as const);
+		beforeEach(() => keys.forEach((key) => delete process.env[key]));
+		after(() => saved.forEach(([key, value]) => (value === undefined ? delete process.env[key] : (process.env[key] = value))));
+
+		async function currentProfile() {
+			const loaded = await loadBuildPlanExtension({ cwd });
+			loaded.ctx.ui.notifications.length = 0;
+			await command(loaded, "model-profile")("", loaded.ctx);
+			return loaded.ctx.ui.notifications.join("\n");
+		}
+
+		it("uses PI_DEFAULT_MODEL_PROFILE", async () => {
+			process.env.PI_DEFAULT_MODEL_PROFILE = "deep";
+			assert.match(await currentProfile(), /Current profile: deep/);
+		});
+
+		it("falls back to legacy PI_BUILD_PLAN_MODEL_PROFILE", async () => {
+			process.env.PI_BUILD_PLAN_MODEL_PROFILE = "deep";
+			assert.match(await currentProfile(), /Current profile: deep/);
+		});
+
+		it("prefers PI_DEFAULT_MODEL_PROFILE over the legacy name", async () => {
+			process.env.PI_DEFAULT_MODEL_PROFILE = "openrouterHybrid";
+			process.env.PI_BUILD_PLAN_MODEL_PROFILE = "deep";
+			assert.match(await currentProfile(), /Current profile: openrouterHybrid/);
+		});
 	});
 
 	it("records the resolved map in the new session", async () => {

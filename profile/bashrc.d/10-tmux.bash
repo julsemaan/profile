@@ -31,10 +31,15 @@ function jointmuxifier {
 alias kpptmux="cd ~ && jointmuxifier kpp"
 alias kubextmux="cd ~ && jointmuxifier kubex"
 
-tmux-new-coding() {
-  local win_root="$1" win_name git_dir common_dir
+function tmux-new-coding {
+  local background=0
+  if [ "${1:-}" = "--background" ]; then
+    background=1
+    shift
+  fi
+  local win_root="${1:-}" win_name git_dir common_dir
   if [ -z "$win_root" ]; then
-    echo "usage: tmux-new-coding <T_WIN_ROOT>" >&2
+    echo "usage: tmux-new-coding [--background] <T_WIN_ROOT>" >&2
     return 1
   fi
 
@@ -59,9 +64,9 @@ tmux-new-coding() {
   fi
 
   if [ -n "$win_name" ]; then
-    T_WIN_NAME="$win_name" T_WIN_ROOT="$win_root" tmuxifier load-window coding
+    T_WIN_BACKGROUND="$background" T_WIN_NAME="$win_name" T_WIN_ROOT="$win_root" tmuxifier load-window coding
   else
-    T_WIN_ROOT="$win_root" tmuxifier load-window coding
+    T_WIN_BACKGROUND="$background" T_WIN_ROOT="$win_root" tmuxifier load-window coding
   fi
 }
 

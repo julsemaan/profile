@@ -13,10 +13,14 @@ This image starts from `node:25-bookworm` and installs common tooling used by co
 - PlatformIO Core (latest stable at build time, `pio` and `platformio` in `/opt/platformio` venv)
 - `shellcheck` (Debian package)
 - `shfmt` v3.10.0 (pinned binary, matches CI)
+- Docker CLI 29.6.2, with amd64 and arm64 support
+- `buildctl` v0.20.2, matching Pi's rootless BuildKit companion
+- Vim, with `EDITOR=vim`
 - Go (latest stable at build time)
 - `kubectl` (latest stable at build time)
 - Helm (latest stable at build time)
 - `rg` / ripgrep (latest release at build time)
+- [letee](https://github.com/julsemaan/letee) and `agent-status` (latest release at build time, installed under `/opt/letee`; rebuild the image to pick up newer releases)
 - Headless Chromium for agent browser tooling: `@playwright/mcp` (global `playwright-mcp`) with browsers in `/opt/ms-playwright`
 
 Browsers live outside `$HOME` because agent sandboxes mount an ephemeral home directory. Run MCP browser servers with `--headless --no-sandbox --browser chromium`: `--browser` defaults to system Google Chrome, which this image does not install.
@@ -38,6 +42,8 @@ Required repository secrets:
 
 - `DOCKERHUB_USERNAME`
 - `DOCKERHUB_TOKEN`
+
+Publish the updated base image before deploying the Pi wrapper that inherits these tools. Then run `pi-unleashed-safely --rebuild` once to pull and consume it. The wrapper still installs Pi and its npm packages, so `--rebuild` updates them and `PI_NPM_PACKAGE` overrides remain supported.
 
 ## Example usage
 
