@@ -338,10 +338,11 @@ export type PartialAliasMap = Partial<Record<ModelAlias, Partial<AliasConfig>>>;
 /**
  * Resolve the initial model map at session_start.
  *
+ * The environment profile is a default; file and saved session choices take precedence.
  * On reload the file wins so edits take effect:
- *   env > file builtin > file custom > session > default
+ *   file builtin > file custom > session > env > default
  * Otherwise the running or resumed pick wins:
- *   env > session > process (new only) > file builtin > file custom > default
+ *   session > process (new only) > file builtin > file custom > env > default
  */
 export function resolveInitialMap(
 	input: {
@@ -355,9 +356,6 @@ export function resolveInitialMap(
 	defaultMap: ModelMap,
 	builtinMaps: Record<BuiltinProfile, ModelMap>,
 ): ModelMap {
-	if (input.envProfile) {
-		return structuredClone(builtinMaps[input.envProfile]);
-	}
 	if (input.reason === "reload") {
 		if (input.fileProfile) {
 			return structuredClone(builtinMaps[input.fileProfile]);
@@ -392,7 +390,7 @@ export function resolveInitialMap(
 		applyProfileData(modelMap, input.fileCustomData);
 		return modelMap;
 	}
-	return structuredClone(defaultMap);
+	return structuredClone(input.envProfile ? builtinMaps[input.envProfile] : defaultMap);
 }
 
 // ── Serialization ──────────────────────────────────────────────────────────

@@ -457,9 +457,18 @@ describe("resolveInitialMap", () => {
 		assert.deepEqual(modelMap, MODEL_PROFILES.openrouterHybrid);
 	});
 
-	it("reload env beats file", () => {
+	it("reload file beats env default", () => {
 		const modelMap = resolveInitialMap(
 			{ reason: "reload", envProfile: "deep", fileProfile: "openrouterHybrid", fileCustomData: customFileData, sessionMap },
+			defaultMap,
+			builtinMaps,
+		);
+		assert.deepEqual(modelMap, MODEL_PROFILES.openrouterHybrid);
+	});
+
+	it("env is the default when no file or session is set", () => {
+		const modelMap = resolveInitialMap(
+			{ reason: "startup", envProfile: "deep" },
 			defaultMap,
 			builtinMaps,
 		);
@@ -517,13 +526,13 @@ describe("resolveInitialMap", () => {
 		assert.deepEqual(modelMap, defaultMap);
 	});
 
-	it("env beats process map", () => {
+	it("process map beats env default", () => {
 		const modelMap = resolveInitialMap(
 			{ reason: "new", envProfile: "deep", processMap },
 			defaultMap,
 			builtinMaps,
 		);
-		assert.deepEqual(modelMap, MODEL_PROFILES.deep);
+		assert.equal(modelMap["custom/large"].model, "process/large");
 	});
 
 	it("file used with no session", () => {

@@ -285,6 +285,12 @@ assert_contains "PI_FAST_MODE is forwarded without wrapper defaults" "$run_args"
 assert_contains "PI_TIMING reaches the container" "$run_args" "PI_TIMING"
 assert_contains "PI_STARTUP_BENCHMARK reaches the container" "$run_args" "PI_STARTUP_BENCHMARK"
 
+# --- Model profile tests ---
+PI_DEFAULT_MODEL_PROFILE=deep run_wrapper
+assert_contains "PI_DEFAULT_MODEL_PROFILE is forwarded" "$(<"$docker_run_log")" $'-e\nPI_DEFAULT_MODEL_PROFILE=deep\n'
+PI_DEFAULT_MODEL_PROFILE=deep run_wrapper --model-profile priv
+assert_contains "--model-profile overrides PI_DEFAULT_MODEL_PROFILE" "$(<"$docker_run_log")" $'-e\nPI_DEFAULT_MODEL_PROFILE=priv\n'
+
 # --- Go cache discovery tests ---
 rm -f "$go_env_log"
 run_wrapper

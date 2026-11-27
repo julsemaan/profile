@@ -95,6 +95,12 @@ install -m 0755 "${RG_DIR}/rg" /usr/local/bin/rg; \
 rm -rf "${RG_DIR}" \
 '
 
+# letee installs into ${XDG_DATA_HOME}/letee; keep it out of the ephemeral $HOME.
+# Unpinned on purpose: each image build picks up the latest release.
+RUN curl -LsSf https://raw.githubusercontent.com/julsemaan/letee/main/install.sh \
+  | XDG_DATA_HOME=/opt LETEE_BIN_DIR=/usr/local/bin sh \
+ && letee version
+
 COPY --from=buildkit /usr/bin/buildctl /usr/local/bin/buildctl
 
 # ponytail: pin to match docker:dind-rootless major; bump together
