@@ -76,6 +76,50 @@ test("code cards copy exact block text through Pi's headless clipboard and resto
 	const firstButtonX = visibleWidth(lines[firstButtonY].split("[COPY]")[0]);
 	assert.equal(await copyAndRead(() => click(firstButtonX, firstButtonY)), first);
 
+	const checkButtons = async (sources: string[], width = 60) => {
+		lines = markdown.render(width);
+		const buttons = lines.flatMap((line: string, y: number) => line.includes("[COPY]")
+			? [{ x: visibleWidth(line.split("[COPY]")[0]), y }] : []);
+		assert.equal(buttons.length, sources.length);
+		for (const [index, { x, y }] of buttons.entries()) {
+			assert.equal(await copyAndRead(() => click(x, y)), sources[index]);
+		}
+	};
+	const setBlocks = (sources: string[]) => markdown.setText(sources.map(source => "```text\n" + source + "\n```").join("\n\n"));
+	// Only the second token renders again. The first card comes from Pi's cache.
+	setBlocks([first, second]);
+	await checkButtons([first, second]);
+	const updated = second + "\nstreamed 世界";
+	setBlocks([first, updated]);
+	await checkButtons([first, updated]);
+	await checkButtons([first, updated]);
+	// Changing only prose leaves both code blocks in Pi's native cache.
+	markdown.setText([first, updated].map(source => "```text\n" + source + "\n```").join("\n\n") + "\n\nMore prose");
+	await checkButtons([first, updated]);
+	assert.equal(await copyAndRead(() => copyShortcut.handler(ctx)), updated);
+	// After a partial update, toggling the second card must leave the first alone.
+	const secondButtonY = lines.findLastIndex((line: string) => line.includes("[COPY]"));
+	assert.equal(click(2, secondButtonY)?.render, true);
+	lines = markdown.render(60);
+	assert.equal(lines.filter((line: string) => line.includes("[COPY]")).length, 1);
+	assert.ok(lines.some((line: string) => line.includes("```text")));
+	const secondFenceY = lines.findIndex((line: string) => line.includes("```text"));
+	assert.equal(click(2, secondFenceY)?.render, true);
+	await checkButtons([first, updated]);
+	setBlocks([first, updated, "appended"]);
+	await checkButtons([first, updated, "appended"]);
+	setBlocks(["identical", "identical", updated]);
+	await checkButtons(["identical", "identical", updated]);
+	setBlocks(["identical", "identical", updated + "!"]);
+	await checkButtons(["identical", "identical", updated + "!"]);
+	await checkButtons(["identical", "identical", updated + "!"], 35);
+	markdown.invalidate();
+	await checkButtons(["identical", "identical", updated + "!"], 35);
+
+	// Return to the original message for the existing raw-toggle checks.
+	markdown.setText("```bash\n" + first + "\n```\n\n```text\n" + second + "\n```");
+	lines = markdown.render(60);
+
 	// Theme changes invalidate Markdown without changing its text or width.
 	ctx.ui.theme.fg = (_color: string, text: string) => `\x1b[36m${text}\x1b[0m`;
 	markdown.invalidate();

@@ -57,6 +57,8 @@ const COPY_ANCHOR = `\u200b${COPY_LABEL}`;
  * a later block's fence.
  */
 const RAW_ANCHOR = "\u2060";
+// Zero-width IDs survive Pi's cached rows without changing terminal columns.
+const BLOCK_ID = /\u2063([\u200b\u200c]+)\u2063/g;
 const STATUS_KEY = "code-cards";
 const STATUS_CLEAR_MS = 2000;
 
@@ -245,6 +247,8 @@ function installPatch(
   const originalHandleMouse = prototype.handleMouse;
 
   const captureBlocks = new WeakMap<Markdown, CodeBlock[]>();
+  const blockMetadata = new WeakMap<Markdown, Map<string, CodeBlock>>();
+  let nextBlockId = 0;
   /** Survives cached renders, where renderToken only fires on cold renders. */
   const knownBlocks = new WeakMap<Markdown, CodeBlock[]>();
   /**
@@ -285,6 +289,7 @@ function installPatch(
   const renderWithoutCards = (instance: Markdown, width: number, key: string): string[] => {
     const lines = originalRender.call(instance, width);
     knownBlocks.delete(instance);
+    blockMetadata.delete(instance);
     return cacheLayout(instance, key, lines);
   };
 
@@ -318,6 +323,11 @@ function installPatch(
     const index = capture?.length ?? -1;
     const block: CodeBlock = { source };
     capture?.push(block);
+    const id = (++nextBlockId).toString(2).replace(/0/g, "\u200b").replace(/1/g, "\u200c");
+    const anchor = `\u2063${id}\u2063`;
+    const metadata = blockMetadata.get(this) ?? new Map<string, CodeBlock>();
+    metadata.set(id, block);
+    blockMetadata.set(this, metadata);
 
     // Toggled blocks render as the original fenced text.
     if (rawSources.get(this)?.get(index) === source) {
@@ -330,7 +340,7 @@ function installPatch(
         (total, line) => total + Math.max(1, wrapTextWithAnsi(line, width).length),
         0,
       );
-      if (rawRendered.length > 0) rawRendered[0] = `${rawRendered[0] ?? ""}${RAW_ANCHOR}`;
+      if (rawRendered.length > 0) rawRendered[0] = `${rawRendered[0] ?? ""}${RAW_ANCHOR}${anchor}`;
       return rawRendered;
     }
 
@@ -365,6 +375,7 @@ function installPatch(
     if (nextTokenType && nextTokenType !== "space") card.push("");
     // `card` starts with a blank padding row; the click anchor is the next row.
     block.cardLines = Math.max(1, card.length - 1);
+    card[1] = card[1].replace(COPY_ANCHOR, `${anchor}${COPY_ANCHOR}`);
     return card;
   };
 
@@ -386,19 +397,23 @@ function installPatch(
       captureBlocks.delete(this);
     }
 
-    // A message with no code tokens needs no per-render bookkeeping. Never key
-    // this on the source text: an indented code block has no ``` but is still
-    // rendered as a card.
-    if (currentBlocks.length > 0) {
-      knownBlocks.set(this, currentBlocks);
-    } else if (!lines.some((line) => line.includes(COPY_ANCHOR) || line.includes(RAW_ANCHOR))) {
-      knownBlocks.delete(this);
-    }
-
-    const blocks = knownBlocks.get(this) ?? [];
-    if (blocks.length === 0) return cacheLayout(this, key, lines);
-
+    // renderToken only sees cache misses. Recover every occurrence from the
+    // completed output, including repeated uses of one cached block.
     const plainLines = lines.map((line) => stripTerminalSequences(line));
+    const metadata = blockMetadata.get(this);
+    const retained = new Map<string, CodeBlock>();
+    const blocks: CodeBlock[] = [];
+    for (const line of plainLines) {
+      for (const match of line.matchAll(BLOCK_ID)) {
+        const block = metadata?.get(match[1]);
+        if (!block) continue;
+        blocks.push(block);
+        retained.set(match[1], block);
+      }
+    }
+    blockMetadata.set(this, retained);
+    knownBlocks.set(this, blocks);
+    if (blocks.length === 0) return cacheLayout(this, key, lines);
     const { hits, ranges } = locateBlocks(plainLines, blocks, visibleWidth(COPY_LABEL));
 
     const last = blocks[blocks.length - 1];
